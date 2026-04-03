@@ -1,0 +1,249 @@
+{
+  "embedding": {
+    "0": {
+      "name": "Pets & Apartment Life",
+      "cx": -26.184,
+      "cy": 14.776
+    },
+    "1": {
+      "name": "MBTA Outrage",
+      "cx": 65.139,
+      "cy": 21.442
+    },
+    "2": {
+      "name": "Zoning & Housing Policy",
+      "cx": -37.449,
+      "cy": -23.148
+    },
+    "3": {
+      "name": "Street Behavior & Conflict",
+      "cx": 23.016,
+      "cy": -13.399
+    },
+    "4": {
+      "name": "Apartment Hunting",
+      "cx": -44.266,
+      "cy": 38.81
+    },
+    "5": {
+      "name": "Cycling & Bike Lanes",
+      "cx": 56.984,
+      "cy": -51.391
+    },
+    "6": {
+      "name": "Affordable Housing Advocacy",
+      "cx": -16.618,
+      "cy": -10.876
+    },
+    "7": {
+      "name": "Boston Globe & Media",
+      "cx": -10.649,
+      "cy": -58.269
+    },
+    "8": {
+      "name": "Tenant Rights & Landlords",
+      "cx": -66.76,
+      "cy": 46.71
+    },
+    "9": {
+      "name": "Life, Work & Family",
+      "cx": -25.734,
+      "cy": -15.515
+    },
+    "10": {
+      "name": "Parking Permits & Rules",
+      "cx": 15.194,
+      "cy": -18.55
+    },
+    "12": {
+      "name": "NIMBYs & Housing Supply",
+      "cx": -43.208,
+      "cy": -32.602
+    },
+    "13": {
+      "name": "Rent Prices & Affordability",
+      "cx": -58.657,
+      "cy": 3.345
+    },
+    "14": {
+      "name": "Moving to Boston Advice",
+      "cx": -31.053,
+      "cy": 28.744
+    },
+    "15": {
+      "name": "Commuter Rail Navigation",
+      "cx": 49.481,
+      "cy": 36.63
+    },
+    "16": {
+      "name": "City Infrastructure Incidents",
+      "cx": 26.475,
+      "cy": 19.112
+    },
+    "17": {
+      "name": "Suburbs & Neighborhoods",
+      "cx": -16.254,
+      "cy": 34.84
+    },
+    "18": {
+      "name": "Lease Terms & Renewals",
+      "cx": -79.858,
+      "cy": 24.261
+    },
+    "19": {
+      "name": "Culture War & Politics",
+      "cx": -16.669,
+      "cy": -63.963
+    },
+    "20": {
+      "name": "Traffic & Road Safety",
+      "cx": 32.379,
+      "cy": -45.238
+    },
+    "21": {
+      "name": "Immigration & Shelter Debate",
+      "cx": -46.977,
+      "cy": -64.173
+    },
+    "22": {
+      "name": "MBTA Lines & Infrastructure",
+      "cx": 78.158,
+      "cy": 22.938
+    },
+    "23": {
+      "name": "Race & Social Justice",
+      "cx": -10.912,
+      "cy": -50.86
+    },
+    "24": {
+      "name": "Boston Living: Pros & Cons",
+      "cx": -12.957,
+      "cy": 7.847
+    },
+    "25": {
+      "name": "Street Design & Congestion",
+      "cx": 50.339,
+      "cy": -31.018
+    },
+    "26": {
+      "name": "Suburb Housing Search",
+      "cx": -46.132,
+      "cy": 28.572
+    },
+    "27": {
+      "name": "Misc. Neighborhood Notes",
+      "cx": -42.1,
+      "cy": 37.877
+    },
+    "28": {
+      "name": "Daily Transit Commute",
+      "cx": 29.761,
+      "cy": 33.414
+    },
+    "29": {
+      "name": "Car Commuting & Traffic",
+      "cx": 36.307,
+      "cy": 6.304
+    },
+    "30": {
+      "name": "Tourism & Day Trips",
+      "cx": 14.477,
+      "cy": 45.18
+    },
+    "31": {
+      "name": "Street Parking & Carpools",
+      "cx": 19.569,
+      "cy": 13.675
+    },
+    "32": {
+      "name": "Gentrification & Rent Control",
+      "cx": -67.708,
+      "cy": -25.813
+    },
+    "33": {
+      "name": "MBTA Safety & Unions",
+      "cx": 59.666,
+      "cy": 19.994
+    },
+    "34": {
+      "name": "Local Restaurants & Food",
+      "cx": -5.93,
+      "cy": 8.002
+    },
+    "35": {
+      "name": "Traffic Signals & Rideshare",
+      "cx": 31.87,
+      "cy": -34.552
+    },
+    "36": {
+      "name": "Property Taxes & Finances",
+      "cx": -67.019,
+      "cy": 6.152
+    },
+    "37": {
+      "name": "Rent Control Debate",
+      "cx": -57.69,
+      "cy": -14.434
+    },
+    "38": {
+      "name": "MBTA Funding & Politics",
+      "cx": 74.83,
+      "cy": -9.111
+    },
+    "39": {
+      "name": "Neighborhood Nuisances",
+      "cx": -12.684,
+      "cy": 2.98
+    },
+    "40": {
+      "name": "Parking vs. Bike Lanes",
+      "cx": 13.792,
+      "cy": -12.406
+    },
+    "41": {
+      "name": "Pedestrian & Cyclist Safety",
+      "cx": 49.955,
+      "cy": -65.623
+    },
+    "42": {
+      "name": "Local Trails & Spots",
+      "cx": 27.938,
+      "cy": 11.989
+    },
+    "43": {
+      "name": "Cost of Living & Leaving Boston",
+      "cx": -49.766,
+      "cy": 0.332
+    },
+    "44": {
+      "name": "Crime & Public Safety",
+      "cx": 4.849,
+      "cy": -58.495
+    },
+    "45": {
+      "name": "Transit-Oriented Development",
+      "cx": 69.053,
+      "cy": 3.927
+    },
+    "46": {
+      "name": "Boston Memes & Humor",
+      "cx": 35.447,
+      "cy": 23.766
+    },
+    "47": {
+      "name": "Local Politics & Elections",
+      "cx": -29.382,
+      "cy": -50.02
+    },
+    "48": {
+      "name": "Community Resources & Tips",
+      "cx": -5.267,
+      "cy": 30.585
+    },
+    "49": {
+      "name": "CharlieCard & Fares",
+      "cx": 52.774,
+      "cy": 55.2
+    }
+  }
+}

@@ -1,0 +1,1256 @@
+{
+  "0": [
+    {
+      "sub": 0,
+      "name": "Building Rules & Outdoor Space",
+      "cx": -18.395,
+      "cy": 6.358
+    },
+    {
+      "sub": 1,
+      "name": "Pests & Infestations",
+      "cx": -38.617,
+      "cy": 25.932
+    },
+    {
+      "sub": 2,
+      "name": "Pets & Animal Care",
+      "cx": -26.594,
+      "cy": 16.94
+    }
+  ],
+  "1": [
+    {
+      "sub": 0,
+      "name": "Accidents & Incidents",
+      "cx": 66.074,
+      "cy": 35.038
+    },
+    {
+      "sub": 1,
+      "name": "Service Cuts & Routes",
+      "cx": 67.061,
+      "cy": 18.979
+    },
+    {
+      "sub": 2,
+      "name": "Infrastructure Failures",
+      "cx": 70.559,
+      "cy": 11.932
+    },
+    {
+      "sub": 3,
+      "name": "Daily Delays & Shutdowns",
+      "cx": 64.366,
+      "cy": 30.18
+    },
+    {
+      "sub": 4,
+      "name": "Station Quirks & Humor",
+      "cx": 64.44,
+      "cy": 26.601
+    },
+    {
+      "sub": 5,
+      "name": "Green Line & Branches",
+      "cx": 59.39,
+      "cy": 17.969
+    }
+  ],
+  "2": [
+    {
+      "sub": 0,
+      "name": "Height & Density Rules",
+      "cx": -35.172,
+      "cy": -22.852
+    },
+    {
+      "sub": 1,
+      "name": "Project Reviews & Hearings",
+      "cx": -33.306,
+      "cy": -27.693
+    },
+    {
+      "sub": 2,
+      "name": "Town Government Decisions",
+      "cx": -29.323,
+      "cy": -18.869
+    },
+    {
+      "sub": 3,
+      "name": "MBTA Communities Act",
+      "cx": -45.908,
+      "cy": -23.425
+    }
+  ],
+  "3": [
+    {
+      "sub": 0,
+      "name": "Rude Encounters & Etiquette",
+      "cx": 27.476,
+      "cy": -4.237
+    },
+    {
+      "sub": 1,
+      "name": "Illegal Dumping & Vandalism",
+      "cx": 18.556,
+      "cy": -21.818
+    },
+    {
+      "sub": 2,
+      "name": "Crime & Neighborhood Safety",
+      "cx": 11.524,
+      "cy": -25.582
+    },
+    {
+      "sub": 3,
+      "name": "Transit Bad Behavior",
+      "cx": 29.638,
+      "cy": -10.887
+    }
+  ],
+  "4": [
+    {
+      "sub": 0,
+      "name": "Roommates & Lease Timing",
+      "cx": -48.67,
+      "cy": 42.176
+    },
+    {
+      "sub": 1,
+      "name": "Apartment Experiences",
+      "cx": -45.314,
+      "cy": 26.354
+    },
+    {
+      "sub": 2,
+      "name": "Suburb Apartment Search",
+      "cx": -39.186,
+      "cy": 44.524
+    },
+    {
+      "sub": 3,
+      "name": "Rent Ranges & Deals",
+      "cx": -51.98,
+      "cy": 30.784
+    },
+    {
+      "sub": 4,
+      "name": "Short-term & Room Rentals",
+      "cx": -35.973,
+      "cy": 51.679
+    }
+  ],
+  "5": [
+    {
+      "sub": 0,
+      "name": "Car vs. Bike Politics",
+      "cx": 54.618,
+      "cy": -50.18
+    },
+    {
+      "sub": 1,
+      "name": "Bike Path Projects",
+      "cx": 58.708,
+      "cy": -50.943
+    },
+    {
+      "sub": 2,
+      "name": "Blocked Bike Lanes",
+      "cx": 49.447,
+      "cy": -59.234
+    },
+    {
+      "sub": 3,
+      "name": "Lane Design Debates",
+      "cx": 64.104,
+      "cy": -50.605
+    },
+    {
+      "sub": 4,
+      "name": "Cycling Culture & Tips",
+      "cx": 62.269,
+      "cy": -39.153
+    }
+  ],
+  "6": [
+    {
+      "sub": 0,
+      "name": "Policy Updates",
+      "cx": -12.881,
+      "cy": -37.166
+    },
+    {
+      "sub": 1,
+      "name": "Moderation & Meta",
+      "cx": 8.839,
+      "cy": -3.355
+    },
+    {
+      "sub": 2,
+      "name": "Tenant Resources",
+      "cx": -37.481,
+      "cy": -5.927
+    }
+  ],
+  "8": [
+    {
+      "sub": 0,
+      "name": "Utilities & Heat Disputes",
+      "cx": -63.67,
+      "cy": 56.201
+    },
+    {
+      "sub": 1,
+      "name": "Repairs & Landlord Issues",
+      "cx": -64.804,
+      "cy": 39.017
+    },
+    {
+      "sub": 2,
+      "name": "MA Tenant Rights & Law",
+      "cx": -75.812,
+      "cy": 40.224
+    },
+    {
+      "sub": 3,
+      "name": "Unit Modifications & Appliances",
+      "cx": -61.961,
+      "cy": 57.747
+    },
+    {
+      "sub": 4,
+      "name": "Pests & Property Conditions",
+      "cx": -63.88,
+      "cy": 43.908
+    }
+  ],
+  "9": [
+    {
+      "sub": 0,
+      "name": "Schools & Education",
+      "cx": -20.305,
+      "cy": -21.913
+    },
+    {
+      "sub": 1,
+      "name": "Higher Ed & Workforce",
+      "cx": -34.343,
+      "cy": -17.138
+    },
+    {
+      "sub": 2,
+      "name": "Wages & Career Struggles",
+      "cx": -22.582,
+      "cy": -9.96
+    }
+  ],
+  "10": [
+    {
+      "sub": 0,
+      "name": "Tickets & Permits",
+      "cx": 18.999,
+      "cy": -6.478
+    },
+    {
+      "sub": 1,
+      "name": "Traffic Enforcement & DMV",
+      "cx": 13.347,
+      "cy": -40.605
+    },
+    {
+      "sub": 2,
+      "name": "Accidents & Insurance",
+      "cx": 12.504,
+      "cy": -17.974
+    }
+  ],
+  "12": [
+    {
+      "sub": 0,
+      "name": "Development Approvals",
+      "cx": -36.378,
+      "cy": -28.296
+    },
+    {
+      "sub": 1,
+      "name": "Community Opposition",
+      "cx": -39.759,
+      "cy": -38.326
+    },
+    {
+      "sub": 2,
+      "name": "State Zoning Mandates",
+      "cx": -51.412,
+      "cy": -39.222
+    },
+    {
+      "sub": 3,
+      "name": "Density & Triple-Deckers",
+      "cx": -46.588,
+      "cy": -29.362
+    },
+    {
+      "sub": 4,
+      "name": "Market vs. Affordable Units",
+      "cx": -43.551,
+      "cy": -27.72
+    },
+    {
+      "sub": 5,
+      "name": "Local Development Plans",
+      "cx": -32.94,
+      "cy": -35.134
+    }
+  ],
+  "13": [
+    {
+      "sub": 0,
+      "name": "Income Limits & Eligibility",
+      "cx": -51.013,
+      "cy": -4.466
+    },
+    {
+      "sub": 1,
+      "name": "Why Boston Stays Expensive",
+      "cx": -52.599,
+      "cy": -6.345
+    },
+    {
+      "sub": 2,
+      "name": "Unit Price Comparisons",
+      "cx": -61.532,
+      "cy": 9.242
+    },
+    {
+      "sub": 3,
+      "name": "Broker Fees & Mobility",
+      "cx": -69.773,
+      "cy": -2.497
+    },
+    {
+      "sub": 4,
+      "name": "Rent Hikes & Financial Strain",
+      "cx": -56.367,
+      "cy": 15.026
+    }
+  ],
+  "14": [
+    {
+      "sub": 0,
+      "name": "Emergency Housing & Services",
+      "cx": -31.339,
+      "cy": 20.603
+    },
+    {
+      "sub": 1,
+      "name": "Neighborhood Recommendations",
+      "cx": -32.207,
+      "cy": 28.002
+    },
+    {
+      "sub": 2,
+      "name": "Family & Commute Decisions",
+      "cx": -28.881,
+      "cy": 34.073
+    },
+    {
+      "sub": 3,
+      "name": "Transplant Advice",
+      "cx": -32.78,
+      "cy": 27.124
+    }
+  ],
+  "15": [
+    {
+      "sub": 0,
+      "name": "Late Night & Schedules",
+      "cx": 51.103,
+      "cy": 35.722
+    },
+    {
+      "sub": 1,
+      "name": "Route Planning & Transfers",
+      "cx": 52.053,
+      "cy": 40.889
+    },
+    {
+      "sub": 2,
+      "name": "Passes & Basics",
+      "cx": 53.029,
+      "cy": 39.685
+    },
+    {
+      "sub": 3,
+      "name": "Red Line & Alternatives",
+      "cx": 46.772,
+      "cy": 31.035
+    },
+    {
+      "sub": 4,
+      "name": "Logan & Airport Access",
+      "cx": 44.405,
+      "cy": 39.361
+    }
+  ],
+  "16": [
+    {
+      "sub": 0,
+      "name": "Events & City Life",
+      "cx": 23.207,
+      "cy": 14.457
+    },
+    {
+      "sub": 1,
+      "name": "Storms & Emergencies",
+      "cx": 9.698,
+      "cy": 1.02
+    },
+    {
+      "sub": 2,
+      "name": "Daily Threads & Updates",
+      "cx": 66.608,
+      "cy": 64.943
+    }
+  ],
+  "17": [
+    {
+      "sub": 0,
+      "name": "South Shore Suburbs",
+      "cx": -25.959,
+      "cy": 40.4
+    },
+    {
+      "sub": 1,
+      "name": "Western Suburbs & Towns",
+      "cx": -24.528,
+      "cy": 30.123
+    },
+    {
+      "sub": 2,
+      "name": "East Boston & Everett",
+      "cx": -16.195,
+      "cy": 50.028
+    },
+    {
+      "sub": 3,
+      "name": "Commuter Town Tradeoffs",
+      "cx": -22.983,
+      "cy": 38.185
+    },
+    {
+      "sub": 4,
+      "name": "North Shore & Beyond",
+      "cx": 3.495,
+      "cy": 31.905
+    }
+  ],
+  "18": [
+    {
+      "sub": 0,
+      "name": "Lease Clauses & Rights",
+      "cx": -76.209,
+      "cy": 17.201
+    },
+    {
+      "sub": 1,
+      "name": "Broker Fees & Lease Length",
+      "cx": -88.025,
+      "cy": 8.135
+    },
+    {
+      "sub": 2,
+      "name": "Security Deposits & Court",
+      "cx": -85.338,
+      "cy": 35.618
+    },
+    {
+      "sub": 3,
+      "name": "Guest & Subletting Rules",
+      "cx": -80.176,
+      "cy": 31.303
+    },
+    {
+      "sub": 4,
+      "name": "Broker Experiences",
+      "cx": -79.266,
+      "cy": 23.624
+    },
+    {
+      "sub": 5,
+      "name": "Renewal Negotiations",
+      "cx": -74.187,
+      "cy": 29.99
+    }
+  ],
+  "19": [
+    {
+      "sub": 0,
+      "name": "Gender & Identity Debates",
+      "cx": -19.484,
+      "cy": -59.421
+    },
+    {
+      "sub": 1,
+      "name": "Palestine & Campus Protests",
+      "cx": -12.441,
+      "cy": -56.836
+    },
+    {
+      "sub": 2,
+      "name": "Geopolitics & History",
+      "cx": -18.123,
+      "cy": -76.185
+    }
+  ],
+  "20": [
+    {
+      "sub": 0,
+      "name": "Crosswalk & Pedestrian Safety",
+      "cx": 41.488,
+      "cy": -45.73
+    },
+    {
+      "sub": 1,
+      "name": "Driving Culture & DUI",
+      "cx": 25.467,
+      "cy": -47.591
+    },
+    {
+      "sub": 2,
+      "name": "Speed & Road Rules",
+      "cx": 33.314,
+      "cy": -43.454
+    },
+    {
+      "sub": 3,
+      "name": "Road Markings & Headlights",
+      "cx": 28.014,
+      "cy": -49.42
+    },
+    {
+      "sub": 4,
+      "name": "Highway Behavior",
+      "cx": 30.857,
+      "cy": -41.375
+    }
+  ],
+  "21": [
+    {
+      "sub": 0,
+      "name": "Immigration Policy Arguments",
+      "cx": -45.503,
+      "cy": -58.953
+    },
+    {
+      "sub": 1,
+      "name": "Homelessness & Shelter",
+      "cx": -48.997,
+      "cy": -60.291
+    },
+    {
+      "sub": 2,
+      "name": "Right-to-Shelter & Housing First",
+      "cx": -57.804,
+      "cy": -62.099
+    },
+    {
+      "sub": 3,
+      "name": "Shelter Crisis Costs",
+      "cx": -39.225,
+      "cy": -70.164
+    }
+  ],
+  "22": [
+    {
+      "sub": 0,
+      "name": "Technical Systems & Track",
+      "cx": 73.705,
+      "cy": 21.49
+    },
+    {
+      "sub": 1,
+      "name": "Hours & Overnight Closures",
+      "cx": 74.652,
+      "cy": 26.461
+    },
+    {
+      "sub": 2,
+      "name": "Silver Line & Bus Routes",
+      "cx": 85.635,
+      "cy": 15.958
+    },
+    {
+      "sub": 3,
+      "name": "Rolling Stock & Bikes on T",
+      "cx": 81.454,
+      "cy": 24.512
+    },
+    {
+      "sub": 4,
+      "name": "Current Service Status",
+      "cx": 75.688,
+      "cy": 27.458
+    }
+  ],
+  "23": [
+    {
+      "sub": 0,
+      "name": "Protests & Activism",
+      "cx": -10.296,
+      "cy": -54.112
+    },
+    {
+      "sub": 1,
+      "name": "Boston History & Culture",
+      "cx": -14.928,
+      "cy": -55.387
+    },
+    {
+      "sub": 2,
+      "name": "Local Controversies",
+      "cx": -9.85,
+      "cy": -43.944
+    }
+  ],
+  "24": [
+    {
+      "sub": 0,
+      "name": "City Comparisons",
+      "cx": -13.071,
+      "cy": 12.039
+    },
+    {
+      "sub": 1,
+      "name": "Walkable Neighborhoods",
+      "cx": -4.078,
+      "cy": 2.922
+    },
+    {
+      "sub": 2,
+      "name": "Safety & Demographics",
+      "cx": -8.532,
+      "cy": -12.414
+    },
+    {
+      "sub": 3,
+      "name": "Secondary Cities",
+      "cx": -13.022,
+      "cy": 10.092
+    },
+    {
+      "sub": 4,
+      "name": "Ethnic Neighborhoods",
+      "cx": -23.604,
+      "cy": 17.318
+    }
+  ],
+  "25": [
+    {
+      "sub": 0,
+      "name": "Road Redesign Debates",
+      "cx": 47.605,
+      "cy": -31.813
+    },
+    {
+      "sub": 1,
+      "name": "Traffic Data & Studies",
+      "cx": 55.058,
+      "cy": -28.388
+    },
+    {
+      "sub": 2,
+      "name": "Rotaries & Intersections",
+      "cx": 47.902,
+      "cy": -29.826
+    },
+    {
+      "sub": 3,
+      "name": "Bus Lanes & Road Closures",
+      "cx": 43.459,
+      "cy": -23.732
+    },
+    {
+      "sub": 4,
+      "name": "Road Funding & Subsidies",
+      "cx": 59.256,
+      "cy": -43.059
+    }
+  ],
+  "26": [
+    {
+      "sub": 0,
+      "name": "Moving Costs & Help",
+      "cx": -50.071,
+      "cy": 32.594
+    },
+    {
+      "sub": 1,
+      "name": "Subsidized & Low-Income Housing",
+      "cx": -53.579,
+      "cy": 17.397
+    },
+    {
+      "sub": 2,
+      "name": "Budget & Unit Size",
+      "cx": -41.177,
+      "cy": 36.353
+    },
+    {
+      "sub": 3,
+      "name": "Commuter Distance Tradeoffs",
+      "cx": -44.494,
+      "cy": 24.777
+    },
+    {
+      "sub": 4,
+      "name": "Suburb Rent Comparisons",
+      "cx": -43.328,
+      "cy": 30.658
+    }
+  ],
+  "28": [
+    {
+      "sub": 0,
+      "name": "Bus & Rail Combos",
+      "cx": 25.375,
+      "cy": 30.267
+    },
+    {
+      "sub": 1,
+      "name": "Biking to Transit",
+      "cx": 35.191,
+      "cy": 14.027
+    },
+    {
+      "sub": 2,
+      "name": "Car-Free Living",
+      "cx": 23.987,
+      "cy": 30.972
+    },
+    {
+      "sub": 3,
+      "name": "Visitor Transit Planning",
+      "cx": 33.181,
+      "cy": 42.388
+    },
+    {
+      "sub": 4,
+      "name": "Logan & Tunnel Routes",
+      "cx": 31.17,
+      "cy": 44.979
+    }
+  ],
+  "29": [
+    {
+      "sub": 0,
+      "name": "Boston vs. Other Cities Traffic",
+      "cx": 38.617,
+      "cy": -9.751
+    },
+    {
+      "sub": 1,
+      "name": "Today's Traffic",
+      "cx": 33.946,
+      "cy": -3.4
+    },
+    {
+      "sub": 2,
+      "name": "Cape & Weekend Routes",
+      "cx": 31.591,
+      "cy": 14.944
+    },
+    {
+      "sub": 3,
+      "name": "Car vs. Transit Choice",
+      "cx": 43.363,
+      "cy": 12.301
+    },
+    {
+      "sub": 4,
+      "name": "Extreme Commutes & WFH",
+      "cx": 32.122,
+      "cy": 15.521
+    }
+  ],
+  "30": [
+    {
+      "sub": 0,
+      "name": "Local Activities & Parks",
+      "cx": 13.375,
+      "cy": 40.097
+    },
+    {
+      "sub": 1,
+      "name": "Day Trips & Cape Cod",
+      "cx": 13.886,
+      "cy": 47.02
+    },
+    {
+      "sub": 2,
+      "name": "Tourist Spots",
+      "cx": 24.346,
+      "cy": 64.925
+    },
+    {
+      "sub": 3,
+      "name": "Hotels & Where to Stay",
+      "cx": 12.586,
+      "cy": 41.647
+    }
+  ],
+  "31": [
+    {
+      "sub": 0,
+      "name": "Stadium & Event Parking",
+      "cx": 16.585,
+      "cy": 22.573
+    },
+    {
+      "sub": 1,
+      "name": "Monthly & Garage Parking",
+      "cx": 19.435,
+      "cy": 3.986
+    },
+    {
+      "sub": 2,
+      "name": "Park & Ride Options",
+      "cx": 20.784,
+      "cy": 22.331
+    }
+  ],
+  "32": [
+    {
+      "sub": 0,
+      "name": "Supply vs. Demand Theory",
+      "cx": -63.229,
+      "cy": -26.369
+    },
+    {
+      "sub": 1,
+      "name": "Housing Market Economics",
+      "cx": -70.637,
+      "cy": -25.673
+    },
+    {
+      "sub": 2,
+      "name": "Displacement & Luxury",
+      "cx": -65.791,
+      "cy": -27.744
+    },
+    {
+      "sub": 3,
+      "name": "Housing & Immigration",
+      "cx": -59.521,
+      "cy": -31.927
+    },
+    {
+      "sub": 4,
+      "name": "Rent Stabilization Ideas",
+      "cx": -78.264,
+      "cy": -21.479
+    },
+    {
+      "sub": 5,
+      "name": "Airbnb & Short-Term Rentals",
+      "cx": -74.031,
+      "cy": -19.776
+    }
+  ],
+  "33": [
+    {
+      "sub": 0,
+      "name": "Management Accountability",
+      "cx": 67.683,
+      "cy": 17.099
+    },
+    {
+      "sub": 1,
+      "name": "Worker Incidents & Harassment",
+      "cx": 66.884,
+      "cy": 30.378
+    },
+    {
+      "sub": 2,
+      "name": "Bus Overcrowding & Drivers",
+      "cx": 53.663,
+      "cy": 22.021
+    },
+    {
+      "sub": 3,
+      "name": "Driver Experiences",
+      "cx": 56.581,
+      "cy": 9.749
+    }
+  ],
+  "34": [
+    {
+      "sub": 0,
+      "name": "Commercial Space Changes",
+      "cx": -2.877,
+      "cy": 11.641
+    },
+    {
+      "sub": 1,
+      "name": "Markets & Grocery Access",
+      "cx": -8.473,
+      "cy": 1.105
+    },
+    {
+      "sub": 2,
+      "name": "Restaurant Scene",
+      "cx": -0.797,
+      "cy": 23.623
+    },
+    {
+      "sub": 3,
+      "name": "Business Closures & Openings",
+      "cx": -12.966,
+      "cy": -8.017
+    }
+  ],
+  "35": [
+    {
+      "sub": 0,
+      "name": "Highway Speeding & Potholes",
+      "cx": 24.616,
+      "cy": -33.862
+    },
+    {
+      "sub": 1,
+      "name": "Gridlock & Honking",
+      "cx": 38.34,
+      "cy": -28.856
+    },
+    {
+      "sub": 2,
+      "name": "Road Improvement Proposals",
+      "cx": 31.079,
+      "cy": -35.283
+    },
+    {
+      "sub": 3,
+      "name": "Highway Traffic & Accidents",
+      "cx": 33.952,
+      "cy": -32.043
+    },
+    {
+      "sub": 4,
+      "name": "Traffic Enforcement",
+      "cx": 23.419,
+      "cy": -51.413
+    }
+  ],
+  "36": [
+    {
+      "sub": 0,
+      "name": "Buying Process & Fees",
+      "cx": -65.49,
+      "cy": 16.334
+    },
+    {
+      "sub": 1,
+      "name": "Mortgage vs. Rent Math",
+      "cx": -62.278,
+      "cy": 2.822
+    },
+    {
+      "sub": 2,
+      "name": "Home Values & Interest Rates",
+      "cx": -72.22,
+      "cy": -0.412
+    },
+    {
+      "sub": 3,
+      "name": "Mortgage Rates & Insurance",
+      "cx": -68.296,
+      "cy": 3.33
+    }
+  ],
+  "37": [
+    {
+      "sub": 0,
+      "name": "Urban Poverty & Housing",
+      "cx": -52.53,
+      "cy": -27.456
+    },
+    {
+      "sub": 1,
+      "name": "Homelessness Policies",
+      "cx": -54.055,
+      "cy": -29.534
+    },
+    {
+      "sub": 2,
+      "name": "Broker Fee Ban",
+      "cx": -56.167,
+      "cy": 13.406
+    },
+    {
+      "sub": 3,
+      "name": "Slumlords & Bad Landlords",
+      "cx": -48.434,
+      "cy": -9.731
+    },
+    {
+      "sub": 4,
+      "name": "Airbnb Regulation",
+      "cx": -74.035,
+      "cy": -14.353
+    }
+  ],
+  "38": [
+    {
+      "sub": 0,
+      "name": "WFH & Transit Demand",
+      "cx": 61.504,
+      "cy": -2.9
+    },
+    {
+      "sub": 1,
+      "name": "State Funding Legislation",
+      "cx": 82.655,
+      "cy": -12.53
+    },
+    {
+      "sub": 2,
+      "name": "Congestion Pricing",
+      "cx": 64.224,
+      "cy": -18.783
+    },
+    {
+      "sub": 3,
+      "name": "Fares & Free Transit",
+      "cx": 72.982,
+      "cy": -5.077
+    },
+    {
+      "sub": 4,
+      "name": "MBTA Communities Law",
+      "cx": 84.43,
+      "cy": -6.232
+    }
+  ],
+  "39": [
+    {
+      "sub": 0,
+      "name": "Local Business Complaints",
+      "cx": -13.404,
+      "cy": -3.106
+    },
+    {
+      "sub": 1,
+      "name": "Property Maintenance",
+      "cx": -12.583,
+      "cy": 17.841
+    },
+    {
+      "sub": 2,
+      "name": "Local Resources & Utilities",
+      "cx": -12.054,
+      "cy": -3.365
+    }
+  ],
+  "40": [
+    {
+      "sub": 0,
+      "name": "Parking Minimums Debate",
+      "cx": 12.826,
+      "cy": -14.701
+    },
+    {
+      "sub": 1,
+      "name": "Parking Violation Tracking",
+      "cx": 15.287,
+      "cy": -16.401
+    },
+    {
+      "sub": 2,
+      "name": "Street & Dumpster Issues",
+      "cx": 15.95,
+      "cy": -11.87
+    },
+    {
+      "sub": 3,
+      "name": "Park-and-Ride Solutions",
+      "cx": 11.173,
+      "cy": -7.73
+    }
+  ],
+  "41": [
+    {
+      "sub": 0,
+      "name": "Cyclist Traffic Laws",
+      "cx": 50.65,
+      "cy": -69.354
+    },
+    {
+      "sub": 1,
+      "name": "Bike-Car Interactions",
+      "cx": 54.485,
+      "cy": -68.111
+    },
+    {
+      "sub": 2,
+      "name": "Blocked Infrastructure",
+      "cx": 53.078,
+      "cy": -60.246
+    },
+    {
+      "sub": 3,
+      "name": "Pedestrian Deaths & Blame",
+      "cx": 43.565,
+      "cy": -66.077
+    }
+  ],
+  "43": [
+    {
+      "sub": 0,
+      "name": "Priced Out of Boston",
+      "cx": -54.499,
+      "cy": -14.275
+    },
+    {
+      "sub": 1,
+      "name": "Generational Housing Debate",
+      "cx": -53.357,
+      "cy": -5.154
+    },
+    {
+      "sub": 2,
+      "name": "Leaving Massachusetts",
+      "cx": -39.147,
+      "cy": 5.936
+    },
+    {
+      "sub": 3,
+      "name": "Salary & Job Offers",
+      "cx": -46.104,
+      "cy": 8.027
+    },
+    {
+      "sub": 4,
+      "name": "Regional Cost Comparisons",
+      "cx": -55.327,
+      "cy": 8.086
+    }
+  ],
+  "44": [
+    {
+      "sub": 0,
+      "name": "Guns & Legal Questions",
+      "cx": -0.527,
+      "cy": -57.828
+    },
+    {
+      "sub": 1,
+      "name": "Drug Crisis & Policing",
+      "cx": -1.431,
+      "cy": -58.618
+    },
+    {
+      "sub": 2,
+      "name": "Police Misconduct",
+      "cx": 14.864,
+      "cy": -59.056
+    }
+  ],
+  "45": [
+    {
+      "sub": 0,
+      "name": "Commuter Rail Frequency",
+      "cx": 69.605,
+      "cy": 2.703
+    },
+    {
+      "sub": 1,
+      "name": "New Stations & Expansion",
+      "cx": 73.249,
+      "cy": 7.018
+    },
+    {
+      "sub": 2,
+      "name": "Old Lines & Revival",
+      "cx": 76.5,
+      "cy": 2.757
+    },
+    {
+      "sub": 3,
+      "name": "Equity & Service Gaps",
+      "cx": 64.439,
+      "cy": 3.669
+    },
+    {
+      "sub": 4,
+      "name": "Station Construction",
+      "cx": 63.608,
+      "cy": 2.928
+    }
+  ],
+  "47": [
+    {
+      "sub": 0,
+      "name": "State Budget & Policy",
+      "cx": -36.167,
+      "cy": -48.426
+    },
+    {
+      "sub": 1,
+      "name": "City Council & Candidates",
+      "cx": -29.323,
+      "cy": -47.333
+    },
+    {
+      "sub": 2,
+      "name": "State Representatives",
+      "cx": -17.269,
+      "cy": -47.054
+    },
+    {
+      "sub": 3,
+      "name": "National Politics & Local Impact",
+      "cx": -33.305,
+      "cy": -58.678
+    }
+  ],
+  "48": [
+    {
+      "sub": 0,
+      "name": "Event Venues & Spaces",
+      "cx": -2.194,
+      "cy": 40.874
+    },
+    {
+      "sub": 1,
+      "name": "Community Events & Spaces",
+      "cx": -3.648,
+      "cy": 24.265
+    },
+    {
+      "sub": 2,
+      "name": "Local Tips & Q&A",
+      "cx": -8.853,
+      "cy": 30.803
+    }
+  ],
+  "49": [
+    {
+      "sub": 0,
+      "name": "Fare Enforcement",
+      "cx": 57.222,
+      "cy": 52.674
+    },
+    {
+      "sub": 1,
+      "name": "Mobile Wallets & Tech",
+      "cx": 51.804,
+      "cy": 59.288
+    },
+    {
+      "sub": 2,
+      "name": "Fare Programs & Discounts",
+      "cx": 49.626,
+      "cy": 52.878
+    }
+  ]
+}

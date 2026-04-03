@@ -1,0 +1,34 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# ── Large pipeline data (never commit) ───────────────────────────────────
+data/
+dumps/
+logs/
+state/
+
+# ── Large viz files not needed for the D3 viewer ─────────────────────────
+# tsne_payload.json is 420MB — exceeds GitHub's 100MB per-file hard limit.
+# The D3 viewer uses tsne_chunks/ instead (each file ≈ 20MB, fine for git).
+viz/tsne_payload.json
+
+# Inline-payload Plotly HTMLs (15–25MB each — no need to deploy these)
+viz/tsne_interactive_bge.html
+viz/tsne_interactive_bge_strict.html
+viz/tsne_interactive_preview.html
+
+# ── OS / editor ──────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+.env
+
+# ── Old GitHub Pages deploy dir (has its own nested .git) ──────────────────
+deploy_pages/
+
+# Old split/preview HTMLs (kept locally, not needed for deploy)
+viz/tsne_full_split.html
+viz/tsne_interactive_bge_strict_split.html
+viz/tsne_d3_viewer.html

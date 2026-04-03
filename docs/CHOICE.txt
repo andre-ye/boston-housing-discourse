@@ -1,0 +1,35 @@
+Chosen download slice (edit if you want a different window)
+===========================================================
+
+Dataset: Academic Torrents "Reddit comments/submissions 2005-06 to 2025-12"
+  Details page: https://academictorrents.com/details/3d426c47c767d40f82c7ef0f47c3acacedd2bf44
+  .torrent file (use this in aria2c and in tools/aria2_select_months.py):
+    https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent
+  (zstd NDJSON: comments/RC_YYYY-MM.zst and submissions/RS_YYYY-MM.zst)
+
+We are NOT downloading the full ~3.8 TB bundle (we skip years before 2020).
+
+Selected range (inclusive):
+  Start month: 2020-01
+  End month:   2025-12   (everything from 2020 through the latest month in this torrent)
+
+Why:
+  - All of 2020s + through end of bundle for long-range viz
+  - Still skips 2005–2019; 2021+ months are very large — budget disk (often hundreds of GB+ for RC+RS combined)
+
+Files to take each month:
+  - comments/RC_YYYY-MM.zst
+  - submissions/RS_YYYY-MM.zst
+
+Exact command-line steps (install aria2, flags, copy-paste): see RUN_ARIA2.txt
+
+Quick version:
+
+  python tools/aria2_select_months.py \\
+    --torrent "https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent" \\
+    --start 2020-01 --end 2025-12 \\
+    --dir "/Users/andreye/courses/vis/final-proj reddit/dumps"
+
+Then run the printed command (or add --execute). Ensure enough disk.
+
+After files land, restart ./start_manager.sh if needed so ingest picks them up.

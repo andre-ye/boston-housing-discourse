@@ -1,0 +1,75 @@
+How to run aria2c for Academic Torrents (exact flow)
+====================================================
+
+Official aria2 reference (options below are documented here):
+  https://aria2.github.io/manual/en/html/aria2c.html
+
+1) Install aria2 (macOS)
+     brew install aria2
+
+2) Dataset we’re using (Reddit 2005-06 … 2025-12, ~3.8 TB total if you took everything):
+   Details: https://academictorrents.com/details/3d426c47c767d40f82c7ef0f47c3acacedd2bf44
+   .torrent:  https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent
+
+3) List files and indices (prints and exits; does not download the payload yet)
+   aria2c may not parse a raw HTTPS .torrent URL — use a local file or run
+   tools/aria2_select_months.py (it curls the .torrent to state/academic_reddit_bundle.torrent first).
+
+     aria2c -S "https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent"
+   (or:  aria2c -S state/academic_reddit_bundle.torrent)
+
+   (-S is --show-files; file indices are what you pass to --select-file.)
+   Manual: “You can find the file index using the --show-files option.”
+
+4) Build --select-file for months 2020-01 … 2025-12 (edit range in CHOICE.txt)
+   From the project root:
+
+     python tools/aria2_select_months.py \
+       --torrent "https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent" \
+       --start 2020-01 --end 2025-12 \
+       --dir "/Users/andreye/courses/vis/final-proj reddit/dumps"
+
+   This prints one full aria2c command. Review it, then run it yourself, or:
+
+     python tools/aria2_select_months.py \
+       --torrent "https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent" \
+       --start 2020-01 --end 2025-12 \
+       --dir "/Users/andreye/courses/vis/final-proj reddit/dumps" \
+       --execute
+
+5) Flags (what they mean, per manual)
+   --select-file=1,2,3
+        Download only those file indices (comma or ranges like 1-5,8).
+   --dir=PATH
+        (-d) Save under this directory; torrent paths are relative to it.
+   --seed-time=0
+        “Specifying --seed-time=0 disables seeding after download completed.”
+   --file-allocation=none
+        Avoid pre-allocating full file size on disk before bytes arrive (nice for huge torrents).
+   --max-overall-download-limit=10M
+        Optional cap on total download speed (Academic Torrents suggests this in their docs).
+
+6) One-shot example shape (indices are PLACEHOLDERS — use output from the helper)
+
+     aria2c \
+       --dir="/Users/andreye/courses/vis/final-proj reddit/dumps" \
+       --select-file=REPLACE_WITH_COMMA_LIST \
+       --seed-time=0 \
+       --file-allocation=none \
+       --max-overall-download-limit=10M \
+       "https://academictorrents.com/download/3d426c47c767d40f82c7ef0f47c3acacedd2bf44.torrent"
+
+7) After files finish downloading, restart the ingest manager if needed:
+
+     ./start_manager.sh
+
+   (It already finds RC_*.zst / RS_*.zst under dumps/ at any depth.)
+
+Notes
+-----
+- Multi-file torrents: “adjacent files specified by this option may also be
+  downloaded” because a BitTorrent piece can span files — expect small extra
+  files or partial pieces; that is documented aria2 behavior, not a bug.
+- Do not use --dry-run=true for BitTorrent downloads: “BitTorrent downloads are
+  canceled if true is specified.”
+- For magnet links, -S behavior can differ; prefer the .torrent URL from the site.
