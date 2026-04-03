@@ -1011,9 +1011,7 @@
 
     function drawClusterGlow(tx, ty, tk) {
       if (Object.keys(clusterNames).length === 0) return;
-      // Fade out as you zoom in past tk=3 (subclusters take over)
-      const glowOpacity = Math.min(1, Math.max(0, (3.5 - tk) / 2.5));
-      if (glowOpacity <= 0) return;
+      const glowOpacity = 1;
       ensureGlowRgb();
 
       ctx.save();
@@ -1021,8 +1019,8 @@
       ctx.scale(tk, tk);
 
       const hasHighlight = clusterHighlight >= 0;
-      // Fixed glow radius in screen px → divide by tk to get pre-zoom px
-      const glowR = 160 / tk;
+      // Radius in data units → scales naturally with zoom (14 data units)
+      const glowR = 14 * xScale;
 
       for (const [clStr, info] of Object.entries(clusterNames)) {
         const cl = parseInt(clStr, 10);
@@ -1036,15 +1034,15 @@
         if (sy < -glowR * tk - 40 || sy > canvasH + glowR * tk + 40) continue;
 
         const baseAlpha = hasHighlight
-          ? (cl === clusterHighlight ? 0.18 : 0.03)
-          : 0.09;
+          ? (cl === clusterHighlight ? 0.22 : 0.03)
+          : 0.13;
         const alpha = baseAlpha * glowOpacity;
         const rgb = clusterGlowRgb[clStr];
 
         const grad = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, glowR);
-        grad.addColorStop(0,   `rgba(${rgb},${alpha.toFixed(3)})`);
-        grad.addColorStop(0.5, `rgba(${rgb},${(alpha * 0.4).toFixed(3)})`);
-        grad.addColorStop(1,   `rgba(${rgb},0)`);
+        grad.addColorStop(0,    `rgba(${rgb},${alpha.toFixed(3)})`);
+        grad.addColorStop(0.55, `rgba(${rgb},${(alpha * 0.35).toFixed(3)})`);
+        grad.addColorStop(1,    `rgba(${rgb},0)`);
 
         ctx.fillStyle = grad;
         ctx.beginPath();
