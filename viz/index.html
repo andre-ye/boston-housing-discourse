@@ -790,6 +790,12 @@
     // Built incrementally during chunk loading from permalinks.
     const postIndex = new Map();  // Map<string, number[]>
 
+    // Grid propositions (LLM-generated regional summaries)
+    let gridProps = null;          // {grid: {cell_w, cell_h, x0, y0, nx, ny}, cells: [{id, gx, gy, cx, cy, prop}]}
+    let gridLayoutCache = null;    // pre-wrapped lines per cell, computed once on load
+    const GRID_TEXT_FADE_IN  = 1.6;  // tk where grid lines start to appear
+    const GRID_TEXT_FADE_OUT = 5.5;  // tk where grid text fades out (zoomed too far in)
+
     // Subcluster coloring
     let subAsgn     = null;  // Uint8Array(N): local sub index (0-5), 255=unassigned
     let subColorKey = null;  // Uint8Array(N): global subcluster ID (0..subTotalK-1), 255=unassigned
@@ -1186,14 +1192,144 @@
       // ── Thread connections (lines from hovered point to siblings) ─────────
       drawThreadConnections(tx, ty, tk);
 
+      // ── Grid propositions (zoomed-in regional summaries) ──────────────────
+      if (gridProps) drawGridPropositions(tx, ty, tk);
+
       // ── Cluster centroid labels (screen-space, constant size) ─────────────
       if (Object.keys(clusterNames).length > 0) drawClusterLabels(tx, ty, tk);
       if (Object.keys(subclusterNames).length > 0) drawSubclusterLabels(tx, ty, tk);
     }
 
-    // ── Draw connecting lines from hovered point to its thread siblings ─────
-    // Triggered when hovering ANY point (post or comment) that has siblings
-    // in the same Reddit post thread.
+    // ── Draw faint grid lines + LLM-generated propositional labels ──────────
+    // Fades in as the user zooms past GRID_TEXT_FADE_IN.
+    function drawGridPropositions(tx, ty, tk) {
+      // Opacity envelope:
+      //   tk < FADE_IN          → 0
+      //   FADE_IN..FADE_IN+0.7  → 0..1
+      //   FADE_IN+0.7..FADE_OUT → 1
+      //   > FADE_OUT            → 0 (zoomed-in too far, individual points dominate)
+      const grid = gridProps.grid;
+      let opacity = 0;
+      if (tk >= GRID_TEXT_FADE_IN && tk <= GRID_TEXT_FADE_OUT) {
+        opacity = Math.min(1, (tk - GRID_TEXT_FADE_IN) / 0.7);
+        opacity *= Math.min(1, (GRID_TEXT_FADE_OUT - tk) / 1.0);
+      }
+      if (opacity <= 0.005) return;
+
+      ctx.save();
+
+      // ── Draw grid lines (data-space, scales with zoom) ─────────────────────
+      ctx.translate(tx, ty);
+      ctx.scale(tk, tk);
+      ctx.lineWidth = 1.0 / tk;
+      ctx.strokeStyle = `rgba(255,255,255,${(opacity * 0.06).toFixed(3)})`;
+      ctx.beginPath();
+      // Vertical lines
+      for (let gx = 0; gx <= grid.nx; gx++) {
+        const dx = grid.x0 + gx * grid.cell_w;
+        const px = (dx - xmin) * xScale;
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, canvasH);
+      }
+      // Horizontal lines (data-y is inverted in canvas)
+      for (let gy = 0; gy <= grid.ny; gy++) {
+        const dy = grid.y0 + gy * grid.cell_h;
+        const py = canvasH - (dy - ymin) * yScale;
+        ctx.moveTo(0, py);
+        ctx.lineTo(canvasW, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // ── Draw text labels (screen-space, constant size) ─────────────────────
+      ctx.save();
+      ctx.font = "500 11px 'DM Sans', system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const lineH = 14;
+      const cellWpx = grid.cell_w * xScale * tk;   // cell width on screen
+      const maxTextWidth = Math.max(60, cellWpx - 30);
+
+      for (let ci = 0; ci < gridLayoutCache.length; ci++) {
+        const entry = gridLayoutCache[ci];
+        const c = entry.cell;
+        // Centroid in screen px
+        const dxpx = (c.cx - xmin) * xScale;
+        const dypx = canvasH - (c.cy - ymin) * yScale;
+        const sx = dxpx * tk + tx;
+        const sy = dypx * tk + ty;
+        // Cull off-screen with margin
+        if (sx < -200 || sx > canvasW + 200) continue;
+        if (sy < -100 || sy > canvasH + 100) continue;
+
+        // Lazy line-wrapping (per cell, cached). Wrap-width depends on zoom but
+        // we recompute when zoom level crosses a threshold to avoid flicker.
+        if (entry.lines == null || entry.wrapWidth !== Math.round(maxTextWidth / 20)) {
+          entry.lines = wrapText(c.prop, maxTextWidth);
+          entry.wrapWidth = Math.round(maxTextWidth / 20);
+        }
+        const lines = entry.lines;
+        const totalH = lines.length * lineH;
+        const top    = sy - totalH / 2;
+
+        // Soft pill background for legibility
+        let maxLineW = 0;
+        for (const ln of lines) {
+          const w = ctx.measureText(ln).width;
+          if (w > maxLineW) maxLineW = w;
+        }
+        const padX = 10, padY = 5;
+        const bgW = maxLineW + padX * 2;
+        const bgH = totalH   + padY * 2;
+        const bgX = sx - bgW / 2;
+        const bgY = top - padY;
+
+        ctx.globalAlpha = opacity * 0.78;
+        ctx.fillStyle = "rgba(6,8,18,0.92)";
+        ctx.beginPath();
+        ctx.roundRect(bgX, bgY, bgW, bgH, 6);
+        ctx.fill();
+        ctx.globalAlpha = opacity * 0.30;
+        ctx.strokeStyle = "rgba(110,168,255,0.45)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(bgX, bgY, bgW, bgH, 6);
+        ctx.stroke();
+
+        // Text
+        ctx.globalAlpha = opacity * 0.95;
+        ctx.fillStyle = "#e8ecf4";
+        for (let li = 0; li < lines.length; li++) {
+          ctx.fillText(lines[li], sx, top + (li + 0.5) * lineH);
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Word-wrap a single string into lines that each fit within maxWidth (in
+    // px, in the current ctx font). Pure greedy — fast enough for ~150 cells.
+    function wrapText(text, maxWidth) {
+      const words = text.split(/\s+/);
+      const lines = [];
+      let cur = "";
+      for (const w of words) {
+        const test = cur ? cur + " " + w : w;
+        if (ctx.measureText(test).width <= maxWidth || !cur) {
+          cur = test;
+        } else {
+          lines.push(cur);
+          cur = w;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    }
+
+    // ── Draw connecting lines for the hovered point's Reddit thread ──────────
+    // Always shows the parent post as a hub fanning out to all of its comments.
+    // If a comment is hovered, the edge from that comment to the post is
+    // emphasized in cyan.
     function drawThreadConnections(tx, ty, tk) {
       const hovered = (pinnedIndex !== null) ? pinnedIndex : lastHover;
       if (hovered == null || hovered < 0) return;
@@ -1201,68 +1337,71 @@
       if (!pl) return;
       const m = pl.match(/\/comments\/([^/]+)/);
       if (!m) return;
-      const sibs = postIndex.get(m[1]);
-      if (!sibs || sibs.length < 2) return;
+      const thread = postIndex.get(m[1]);
+      if (!thread || thread.length < 2) return;
 
-      // Pre-projected canvas coords are in pre-zoom space → must apply transform
-      const hx = pxs[hovered] * tk + tx;
-      const hy = pys[hovered] * tk + ty;
+      // Locate the parent submission in this thread (if it's in the dataset)
+      let postIdx = -1;
+      for (let k = 0; k < thread.length; k++) {
+        if (typeCode[thread[k]] === 0) { postIdx = thread[k]; break; }
+      }
+      if (postIdx < 0) return; // no parent post in dataset → nothing to draw
+
+      const px = pxs[postIdx] * tk + tx;
+      const py = pys[postIdx] * tk + ty;
+      const hoveredIsComment = (typeCode[hovered] === 1);
 
       ctx.save();
+      ctx.lineCap = "round";
 
-      // Find the parent submission (typeCode 0) and gather comment siblings
-      let postIdx = -1;
-      const commentSibs = [];
-      for (let k = 0; k < sibs.length; k++) {
-        const j = sibs[k];
-        if (j === hovered) continue;
-        if (typeCode[j] === 0) postIdx = j;
-        else commentSibs.push(j);
-      }
-
-      // Comment siblings: thin blue lines
-      ctx.strokeStyle = "rgba(110,168,255,0.42)";
-      ctx.lineWidth = 0.9;
+      // Fan: post → every comment in the thread (blue), thicker
+      ctx.strokeStyle = "rgba(110,168,255,0.55)";
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      for (let k = 0; k < commentSibs.length; k++) {
-        const j = commentSibs[k];
-        const sx = pxs[j] * tk + tx;
-        const sy = pys[j] * tk + ty;
-        ctx.moveTo(hx, hy);
-        ctx.lineTo(sx, sy);
+      for (let k = 0; k < thread.length; k++) {
+        const j = thread[k];
+        if (typeCode[j] !== 1) continue;            // skip the post itself
+        if (hoveredIsComment && j === hovered) continue; // drawn separately in cyan
+        ctx.moveTo(px, py);
+        ctx.lineTo(pxs[j] * tk + tx, pys[j] * tk + ty);
       }
       ctx.stroke();
 
-      // Parent post: thicker cyan line
-      if (postIdx >= 0) {
-        const sx = pxs[postIdx] * tk + tx;
-        const sy = pys[postIdx] * tk + ty;
-        ctx.strokeStyle = "rgba(124,240,201,0.85)";
-        ctx.lineWidth = 1.6;
+      // Emphasized edge: hovered comment → parent post (cyan, thicker)
+      if (hoveredIsComment) {
+        const hx = pxs[hovered] * tk + tx;
+        const hy = pys[hovered] * tk + ty;
+        ctx.strokeStyle = "rgba(124,240,201,0.95)";
+        ctx.lineWidth = 2.6;
         ctx.beginPath();
         ctx.moveTo(hx, hy);
-        ctx.lineTo(sx, sy);
+        ctx.lineTo(px, py);
         ctx.stroke();
       }
 
-      // Rings on each connected sibling so they're visible above the dot field
-      for (let k = 0; k < commentSibs.length; k++) {
-        const j = commentSibs[k];
-        const sx = pxs[j] * tk + tx;
-        const sy = pys[j] * tk + ty;
-        ctx.strokeStyle = "rgba(110,168,255,0.7)";
-        ctx.lineWidth = 1.0;
+      // Rings on every comment node so they pop out of the dot field
+      ctx.strokeStyle = "rgba(110,168,255,0.85)";
+      ctx.lineWidth = 1.4;
+      for (let k = 0; k < thread.length; k++) {
+        const j = thread[k];
+        if (typeCode[j] !== 1) continue;
+        if (hoveredIsComment && j === hovered) continue;
         ctx.beginPath();
-        ctx.arc(sx, sy, 3.5, 0, 6.2831853);
+        ctx.arc(pxs[j] * tk + tx, pys[j] * tk + ty, 4.0, 0, 6.2831853);
         ctx.stroke();
       }
-      if (postIdx >= 0) {
-        const sx = pxs[postIdx] * tk + tx;
-        const sy = pys[postIdx] * tk + ty;
-        ctx.strokeStyle = "rgba(124,240,201,0.95)";
-        ctx.lineWidth = 1.6;
+      // Bigger ring on the parent post (the hub)
+      ctx.strokeStyle = "rgba(124,240,201,1)";
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(px, py, 6.0, 0, 6.2831853);
+      ctx.stroke();
+      // Brighter ring on the hovered comment itself
+      if (hoveredIsComment) {
+        ctx.strokeStyle = "rgba(124,240,201,1)";
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(sx, sy, 5.5, 0, 6.2831853);
+        ctx.arc(pxs[hovered] * tk + tx, pys[hovered] * tk + ty, 5.0, 0, 6.2831853);
         ctx.stroke();
       }
 
@@ -1985,6 +2124,19 @@
       try {
         const ngResp = await fetch(BASE + "/ngrams.json");
         if (ngResp.ok) { ngramData = await ngResp.json(); }
+      } catch (e) { /* optional — silently skip */ }
+
+      // Load grid propositions (LLM-summarized regional descriptions)
+      try {
+        const gpResp = await fetch(BASE + "/grid_propositions.json");
+        if (gpResp.ok) {
+          gridProps = await gpResp.json();
+          // Pre-wrap text for each cell once (avoids per-frame layout cost)
+          gridLayoutCache = gridProps.cells.map(c => ({
+            cell: c,
+            lines: null,  // computed on first draw with measureText
+          }));
+        }
       } catch (e) { /* optional — silently skip */ }
 
       nTotal      = manifest.totalPoints;
