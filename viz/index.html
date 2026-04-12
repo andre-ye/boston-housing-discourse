@@ -765,6 +765,10 @@
     let lastHover = null, lastHoverMx = -9999, lastHoverMy = -9999;
     let colorMode = "cluster";
     let clusterHighlight = -1;
+    // Subcluster highlight: when set, brightens just one subcluster, dims rest of cluster, very dims rest
+    let subHighlightParent = -1;   // parent cluster id (-1 = none)
+    let subHighlightLocal  = -1;   // local sub index within that cluster
+    let subHighlightGid    = -1;   // global subcluster id
     let hasCluster = false, hasClusterTsne = false;
     let clusterK = 0, clusterTsneK = 0;
     let currentK = 50; // default until first chunk confirms k
@@ -781,6 +785,10 @@
     let searchStrings = null; // Array(N): pre-lowercased "title\0body" — built once at load
     let searchMatchN  = 0;
     let ngramData     = null; // {1:[...], 2:[...], 3:[...], 4:[...], 5:[...]} loaded from ngrams.json
+
+    // Thread linkage: postId → array of point indices in that thread.
+    // Built incrementally during chunk loading from permalinks.
+    const postIndex = new Map();  // Map<string, number[]>
 
     // Subcluster coloring
     let subAsgn     = null;  // Uint8Array(N): local sub index (0-5), 255=unassigned
@@ -933,6 +941,7 @@
 
     // Rebuild colorLookup[] and alphaLookup[] — O(K), called on mode or highlight change
     function rebuildColorLookup() {
+      const subActive = subHighlightGid >= 0;
       if (colorMode === "time") {
         const nM = Math.max(1, currentK - 1);
         for (let c = 0; c < currentK; c++) {
@@ -943,16 +952,29 @@
         const K = currentK;
         for (let c = 0; c < K; c++) {
           colorLookup[c] = CLUSTER_PALETTE[c % CLUSTER_PALETTE.length];
-          alphaLookup[c] = (clusterHighlight >= 0 && clusterHighlight !== c) ? 0.07 : 0.60;
+          if (subActive) {
+            // sub-active: parent cluster stays moderately visible, others very dim
+            alphaLookup[c] = (c === subHighlightParent) ? 0.32 : 0.04;
+          } else if (clusterHighlight >= 0 && clusterHighlight !== c) {
+            alphaLookup[c] = 0.07;
+          } else {
+            alphaLookup[c] = 0.60;
+          }
         }
       }
       // Sync subcluster alphas with highlight state
       if (subGlobalMap && subTotalK > 0) {
         for (const [clStr, subMap] of Object.entries(subGlobalMap)) {
           const cl = parseInt(clStr, 10);
-          const dimmed = clusterHighlight >= 0 && cl !== clusterHighlight;
+          const otherCluster = clusterHighlight >= 0 && cl !== clusterHighlight;
           for (const gid of Object.values(subMap)) {
-            subAlphaLookup[gid] = dimmed ? 0.04 : 0.68;
+            if (subActive) {
+              if (gid === subHighlightGid)        subAlphaLookup[gid] = 0.85;  // matching sub: bright
+              else if (cl === subHighlightParent) subAlphaLookup[gid] = 0.18;  // same cluster, other sub: dim
+              else                                subAlphaLookup[gid] = 0.025; // other clusters: very dim
+            } else {
+              subAlphaLookup[gid] = otherCluster ? 0.04 : 0.68;
+            }
           }
         }
       }
@@ -1161,9 +1183,90 @@
       ctx.restore();
       ctx.globalAlpha = 1;
 
+      // ── Thread connections (lines from hovered point to siblings) ─────────
+      drawThreadConnections(tx, ty, tk);
+
       // ── Cluster centroid labels (screen-space, constant size) ─────────────
       if (Object.keys(clusterNames).length > 0) drawClusterLabels(tx, ty, tk);
       if (Object.keys(subclusterNames).length > 0) drawSubclusterLabels(tx, ty, tk);
+    }
+
+    // ── Draw connecting lines from hovered point to its thread siblings ─────
+    // Triggered when hovering ANY point (post or comment) that has siblings
+    // in the same Reddit post thread.
+    function drawThreadConnections(tx, ty, tk) {
+      const hovered = (pinnedIndex !== null) ? pinnedIndex : lastHover;
+      if (hovered == null || hovered < 0) return;
+      const pl = permalinks[hovered];
+      if (!pl) return;
+      const m = pl.match(/\/comments\/([^/]+)/);
+      if (!m) return;
+      const sibs = postIndex.get(m[1]);
+      if (!sibs || sibs.length < 2) return;
+
+      // Pre-projected canvas coords are in pre-zoom space → must apply transform
+      const hx = pxs[hovered] * tk + tx;
+      const hy = pys[hovered] * tk + ty;
+
+      ctx.save();
+
+      // Find the parent submission (typeCode 0) and gather comment siblings
+      let postIdx = -1;
+      const commentSibs = [];
+      for (let k = 0; k < sibs.length; k++) {
+        const j = sibs[k];
+        if (j === hovered) continue;
+        if (typeCode[j] === 0) postIdx = j;
+        else commentSibs.push(j);
+      }
+
+      // Comment siblings: thin blue lines
+      ctx.strokeStyle = "rgba(110,168,255,0.42)";
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      for (let k = 0; k < commentSibs.length; k++) {
+        const j = commentSibs[k];
+        const sx = pxs[j] * tk + tx;
+        const sy = pys[j] * tk + ty;
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(sx, sy);
+      }
+      ctx.stroke();
+
+      // Parent post: thicker cyan line
+      if (postIdx >= 0) {
+        const sx = pxs[postIdx] * tk + tx;
+        const sy = pys[postIdx] * tk + ty;
+        ctx.strokeStyle = "rgba(124,240,201,0.85)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+      }
+
+      // Rings on each connected sibling so they're visible above the dot field
+      for (let k = 0; k < commentSibs.length; k++) {
+        const j = commentSibs[k];
+        const sx = pxs[j] * tk + tx;
+        const sy = pys[j] * tk + ty;
+        ctx.strokeStyle = "rgba(110,168,255,0.7)";
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3.5, 0, 6.2831853);
+        ctx.stroke();
+      }
+      if (postIdx >= 0) {
+        const sx = pxs[postIdx] * tk + tx;
+        const sy = pys[postIdx] * tk + ty;
+        ctx.strokeStyle = "rgba(124,240,201,0.95)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 5.5, 0, 6.2831853);
+        ctx.stroke();
+      }
+
+      ctx.restore();
     }
 
     // Pre-computed per-cluster RGB strings (built once when clusterNames loads, rebuilt on highlight change)
@@ -1311,7 +1414,7 @@
       if (subOpacity <= 0) return;
 
       ctx.save();
-      ctx.font = "500 8px 'DM Sans', system-ui, sans-serif";
+      ctx.font = "600 9.5px 'DM Sans', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
@@ -1345,14 +1448,21 @@
           if (sx < -100 || sx > canvasW + 100 || sy < -25 || sy > canvasH + 25) continue;
 
           const isHovered = cl === labelHoverCl;
-          const opacity = baseOpacity * subOpacity;
+          const isActive  = (subHighlightParent === cl && subHighlightLocal === info.sub);
+          const isOtherSub = (subHighlightGid >= 0 && !isActive); // some other sub is active
+          // Multiplier on this label's opacity:
+          //   active   → 1.0  (bright)
+          //   other-sub→ 0.35 (dim, but still visible so user can switch)
+          //   default  → 1.0
+          const subFactor = isActive ? 1.15 : (isOtherSub ? 0.35 : 1.0);
+          const opacity = Math.min(1, baseOpacity * subOpacity * subFactor);
           const tw  = ctx.measureText(info.name).width;
           const bw  = tw + pad * 2;
-          const bh  = 14;
+          const bh  = 20;
           const bx  = sx - bw / 2;
           const by  = sy - bh / 2;
 
-          subclusterLabelHits.push({ bx, by, bw, bh, cl });
+          subclusterLabelHits.push({ bx, by, bw, bh, cl, sub: info.sub });
 
           // Dark base + subtle color tint
           ctx.globalAlpha = opacity * 0.90;
@@ -1360,20 +1470,20 @@
           ctx.beginPath();
           ctx.roundRect(bx - 1, by - 1, bw + 2, bh + 2, rounding + 1);
           ctx.fill();
-          ctx.globalAlpha = opacity * (isHovered ? 0.18 : 0.09);
+          ctx.globalAlpha = opacity * (isActive ? 0.32 : (isHovered ? 0.18 : 0.09));
           ctx.fillStyle = `rgba(${rgb}, 1)`;
           ctx.beginPath();
           ctx.roundRect(bx - 1, by - 1, bw + 2, bh + 2, rounding + 1);
           ctx.fill();
 
-          ctx.globalAlpha = opacity * (isHovered ? 0.8 : 0.45);
+          ctx.globalAlpha = opacity * (isActive ? 1.0 : (isHovered ? 0.8 : 0.45));
           ctx.strokeStyle = color;
-          ctx.lineWidth = isHovered ? 1.2 : 0.75;
+          ctx.lineWidth = isActive ? 1.6 : (isHovered ? 1.2 : 0.75);
           ctx.beginPath();
           ctx.roundRect(bx, by, bw, bh, rounding);
           ctx.stroke();
 
-          ctx.globalAlpha = opacity * 0.88;
+          ctx.globalAlpha = opacity * (isActive ? 1.0 : 0.88);
           ctx.fillStyle = "#e8ecf4";
           ctx.fillText(info.name, sx, sy);
         }
@@ -1401,6 +1511,7 @@
     // passes the cluster highlight filter AND the search mask
     function isPointActive(i) {
       if (clusterHighlight >= 0 && clusterLabels && clusterLabels[i] !== clusterHighlight) return false;
+      if (subHighlightGid >= 0 && subAsgn && subAsgn[i] !== subHighlightLocal) return false;
       if (searchQuery && searchMask && !searchMask[i]) return false;
       return true;
     }
@@ -1535,13 +1646,17 @@
       // Check subcluster labels first (smaller, on top when visible)
       for (let j = 0; j < subclusterLabelHits.length; j++) {
         const h = subclusterLabelHits[j];
-        if (mx >= h.bx && mx <= h.bx + h.bw && my >= h.by && my <= h.by + h.bh) return h.cl;
+        if (mx >= h.bx && mx <= h.bx + h.bw && my >= h.by && my <= h.by + h.bh) {
+          return { cl: h.cl, sub: h.sub };
+        }
       }
       for (let j = 0; j < clusterLabelHits.length; j++) {
         const h = clusterLabelHits[j];
-        if (mx >= h.bx && mx <= h.bx + h.bw && my >= h.by && my <= h.by + h.bh) return h.cl;
+        if (mx >= h.bx && mx <= h.bx + h.bw && my >= h.by && my <= h.by + h.bh) {
+          return { cl: h.cl, sub: -1 };
+        }
       }
-      return -1;
+      return null;
     }
 
     canvas.addEventListener("mousemove", function (e) {
@@ -1552,7 +1667,8 @@
       lastHoverMx = mx; lastHoverMy = my;
 
       // Label hover — update cursor and trigger redraw if changed
-      const hitCl = hitLabel(mx, my);
+      const hit = hitLabel(mx, my);
+      const hitCl = hit ? hit.cl : -1;
       if (hitCl !== labelHoverCl) {
         labelHoverCl = hitCl;
         canvas.style.cursor = hitCl >= 0 ? "pointer" : "crosshair";
@@ -1570,6 +1686,7 @@
           detail.classList.add("empty");
           detail.textContent = "Hover a point to preview.";
         }
+        scheduleDraw(); // redraw thread connections
       }
     });
 
@@ -1578,10 +1695,36 @@
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      // Click on a label → toggle cluster highlight
-      const hitCl = hitLabel(mx, my);
-      if (hitCl >= 0) {
-        clusterHighlight = (clusterHighlight === hitCl) ? -1 : hitCl;
+      // Click on a label → toggle cluster or subcluster highlight
+      const hit = hitLabel(mx, my);
+      if (hit) {
+        if (hit.sub >= 0) {
+          // Subcluster click — toggle this exact sub
+          const gid = (subGlobalMap && subGlobalMap[hit.cl] != null)
+                      ? subGlobalMap[hit.cl][hit.sub] : -1;
+          const isSameSub = (subHighlightGid === gid);
+          if (isSameSub) {
+            // Toggle off — clear subcluster but also clear cluster highlight
+            subHighlightParent = -1;
+            subHighlightLocal  = -1;
+            subHighlightGid    = -1;
+            clusterHighlight   = -1;
+          } else {
+            subHighlightParent = hit.cl;
+            subHighlightLocal  = hit.sub;
+            subHighlightGid    = (gid != null) ? gid : -1;
+            clusterHighlight   = hit.cl;
+          }
+          clusterSelect.value = String(clusterHighlight);
+          rebuildColorLookup();
+          scheduleDraw();
+          return;
+        }
+        // Cluster click — toggle parent cluster (and clear any sub highlight)
+        clusterHighlight = (clusterHighlight === hit.cl) ? -1 : hit.cl;
+        subHighlightParent = -1;
+        subHighlightLocal  = -1;
+        subHighlightGid    = -1;
         clusterSelect.value = String(clusterHighlight);
         rebuildColorLookup();
         scheduleDraw();
@@ -1780,7 +1923,11 @@
 
     clusterSelect.addEventListener("change", function (e) {
       clusterHighlight = parseInt(e.target.value, 10);
-      rebuildColorLookup(); // only alphaLookup changes; colorLookup stays the same
+      // Changing cluster filter clears any active subcluster highlight
+      subHighlightParent = -1;
+      subHighlightLocal  = -1;
+      subHighlightGid    = -1;
+      rebuildColorLookup();
       scheduleDraw();
     });
 
@@ -1916,6 +2063,17 @@
           panelBodies[i] = C.panel_body[j];
           subreddits[i]  = C.subreddit[j];
           searchStrings[i] = ((C.title[j] || "") + "\0" + (C.panel_body[j] || "")).toLowerCase();
+          // Index by post id for thread connections (one regex per point)
+          const _pl = C.permalink[j];
+          if (_pl) {
+            const _m = _pl.match(/\/comments\/([^/]+)/);
+            if (_m) {
+              const _pid = _m[1];
+              let _arr = postIndex.get(_pid);
+              if (!_arr) { _arr = []; postIndex.set(_pid, _arr); }
+              _arr.push(i);
+            }
+          }
           yearMonths[i]  = C.year_month[j];
           if (hasCluster     && C.cluster)      clusterLabels[i]     = C.cluster[j]      | 0;
           if (hasClusterTsne && C.cluster_tsne) clusterTsneLabels[i] = C.cluster_tsne[j] | 0;
