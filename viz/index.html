@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="views-nav.js" defer></script>
   <style>
     :root {
       --accent:  #6ea8ff;
@@ -714,6 +715,137 @@
   <!-- Navigation hint -->
   <div id="plotHint">scroll · drag · click to pin · double-click to reset</div>
 
+  <!-- ── EXPERIMENTAL: view switcher ── remove entire block to disable ── -->
+  <div id="view-switcher" data-views-nav data-views-nav-style="inline" style="
+    position: fixed; top: 64px; right: 24px; z-index: 30;
+    display: flex; gap: 6px;
+    padding: 6px;
+    background: rgba(4,6,14,0.74);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.35s ease;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  ">
+  </div>
+  <style>
+    /* Show view switcher only after story is dismissed */
+    body:has(#story.story-gone) #view-switcher,
+    body:has(#story.story-hidden) #view-switcher {
+      opacity: 1 !important; pointer-events: auto !important;
+    }
+  </style>
+  <!-- ── /EXPERIMENTAL: view switcher ──────────────────────────────────── -->
+
+  <!-- ── EXPERIMENTAL: focus card ── remove block to disable ────────── -->
+  <div id="focus-card" style="
+    position: fixed; bottom: 22px; left: 24px; z-index: 30;
+    min-width: 240px; max-width: 320px;
+    padding: 12px 14px 11px;
+    background: rgba(4,6,14,0.78);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+    opacity: 0; pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 0.3s, transform 0.3s;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  ">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+      <div id="focus-dot" style="
+        width: 9px; height: 9px; border-radius: 50%;
+        background: #6ea8ff;
+        box-shadow: 0 0 8px currentColor;
+      "></div>
+      <div style="
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+        color: rgba(139,150,171,0.55);
+      ">Focused cluster</div>
+    </div>
+    <div id="focus-name" style="
+      font-size: 14px; font-weight: 600; color: #f0f4ff;
+      margin-bottom: 10px; line-height: 1.28;
+    "></div>
+    <div style="
+      display: flex; gap: 5px; flex-wrap: wrap;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    ">
+      <span style="
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(139,150,171,0.42); margin-right: 4px; align-self: center;
+      ">see in →</span>
+      <a id="focus-topics" href="#" style="
+        font-size: 10.5px; text-decoration: none; color: rgba(226,232,244,0.85);
+        padding: 3px 9px; border-radius: 6px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+      ">Topics</a>
+    </div>
+  </div>
+  <script>
+  // Focus card poller — watches the existing #clusterSelect value and
+  // keeps the card in sync. Fully detached from the main IIFE so removing
+  // the block above + this script is the only cleanup needed.
+  (function () {
+    const card = document.getElementById('focus-card');
+    const nameEl = document.getElementById('focus-name');
+    const dot = document.getElementById('focus-dot');
+    const sel = document.getElementById('clusterSelect');
+    const palette = [
+      "#6ea8ff","#7cf0c9","#ff6b5c","#ffd166","#c084fc",
+      "#fb923c","#34d399","#f472b6","#38bdf8","#facc15",
+      "#a78bfa","#4ade80","#f87171","#2dd4bf","#fb7185",
+      "#a3e635","#e879f9","#60a5fa","#fbbf24","#818cf8",
+      "#86efac","#fca5a5","#93c5fd","#d8b4fe","#6ee7b7",
+    ];
+    let clusterNames = null;
+    fetch('tsne_chunks/cluster_labels.json').then(r => r.ok ? r.json() : null).then(d => {
+      if (d) clusterNames = d.embedding || d;
+    }).catch(() => {});
+
+    let lastCl = -2;
+    function tick() {
+      if (!sel) return;
+      const cl = parseInt(sel.value, 10);
+      if (cl === lastCl) return;
+      lastCl = cl;
+      if (cl < 0) {
+        card.style.opacity = '0';
+        card.style.pointerEvents = 'none';
+        card.style.transform = 'translateY(6px)';
+        return;
+      }
+      const color = palette[((cl % 25) + 25) % 25];
+      const name = clusterNames && clusterNames[String(cl)]
+        ? clusterNames[String(cl)].name
+        : ('Cluster ' + cl);
+      dot.style.background = color;
+      dot.style.color = color;
+      nameEl.textContent = name;
+      nameEl.style.color = color;
+      document.getElementById('focus-topics').href = 'viewer2.html?highlight=' + cl;
+      // Only show after story dismissed
+      const storyGone = document.querySelector('#story.story-gone') || document.querySelector('#story.story-hidden');
+      if (storyGone || !document.getElementById('story')) {
+        card.style.opacity = '1';
+        card.style.pointerEvents = 'auto';
+        card.style.transform = 'none';
+      }
+    }
+    setInterval(tick, 180);
+    tick();
+  })();
+  </script>
+  <!-- ── /EXPERIMENTAL: focus card ─────────────────────────────────── -->
+
   <!-- Text-selection → search popup -->
   <div id="selection-popup">
     <button id="selection-search-btn">
@@ -1221,8 +1353,8 @@
       // ── Draw grid lines (data-space, scales with zoom) ─────────────────────
       ctx.translate(tx, ty);
       ctx.scale(tk, tk);
-      ctx.lineWidth = 1.0 / tk;
-      ctx.strokeStyle = `rgba(255,255,255,${(opacity * 0.06).toFixed(3)})`;
+      ctx.lineWidth = 1.4 / tk;
+      ctx.strokeStyle = `rgba(140,160,200,${(opacity * 0.22).toFixed(3)})`;
       ctx.beginPath();
       // Vertical lines
       for (let gx = 0; gx <= grid.nx; gx++) {
@@ -1241,14 +1373,14 @@
       ctx.stroke();
       ctx.restore();
 
-      // ── Draw text labels (screen-space, constant size) ─────────────────────
+      // ── Draw text labels (screen-space, constant size, no background) ──────
       ctx.save();
       ctx.font = "500 11px 'DM Sans', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const lineH = 14;
       const cellWpx = grid.cell_w * xScale * tk;   // cell width on screen
-      const maxTextWidth = Math.max(60, cellWpx - 30);
+      const maxTextWidth = Math.max(60, cellWpx - 24);
 
       for (let ci = 0; ci < gridLayoutCache.length; ci++) {
         const entry = gridLayoutCache[ci];
@@ -1262,8 +1394,8 @@
         if (sx < -200 || sx > canvasW + 200) continue;
         if (sy < -100 || sy > canvasH + 100) continue;
 
-        // Lazy line-wrapping (per cell, cached). Wrap-width depends on zoom but
-        // we recompute when zoom level crosses a threshold to avoid flicker.
+        // Lazy line-wrapping (per cell, cached). Re-wrap when zoom level
+        // crosses a threshold to avoid per-frame layout cost.
         if (entry.lines == null || entry.wrapWidth !== Math.round(maxTextWidth / 20)) {
           entry.lines = wrapText(c.prop, maxTextWidth);
           entry.wrapWidth = Math.round(maxTextWidth / 20);
@@ -1272,33 +1404,17 @@
         const totalH = lines.length * lineH;
         const top    = sy - totalH / 2;
 
-        // Soft pill background for legibility
-        let maxLineW = 0;
-        for (const ln of lines) {
-          const w = ctx.measureText(ln).width;
-          if (w > maxLineW) maxLineW = w;
+        // Draw a thick dark stroke under each line for legibility against
+        // the dot field, then the white text on top. No box, no pill.
+        ctx.globalAlpha = opacity * 0.85;
+        ctx.strokeStyle = "rgba(4,6,14,0.95)";
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        for (let li = 0; li < lines.length; li++) {
+          ctx.strokeText(lines[li], sx, top + (li + 0.5) * lineH);
         }
-        const padX = 10, padY = 5;
-        const bgW = maxLineW + padX * 2;
-        const bgH = totalH   + padY * 2;
-        const bgX = sx - bgW / 2;
-        const bgY = top - padY;
-
-        ctx.globalAlpha = opacity * 0.78;
-        ctx.fillStyle = "rgba(6,8,18,0.92)";
-        ctx.beginPath();
-        ctx.roundRect(bgX, bgY, bgW, bgH, 6);
-        ctx.fill();
-        ctx.globalAlpha = opacity * 0.30;
-        ctx.strokeStyle = "rgba(110,168,255,0.45)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(bgX, bgY, bgW, bgH, 6);
-        ctx.stroke();
-
-        // Text
-        ctx.globalAlpha = opacity * 0.95;
-        ctx.fillStyle = "#e8ecf4";
+        ctx.globalAlpha = opacity * 0.98;
+        ctx.fillStyle = "#f4f6fb";
         for (let li = 0; li < lines.length; li++) {
           ctx.fillText(lines[li], sx, top + (li + 0.5) * lineH);
         }

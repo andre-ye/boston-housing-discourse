@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Boston on Reddit · Topics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="viewer-data.js"></script>
+<script src="views-nav.js" defer></script>
+<style>
+  :root {
+    --accent:  #6ea8ff;
+    --accent2: #7cf0c9;
+    --text:    #e2e8f4;
+    --muted:   rgba(139, 150, 171, 0.65);
+    --panel-bg: rgba(4, 6, 14, 0.78);
+    --panel-border: rgba(255, 255, 255, 0.055);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #05070f; color: var(--text); }
+  body { font-family: "DM Sans", system-ui, sans-serif; font-size: 13px; }
+
+  #loadBar {
+    position: fixed; top: 0; left: 0; height: 1px; z-index: 200;
+    width: 0%; transition: width 0.25s ease;
+    background: linear-gradient(90deg, transparent, var(--accent) 35%, var(--accent2) 65%, transparent);
+    box-shadow: 0 0 12px rgba(110,168,255,0.75);
+  }
+
+  /* ── Top bar ─────────────────────────────────────────────────────────── */
+  #top-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+    height: 54px; display: flex; align-items: center;
+    padding: 0 22px;
+    background: rgba(4,6,14,0.74);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.045);
+  }
+  #bar-title { font-size: 12px; font-weight: 500; color: rgba(226,232,244,0.82); }
+  #bar-sub {
+    font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: rgba(139,150,171,0.42); margin-top: 2px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .bar-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.07); margin: 0 18px; }
+  .bar-btn {
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; color: rgba(226,232,244,0.8);
+    padding: 6px 12px; font-size: 11px; cursor: pointer;
+    font-family: inherit; text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .bar-btn:hover { background: rgba(110,168,255,0.12); border-color: rgba(110,168,255,0.35); color: #fff; }
+  .bar-btn.active { background: rgba(110,168,255,0.18); border-color: rgba(110,168,255,0.5); color: #fff; }
+  #bar-nav { display: flex; gap: 6px; flex-shrink: 0; }
+
+  #breadcrumb {
+    display: flex; align-items: center; gap: 4px; flex: 1;
+    margin: 0 auto; padding: 0 14px;
+    font-size: 12px;
+    color: rgba(226,232,244,0.85);
+    overflow: hidden;
+    font-family: "DM Sans", system-ui, sans-serif;
+  }
+  .crumb {
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    transition: background 0.12s;
+    white-space: nowrap;
+    max-width: 220px; text-overflow: ellipsis; overflow: hidden;
+  }
+  .crumb:hover { background: rgba(110,168,255,0.12); }
+  .crumb.root { color: rgba(139,150,171,0.6); }
+  .crumb.current { background: rgba(110,168,255,0.18); color: #fff; cursor: default; }
+  .crumb-sep {
+    color: rgba(139,150,171,0.3); font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+  }
+
+  #bar-search {
+    flex: 0 1 300px;
+    min-width: 140px;
+    max-width: 300px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 30px; padding: 0 12px; height: 30px;
+    margin-right: 12px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #search-count {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: rgba(124,240,201,0.62);
+    white-space: nowrap;
+    display: none;
+  }
+  #search-count.visible { display: inline; }
+  #bar-search:focus-within {
+    border-color: rgba(110,168,255,0.28);
+    box-shadow: 0 0 20px rgba(110,168,255,0.08);
+  }
+  #bar-search .icon { color: rgba(139,150,171,0.4); font-size: 13px; line-height: 1; }
+  #bar-search input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 12px; font-family: inherit;
+    min-width: 0;
+  }
+  #bar-search input::placeholder { color: rgba(139,150,171,0.32); font-style: italic; }
+  #search-clear {
+    background: none; border: none; color: rgba(139,150,171,0.35);
+    font-size: 11px; cursor: pointer; padding: 2px 4px;
+    display: none; border-radius: 50%;
+  }
+  #search-clear.visible { display: block; }
+  #search-clear:hover { color: rgba(226,232,244,0.75); }
+
+  #bar-controls { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  #backBtn {
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; color: rgba(226,232,244,0.8);
+    padding: 5px 10px; font-size: 11px; cursor: pointer;
+    font-family: inherit;
+  }
+  #backBtn:hover:not(:disabled) { background: rgba(110,168,255,0.12); border-color: rgba(110,168,255,0.35); color: #fff; }
+  #backBtn:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── Main layout ─────────────────────────────────────────────────────── */
+  #main {
+    position: fixed; top: 54px; bottom: 0; left: 0; right: 0;
+  }
+  #canvas-wrap {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    padding: 12px;
+  }
+  #plot { width: 100%; height: 100%; display: block; cursor: default; }
+
+  /* Rectangles */
+  .cell-rect {
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .cell-rect.leaf { cursor: default; }
+  .cell-label {
+    font-family: "DM Sans", system-ui, sans-serif;
+    font-weight: 500; fill: #f0f4ff;
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.85); stroke-width: 2.6;
+  }
+  .cell-sub {
+    font-family: "IBM Plex Mono", monospace;
+    fill: rgba(255,255,255,0.55);
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.85); stroke-width: 2.0;
+  }
+  .cell-body {
+    font-family: "DM Sans", system-ui, sans-serif;
+    fill: rgba(240,244,255,0.82);
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.85); stroke-width: 2.2;
+  }
+  .cell-leaf-body {
+    font-family: "DM Sans", system-ui, sans-serif;
+    fill: rgba(245,248,255,0.94);
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.92); stroke-width: 2.4;
+    font-weight: 400;
+  }
+  .parent-title {
+    font-family: "DM Sans", system-ui, sans-serif;
+    font-weight: 600;
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.92); stroke-width: 2.4;
+  }
+  .parent-title-meta {
+    font-family: "IBM Plex Mono", monospace;
+    pointer-events: none;
+    paint-order: stroke; stroke: rgba(4,6,14,0.92); stroke-width: 2.2;
+  }
+  .cell-header-bg {
+    fill: rgba(4,6,14,0.55);
+    pointer-events: none;
+  }
+  .group-outline {
+    fill: none;
+    stroke: rgba(255,255,255,0.12);
+    stroke-width: 1;
+    pointer-events: none;
+  }
+
+  /* ── Detail panel (right) ────────────────────────────────────────────── */
+  #detail-panel {
+    position: fixed; top: 72px; right: 18px; z-index: 25;
+    width: 340px; max-height: calc(100vh - 90px);
+    background: var(--panel-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    display: flex; flex-direction: column;
+    opacity: 0; pointer-events: none;
+    transform: translateX(8px);
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  #detail-panel.visible { opacity: 1; pointer-events: auto; transform: none; }
+  #detail-head {
+    padding: 14px 18px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  #detail-mode {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  #detail-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+  #detail-meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px; color: rgba(139,150,171,0.65);
+    margin-top: 5px;
+  }
+  #detail-samples {
+    padding: 10px 10px 14px; overflow-y: auto; flex: 1;
+    scrollbar-width: thin; scrollbar-color: rgba(110,168,255,0.18) transparent;
+  }
+  .subr-strip {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 8px 12px 4px;
+    border-bottom: 1px dashed rgba(255,255,255,0.045);
+  }
+  .subr-strip-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: rgba(139,150,171,0.45); margin-bottom: 4px;
+  }
+  .subr-row {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px;
+  }
+  .subr-name {
+    color: rgba(226,232,244,0.82);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0; flex-shrink: 0; width: 92px;
+  }
+  .subr-bar-wrap {
+    flex: 1; height: 5px; background: rgba(255,255,255,0.045);
+    border-radius: 999px; overflow: hidden;
+  }
+  .subr-bar { height: 100%; background: var(--accent); border-radius: 999px; }
+  .subr-count {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px; color: rgba(139,150,171,0.55);
+    min-width: 38px; text-align: right;
+  }
+  .sample { padding: 8px 10px; border-radius: 8px; margin: 2px 0; cursor: pointer; transition: background 0.12s; }
+  .sample:hover { background: rgba(110,168,255,0.09); }
+  .sample-type {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: rgba(124,240,201,0.55); margin-bottom: 3px;
+  }
+  .sample-title {
+    font-size: 12px; font-weight: 500; color: rgba(240,244,255,0.92);
+    line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .sample-meta {
+    font-family: "IBM Plex Mono", monospace; font-size: 9px;
+    color: rgba(139,150,171,0.55); margin-top: 2px;
+  }
+  #detail-close {
+    position: absolute; top: 10px; right: 10px;
+    background: none; border: none; color: rgba(139,150,171,0.4);
+    font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: 50%;
+  }
+  #detail-close:hover { color: #fff; background: rgba(255,255,255,0.05); }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 40;
+    background: rgba(6,8,18,0.95); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 8px 11px;
+    font-size: 11px; color: rgba(240,244,255,0.9);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+    opacity: 0; transform: translateY(4px);
+    transition: opacity 0.15s, transform 0.15s;
+    max-width: 280px;
+  }
+  #tooltip.visible { opacity: 1; transform: none; }
+  #tooltip .tt-name { font-weight: 600; margin-bottom: 3px; }
+  #tooltip .tt-cluster { font-family: "IBM Plex Mono", monospace; font-size: 9px; color: rgba(139,150,171,0.7); text-transform: uppercase; letter-spacing: 0.1em; }
+  #tooltip .tt-meta { font-family: "IBM Plex Mono", monospace; font-size: 10px; color: rgba(139,150,171,0.75); margin-top: 4px; }
+
+  /* Hint */
+  #hint {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: rgba(139,150,171,0.28); pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="loadBar"></div>
+
+<!-- Top bar -->
+<div id="top-bar">
+  <div>
+    <div id="bar-title">Boston on Reddit — Themes</div>
+    <div id="bar-sub">Loading…</div>
+  </div>
+
+  <div class="bar-sep"></div>
+
+  <div id="bar-nav" data-views-nav data-views-nav-style="bar"></div>
+
+  <div class="bar-sep"></div>
+
+  <div id="breadcrumb"></div>
+
+  <div id="bar-search">
+    <span class="icon">⌕</span>
+    <input id="searchInput" type="text" placeholder="Filter cells…" autocomplete="off" spellcheck="false" />
+    <span id="search-count"></span>
+    <button id="search-clear" title="Clear">✕</button>
+  </div>
+
+  <div id="bar-controls">
+    <button id="backBtn" disabled>← Back</button>
+  </div>
+</div>
+
+<!-- Main layout -->
+<div id="main">
+  <div id="canvas-wrap">
+    <svg id="plot"></svg>
+  </div>
+</div>
+
+<!-- Detail panel -->
+<div id="detail-panel">
+  <button id="detail-close">✕</button>
+  <div id="detail-head">
+    <div id="detail-mode">Topic</div>
+    <div id="detail-title"></div>
+    <div id="detail-meta"></div>
+  </div>
+  <div id="detail-samples"></div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Hint -->
+<div id="hint">click a cell to zoom in · back button or Esc to zoom out</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Feature flags — disable pieces cleanly ───────────────────────────
+  const FLAGS = {
+    MAX_POSTS_PER_SUB: 80,        // cap posts shown per subcluster
+    MAX_POSTS_PER_SUB_L1: 40,     // cap posts nested under a sub at cluster view
+    MAX_POSTS_PER_POSITION: 60,   // cap posts nested under a position
+    MAX_LEAVES_PER_POST: 48,      // cap individual items per post
+    ZOOM_DURATION_MS: 650,
+    INNER_NESTING: true,
+    SHOW_SUBREDDIT_STRIP: true,
+    USE_POSITIONS: true,          // false disables LLM position layer entirely
+  };
+
+  const { loadPointsAndAggregates, clusterColor, escapeHtml } = window.ViewerData;
+
+  // Sub-cluster shades: a persistent identity where each subtopic is a
+  // tinted variant of its parent cluster's color. Mirrors the main tSNE map's
+  // approach so colors stay consistent across views.
+  const subShadeCache = new Map();   // `${cl}:${sub}/${subCount}` -> hex
+  function subClusterColor(cl, subLocal, subCount) {
+    const key = cl + ":" + subLocal + "/" + subCount;
+    const hit = subShadeCache.get(key);
+    if (hit) return hit;
+    const base = d3.hsl(clusterColor(cl));
+    const t = subCount <= 1 ? 0.5 : subLocal / (subCount - 1);
+    const out = d3.hsl(
+      base.h + (t - 0.5) * 40,
+      Math.min(1, base.s * 1.10),
+      Math.min(0.92, Math.max(0.25, base.l + (t - 0.5) * 0.32))
+    ).formatHex();
+    subShadeCache.set(key, out);
+    return out;
+  }
+
+  // DOM
+  const loadBar       = document.getElementById("loadBar");
+  const barSub        = document.getElementById("bar-sub");
+  const svg           = d3.select("#plot");
+  const tooltip       = document.getElementById("tooltip");
+  const breadcrumbEl  = document.getElementById("breadcrumb");
+  const backBtn       = document.getElementById("backBtn");
+  const detailPanel   = document.getElementById("detail-panel");
+  const detailClose   = document.getElementById("detail-close");
+  const detailMode    = document.getElementById("detail-mode");
+  const detailTitle   = document.getElementById("detail-title");
+  const detailMeta    = document.getElementById("detail-meta");
+  const detailSamples = document.getElementById("detail-samples");
+
+  // State
+  let data = null;   // result from loadPointsAndAggregates
+  // Current zoom path: [{type, ...}, ...] from root. Top of stack = current view.
+  // Types:
+  //   { type: 'root' }
+  //   { type: 'cluster', cl, name }
+  //   { type: 'sub', gid, name, cl }
+  //   { type: 'post', postId, name, cl, gid }
+  let path = [{ type: 'root', name: 'All clusters' }];
+
+  // Caches (lazy computation)
+  const postGroupCache = new Map();   // subGid -> [{postId, indices[], post?, name, value}]
+  const positionCache  = new Map();   // subGid -> [{type:'position', ...}] with posts nested
+  // Persistent sub-shade color per global sub gid (filled after load)
+  let subColorByGid = [];
+  // LLM-generated position metadata, keyed by global sub gid
+  let positionsData = null;           // { by_gid: { "<gid>": { cl, sub_name, positions:[...] } } }
+
+  // Active search query (lowercased). When non-empty, cells whose name
+  // doesn't match get dimmed rather than hidden so the layout stays stable.
+  let searchQuery = "";
+
+  // ── Load ─────────────────────────────────────────────────────────────
+  async function main() {
+    try {
+      data = await loadPointsAndAggregates({
+        onProgress: (loaded, total) => {
+          loadBar.style.width = (100 * loaded / total) + "%";
+          barSub.textContent = loaded.toLocaleString() + " / " + total.toLocaleString() + " pts";
+        }
+      });
+      loadBar.style.width = "100%";
+      // Optional LLM position data — gracefully skipped if missing
+      positionsData = await window.ViewerData.loadPositions();
+      const posCount = positionsData && positionsData.by_gid ? Object.keys(positionsData.by_gid).length : 0;
+      barSub.textContent =
+        data.nTotal.toLocaleString() + " pts · " +
+        Object.keys(data.clusterNames).length + " clusters" +
+        (posCount ? " · " + posCount + " subs have positions" : "");
+
+      // Pre-compute persistent sub shades once (keyed by global gid). This
+      // lets getPostNodes / getLeafNodes stamp the right color without
+      // re-deriving it from the hierarchy on every render.
+      subColorByGid = new Array(data.subTotalK);
+      const byCl = new Map();
+      for (const rec of data.subs) {
+        if (!rec) continue;
+        if (!byCl.has(rec.cl)) byCl.set(rec.cl, []);
+        byCl.get(rec.cl).push(rec);
+      }
+      for (const recs of byCl.values()) {
+        recs.sort((a, b) => a.sub - b.sub);
+        const n = recs.length;
+        recs.forEach((rec, i) => {
+          subColorByGid[rec.gid] = subClusterColor(rec.cl, rec.sub, n);
+        });
+      }
+
+      // Restore zoom state from URL hash, or fall back to ?highlight=<cl>
+      const hashPath = parsePathFromHash();
+      if (hashPath && hashPath.length) {
+        path = hashPath;
+      } else {
+        const urlHl = parseInt(new URLSearchParams(location.search).get("highlight") || "-1", 10);
+        if (urlHl >= 0) {
+          const name = (data.clusterNames[String(urlHl)] || {}).name || ("Cluster " + urlHl);
+          path = [{ type: 'root', name: 'All clusters' }, { type: 'cluster', cl: urlHl, name }];
+        }
+      }
+      // Handle browser back/forward: re-parse hash and re-render
+      window.addEventListener("hashchange", () => {
+        const next = parsePathFromHash();
+        if (next) {
+          path = next;
+          animateZoom(false);
+        }
+      });
+      render();
+    } catch (err) {
+      console.error(err);
+      barSub.textContent = err.message || String(err);
+    }
+  }
+
+  // ── URL hash <-> zoom path ──────────────────────────────────────────
+  // Hash format (pipe-separated): `#cl=<cl>|sub=<gid>|pos=<posIdx>|post=<postId>`
+  // Missing parts = don't drill that far. Empty hash = root.
+  function pathToHash() {
+    if (!path || path.length <= 1) return "";
+    const parts = [];
+    for (let i = 1; i < path.length; i++) {
+      const n = path[i];
+      if (n.type === 'cluster') parts.push("cl=" + n.cl);
+      else if (n.type === 'sub') parts.push("sub=" + n.gid);
+      else if (n.type === 'position') parts.push("pos=" + n.posIdx);
+      else if (n.type === 'post') parts.push("post=" + encodeURIComponent(n.postId));
+    }
+    return "#" + parts.join("|");
+  }
+
+  function parsePathFromHash() {
+    const h = location.hash.replace(/^#/, "");
+    if (!h) return null;
+    const parts = h.split("|").filter(Boolean);
+    if (!parts.length) return null;
+    const out = [{ type: 'root', name: 'All clusters' }];
+    let currentClId = -1;
+    let currentSubGid = -1;
+    for (const p of parts) {
+      const [k, vRaw] = p.split("=");
+      if (k === "cl") {
+        const cl = parseInt(vRaw, 10);
+        if (!Number.isFinite(cl)) return null;
+        const name = (data.clusterNames[String(cl)] || {}).name || ("Cluster " + cl);
+        out.push({ type: 'cluster', cl, name });
+        currentClId = cl;
+      } else if (k === "sub") {
+        const gid = parseInt(vRaw, 10);
+        if (!Number.isFinite(gid) || !data.subs[gid]) return null;
+        const rec = data.subs[gid];
+        out.push({ type: 'sub', gid, cl: rec.cl, name: rec.name });
+        currentSubGid = gid;
+      } else if (k === "pos") {
+        const posIdx = parseInt(vRaw, 10);
+        if (currentSubGid < 0 || !positionsData) return null;
+        const positionNodes = getPositionNodes(currentSubGid);
+        const posMeta = (positionsData.by_gid[String(currentSubGid)] || {}).positions || [];
+        const posEntry = posMeta[posIdx];
+        if (!posEntry) return null;
+        out.push({ type: 'position', posIdx, gid: currentSubGid, cl: (data.subs[currentSubGid] || {}).cl, name: posEntry.name });
+      } else if (k === "post") {
+        const postId = decodeURIComponent(vRaw);
+        out.push({ type: 'post', postId, gid: currentSubGid, cl: -1, name: "Thread " + postId });
+      }
+    }
+    return out;
+  }
+
+  function updateUrlHash() {
+    const newHash = pathToHash();
+    if (location.hash !== newHash) {
+      // replaceState avoids polluting history for every zoom step; we only
+      // push a history entry on explicit drill-down (see zoomInto).
+      history.replaceState(null, "", (newHash || window.location.pathname + window.location.search));
+    }
+  }
+
+  // ── Hierarchy building (lazy per level) ──────────────────────────────
+  //
+  // For the current `path`, build a d3 hierarchy whose root is the focused
+  // node. The hierarchy is 2 levels deep so the treemap shows children
+  // (cells) and grand-children (nested previews inside each cell).
+
+  function getClusterNodes() {
+    // All clusters with their subclusters as children
+    const clusters = new Map();
+    // First pass: group subs by cluster (raw, unsorted) so we know sub counts
+    for (const rec of data.subs) {
+      if (!rec) continue;
+      if (!clusters.has(rec.cl)) {
+        clusters.set(rec.cl, {
+          type: 'cluster', cl: rec.cl,
+          name: (data.clusterNames[String(rec.cl)] || {}).name || ("Cluster " + rec.cl),
+          total: 0,
+          children: [],
+          postN: 0, commN: 0,
+          topSubreddits: null
+        });
+      }
+      clusters.get(rec.cl).children.push(rec);  // temporarily store raw record
+    }
+    // Second pass: sort by rec.sub (index) so shade assignment is stable,
+    // then compute colors + build final sub nodes
+    for (const cnode of clusters.values()) {
+      const recs = cnode.children.slice().sort((a, b) => a.sub - b.sub);
+      const subCount = recs.length;
+      cnode.children = recs.map(rec => ({
+        type: 'sub', gid: rec.gid, cl: rec.cl, sub: rec.sub,
+        name: rec.name,
+        total: rec.total,
+        postN: rec.postN, commN: rec.commN,
+        topSubreddits: rec.topSubreddits,
+        color: subClusterColor(rec.cl, rec.sub, subCount),
+        rec
+      }));
+      // Now sort the display order by size (biggest first)
+      cnode.children.sort((a, b) => b.total - a.total);
+      cnode.total = cnode.children.reduce((a, b) => a + b.total, 0);
+      cnode.postN = cnode.children.reduce((a, b) => a + b.postN, 0);
+      cnode.commN = cnode.children.reduce((a, b) => a + b.commN, 0);
+      const tally = Object.create(null);
+      for (const s of cnode.children) {
+        for (const r of (s.topSubreddits || [])) {
+          tally[r.name] = (tally[r.name] || 0) + r.count;
+        }
+      }
+      cnode.topSubreddits = Object.entries(tally)
+        .sort((a, b) => b[1] - a[1]).slice(0, 12)
+        .map(([name, count]) => ({ name, count }));
+    }
+    return [...clusters.values()].sort((a, b) => b.total - a.total);
+  }
+
+  // Group points within a subcluster by their thread root (post id)
+  function getPostNodes(subGid) {
+    if (postGroupCache.has(subGid)) return postGroupCache.get(subGid);
+    const points = data.points;
+    const indices = points.subPoints[subGid] || [];
+    // Group by permalink's /comments/<id>
+    const groups = new Map();
+    const orphans = []; // items without a matching thread root
+    for (const i of indices) {
+      const pl = points.permalinks[i];
+      let pid = null;
+      if (pl) {
+        const m = pl.match(/\/comments\/([^/]+)/);
+        if (m) pid = m[1];
+      }
+      if (!pid) { orphans.push(i); continue; }
+      let g = groups.get(pid);
+      if (!g) { g = { postId: pid, indices: [], postIdx: -1 }; groups.set(pid, g); }
+      g.indices.push(i);
+      if (points.typeCode[i] === 0) g.postIdx = i;
+    }
+    // Convert to nodes
+    const subRec = data.subs[subGid];
+    const subColor = subColorByGid[subGid] || clusterColor(subRec.cl);
+    const nodes = [];
+    for (const g of groups.values()) {
+      let postIdx = g.postIdx;
+      let title = "";
+      if (postIdx >= 0) {
+        title = points.titles[postIdx];
+      } else {
+        // Parent submission may live in a different subcluster — look it up
+        const globalThread = points.postIndex.get(g.postId) || [];
+        for (const pi of globalThread) {
+          if (points.typeCode[pi] === 0 && points.titles[pi]) {
+            title = points.titles[pi];
+            break;
+          }
+        }
+        // Last resort: use the highest-scoring comment's body preview
+        if (!title && points.bodies) {
+          let bestIdx = g.indices[0];
+          let bestScore = -Infinity;
+          for (const i of g.indices) {
+            if (points.scores[i] > bestScore) { bestScore = points.scores[i]; bestIdx = i; }
+          }
+          const body = points.bodies[bestIdx] || "";
+          if (body) {
+            title = "💬 " + body.slice(0, 90).replace(/\s+/g, " ").trim();
+          }
+        }
+        if (!title) title = "Thread " + g.postId;
+      }
+      const postN = g.indices.filter(i => points.typeCode[i] === 0).length;
+      const commN = g.indices.length - postN;
+      const scoreSum = g.indices.reduce((a, i) => a + points.scores[i], 0);
+      nodes.push({
+        type: 'post', postId: g.postId, cl: subRec.cl, gid: subGid,
+        name: title,
+        total: g.indices.length, indices: g.indices,
+        postN, commN, scoreSum,
+        postIdx,
+        _subColor: subColor
+      });
+    }
+    // Orphan bucket
+    if (orphans.length) {
+      nodes.push({
+        type: 'post', postId: '__orphans__' + subGid, cl: subRec.cl, gid: subGid,
+        name: "(comments without threads)",
+        total: orphans.length, indices: orphans,
+        postN: 0, commN: orphans.length, scoreSum: 0, postIdx: -1,
+        _subColor: subColor
+      });
+    }
+    nodes.sort((a, b) => b.total - a.total);
+    postGroupCache.set(subGid, nodes);
+    return nodes;
+  }
+
+  // Assign points in a sub to LLM-generated positions by keyword overlap.
+  // Returns an array of position nodes with `.children` = post nodes
+  // (those already grouped by thread root within each position).
+  function getPositionNodes(subGid) {
+    if (positionCache.has(subGid)) return positionCache.get(subGid);
+    if (!positionsData || !positionsData.by_gid) return null;
+    const meta = positionsData.by_gid[String(subGid)];
+    if (!meta || !meta.positions || !meta.positions.length) return null;
+
+    const points = data.points;
+    const subRec = data.subs[subGid];
+    const subColor = subColorByGid[subGid] || clusterColor(subRec.cl);
+    const indices = points.subPoints[subGid] || [];
+
+    // Stopwords we ignore when tokenizing keywords/names — they're too common
+    // to be meaningful as individual unigram matches.
+    const STOP = new Set([
+      "a","an","the","of","for","to","in","on","at","and","or","but","is","are",
+      "was","were","be","been","being","as","by","with","from","that","this",
+      "these","those","it","its","they","them","their","has","have","had",
+      "do","does","did","up","out","so","not","no","we","you","i","he","she",
+      "my","our","your","their","his","her","them","me","us"
+    ]);
+
+    function tokenize(s) {
+      if (!s) return [];
+      return String(s).toLowerCase()
+        .replace(/[^a-z0-9' ]+/g, " ")
+        .split(/\s+/)
+        .filter(t => t.length >= 3 && !STOP.has(t));
+    }
+
+    // For each position, build a matching "fingerprint":
+    //   phrases[] — multi-word keywords worth more when they hit as a chunk
+    //   tokens (Set) — individual words from keywords + name, used for loose match
+    const positions = meta.positions.map((p, pi) => {
+      const phrases = (p.keywords || [])
+        .map(k => String(k).toLowerCase().trim())
+        .filter(k => k && k.includes(" "));
+      const tokens = new Set();
+      for (const k of (p.keywords || [])) {
+        for (const t of tokenize(k)) tokens.add(t);
+      }
+      for (const t of tokenize(p.name)) tokens.add(t);
+      return {
+        idx: pi,
+        name: p.name,
+        description: p.description || "",
+        keywords: (p.keywords || []).map(k => String(k).toLowerCase()),
+        phrases,
+        tokens: [...tokens],
+        indices: []
+      };
+    });
+    const otherBucket = { idx: -1, name: "Other / uncategorized", description: "Items whose text didn't match any identified position", keywords: [], phrases: [], tokens: [], indices: [] };
+
+    // Match each point to best position.
+    //   +5 per multi-word phrase match (strong signal)
+    //   +1 per unique token match (loose signal, bag-of-words)
+    // Requires at least score 1 to assign; otherwise → Other.
+    for (const i of indices) {
+      const text = ((points.titles[i] || "") + " " + (points.bodies && points.bodies[i] || "")).toLowerCase();
+      if (!text.trim()) { otherBucket.indices.push(i); continue; }
+      let best = -1, bestScore = 0;
+      for (let pi = 0; pi < positions.length; pi++) {
+        const p = positions[pi];
+        let s = 0;
+        for (const ph of p.phrases) if (text.includes(ph)) s += 5;
+        for (const tok of p.tokens) {
+          // word-boundary-ish check: surrounded by non-alnum
+          const idx2 = text.indexOf(tok);
+          if (idx2 >= 0) {
+            const prev = idx2 === 0 ? " " : text[idx2 - 1];
+            const next = idx2 + tok.length >= text.length ? " " : text[idx2 + tok.length];
+            if (!/[a-z0-9]/.test(prev) && !/[a-z0-9]/.test(next)) s += 1;
+          }
+        }
+        if (s > bestScore) { bestScore = s; best = pi; }
+      }
+      if (best >= 0) positions[best].indices.push(i);
+      else otherBucket.indices.push(i);
+    }
+
+    // Convert each position to a node with nested post children
+    const all = positions.slice();
+    if (otherBucket.indices.length) all.push(otherBucket);
+    const positionNodes = all
+      .filter(p => p.indices.length > 0)
+      .map(p => {
+        // Group this position's points into post threads
+        const byPost = new Map();
+        const orphans = [];
+        for (const i of p.indices) {
+          const pl = points.permalinks[i];
+          let pid = null;
+          if (pl) {
+            const m = pl.match(/\/comments\/([^/]+)/);
+            if (m) pid = m[1];
+          }
+          if (!pid) { orphans.push(i); continue; }
+          let g = byPost.get(pid);
+          if (!g) { g = { postId: pid, indices: [], postIdx: -1 }; byPost.set(pid, g); }
+          g.indices.push(i);
+          if (points.typeCode[i] === 0) g.postIdx = i;
+        }
+        const postChildren = [];
+        for (const g of byPost.values()) {
+          let title = "";
+          if (g.postIdx >= 0) {
+            title = points.titles[g.postIdx];
+          } else {
+            const globalThread = points.postIndex.get(g.postId) || [];
+            for (const pi of globalThread) {
+              if (points.typeCode[pi] === 0 && points.titles[pi]) { title = points.titles[pi]; break; }
+            }
+            if (!title) {
+              // Fallback: top-scoring comment preview
+              let bestIdx = g.indices[0], bestScore = -Infinity;
+              for (const ii of g.indices) {
+                if (points.scores[ii] > bestScore) { bestScore = points.scores[ii]; bestIdx = ii; }
+              }
+              const body = points.bodies ? points.bodies[bestIdx] : "";
+              if (body) title = "💬 " + body.slice(0, 90).replace(/\s+/g, " ").trim();
+              else title = "Thread " + g.postId;
+            }
+          }
+          const postN = g.indices.filter(i => points.typeCode[i] === 0).length;
+          const commN = g.indices.length - postN;
+          postChildren.push({
+            type: 'post', postId: g.postId, cl: subRec.cl, gid: subGid,
+            name: title,
+            total: g.indices.length, indices: g.indices,
+            postN, commN, scoreSum: 0, postIdx: g.postIdx,
+            _subColor: subColor
+          });
+        }
+        if (orphans.length) {
+          postChildren.push({
+            type: 'post', postId: '__orphans_pos__' + subGid + '_' + p.idx, cl: subRec.cl, gid: subGid,
+            name: "(assorted comments)",
+            total: orphans.length, indices: orphans,
+            postN: 0, commN: orphans.length, scoreSum: 0, postIdx: -1,
+            _subColor: subColor
+          });
+        }
+        postChildren.sort((a, b) => b.total - a.total);
+        return {
+          type: 'position',
+          posIdx: p.idx, cl: subRec.cl, gid: subGid,
+          name: p.name,
+          description: p.description,
+          keywords: p.keywords,
+          total: p.indices.length,
+          indices: p.indices,
+          _subColor: subColor,
+          children: postChildren.slice(0, FLAGS.MAX_POSTS_PER_POSITION || 40)
+        };
+      });
+    positionNodes.sort((a, b) => b.total - a.total);
+    positionCache.set(subGid, positionNodes);
+    return positionNodes;
+  }
+
+  // Build individual leaf nodes for a thread
+  function getLeafNodes(postNode) {
+    const points = data.points;
+    const subColor = postNode._subColor || subColorByGid[postNode.gid] || clusterColor(postNode.cl);
+    const leaves = postNode.indices.slice().sort((a, b) => points.scores[b] - points.scores[a]);
+    return leaves.slice(0, FLAGS.MAX_LEAVES_PER_POST).map(i => {
+      const isPost = points.typeCode[i] === 0;
+      // For comments, titles are empty — fall back to body preview
+      let label = points.titles[i] || "";
+      if (!label && points.bodies && points.bodies[i]) {
+        label = points.bodies[i];
+      }
+      if (!label) label = isPost ? "(untitled post)" : "(empty comment)";
+      return {
+        type: 'leaf',
+        idx: i,
+        cl: postNode.cl,
+        gid: postNode.gid,
+        name: label,
+        body: points.bodies ? points.bodies[i] : "",
+        total: Math.max(1, points.scores[i] + 2),
+        isPost,
+        subreddit: points.subreddits[i],
+        score: points.scores[i],
+        permalink: points.permalinks[i],
+        _subColor: subColor
+      };
+    });
+  }
+
+  // Build a 2-level nested hierarchy rooted at the current focus node.
+  // Every zoom level shows two layers: the "main" cells (focus's direct
+  // children) and their own children tiled inside.
+  function buildRenderable() {
+    const focus = path[path.length - 1];
+
+    if (focus.type === 'root') {
+      const clusters = getClusterNodes();
+      // cluster → sub (already populated in cnode.children)
+      return {
+        root: { type: 'root', name: 'All clusters',
+                total: clusters.reduce((a,b)=>a+b.total,0),
+                children: clusters }
+      };
+    }
+    if (focus.type === 'cluster') {
+      const all = getClusterNodes();
+      const cnode = all.find(c => c.cl === focus.cl);
+      if (!cnode) return null;
+      // sub → post — inflate each sub's .children with its posts
+      const expanded = cnode.children.map(subNode => {
+        const postNodes = getPostNodes(subNode.gid);
+        const shown = postNodes.slice(0, FLAGS.MAX_POSTS_PER_SUB_L1 || 40);
+        return { ...subNode, children: shown };
+      });
+      return { root: { ...cnode, children: expanded } };
+    }
+    if (focus.type === 'sub') {
+      const subRec = data.subs[focus.gid];
+      // If LLM positions exist for this sub, show them instead of raw posts
+      const positionNodes = FLAGS.USE_POSITIONS ? getPositionNodes(focus.gid) : null;
+      if (positionNodes && positionNodes.length) {
+        // position → post (post.children already populated with thread info)
+        return {
+          root: {
+            type: 'sub', gid: focus.gid, name: focus.name, cl: focus.cl,
+            color: focus.color || clusterColor(focus.cl),
+            total: positionNodes.reduce((a,b)=>a+b.total,0),
+            rec: subRec,
+            children: positionNodes
+          }
+        };
+      }
+      // Fallback: post threads with leaves nested
+      const postNodes = getPostNodes(focus.gid);
+      const shown = postNodes.slice(0, FLAGS.MAX_POSTS_PER_SUB);
+      const expanded = shown.map(postNode => ({
+        ...postNode,
+        children: getLeafNodes(postNode)
+      }));
+      return {
+        root: {
+          type: 'sub', gid: focus.gid, name: focus.name, cl: focus.cl,
+          color: focus.color || clusterColor(focus.cl),
+          total: shown.reduce((a,b)=>a+b.total,0),
+          rec: subRec,
+          children: expanded
+        }
+      };
+    }
+    if (focus.type === 'position') {
+      // Focus = a specific position within a sub. Show posts as leaves so
+      // each thread has room to display its title + body preview. Clicking
+      // a post drills in to see individual comments.
+      const positionNodes = getPositionNodes(focus.gid);
+      if (!positionNodes) return null;
+      const posNode = positionNodes.find(p => p.posIdx === focus.posIdx);
+      if (!posNode) return null;
+      return { root: { ...posNode, children: posNode.children || [] } };
+    }
+    if (focus.type === 'post') {
+      // Look up the post via all its possible ancestors
+      const positionNodes = FLAGS.USE_POSITIONS ? getPositionNodes(focus.gid) : null;
+      let pnode = null;
+      if (positionNodes) {
+        for (const p of positionNodes) {
+          const hit = (p.children || []).find(pp => pp.postId === focus.postId);
+          if (hit) { pnode = hit; break; }
+        }
+      }
+      if (!pnode) {
+        const postNodes = getPostNodes(focus.gid);
+        pnode = postNodes.find(p => p.postId === focus.postId);
+      }
+      if (!pnode) return null;
+      const leaves = getLeafNodes(pnode);
+      return { root: { ...pnode, children: leaves } };
+    }
+    return null;
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────
+  //
+  // Two-layer recursive treemap. At every zoom level:
+  //   * parent cells (depth 1) are the "main" cells
+  //   * their children (depth 2) tile inside them, filling the parent
+  //     (minus a thin title strip at top)
+  //   * titles float as overlays above the inner cells, never steal space
+  //
+  // Only title overlays are interactive for parents — clicking on them
+  // zooms in. Leaves are clickable for detail-panel.
+  function render() {
+    renderBreadcrumb();
+    const r = buildRenderable();
+    if (!r) { svg.selectAll("*").remove(); return; }
+
+    const wrap = document.getElementById("canvas-wrap");
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    svg.attr("width", W).attr("height", H).selectAll("*").remove();
+
+    // d3 hierarchy — depth 0 = root, depth 1 = main cells, depth 2 = inner
+    const hRoot = d3.hierarchy(r.root)
+      .sum(d => (d.children && d.children.length) ? 0 : (d.total || d.value || 1))
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
+
+    // Title strip height: enough for 2 lines of title (14px each) + 1 meta
+    // line (11px) + 6px padding. Gives long cluster names room to wrap
+    // without overflowing into the inner treemap area.
+    const TITLE_STRIP_H = 44;
+    const treemap = d3.treemap()
+      .size([W - 4, H - 4])
+      .paddingOuter(2)
+      .paddingTop(d => (d.depth === 0 ? 2 : TITLE_STRIP_H))
+      .paddingInner(1.5)
+      .round(true);
+    treemap(hRoot);
+
+    const g = svg.append("g").attr("transform", "translate(2,2)");
+
+    // ── Pass 1: leaves (the deepest rendered nodes) ─────────────────────
+    const leaves = hRoot.leaves();
+    const leafSel = g.append("g").attr("class", "leaves")
+      .selectAll("g.leaf")
+      .data(leaves)
+      .enter().append("g")
+      .attr("class", "leaf")
+      .attr("transform", d => "translate(" + d.x0 + "," + d.y0 + ")");
+
+    leafSel.append("rect")
+      .attr("class", "cell-rect")
+      .attr("width",  d => Math.max(0, d.x1 - d.x0))
+      .attr("height", d => Math.max(0, d.y1 - d.y0))
+      .attr("fill", d => fillForNode(d.data))
+      .attr("fill-opacity", d => hierarchySearchActive(d) ? opacityForNode(d.data) : opacityForNode(d.data) * 0.14)
+      .attr("stroke", "rgba(5,7,15,0.9)")
+      .attr("stroke-width", 0.8)
+      .attr("rx", 1.5);
+
+    leafSel.each(function (d) {
+      const sel = d3.select(this);
+      const w = d.x1 - d.x0;
+      const h = d.y1 - d.y0;
+      if (w < 32 || h < 14) return;
+      const nd = d.data;
+      if (nd.type === 'leaf') {
+        renderLeafCell(sel, nd, w, h);
+      } else {
+        // Non-leaf leaf (sub at root, post at cluster, etc). Wrap the name
+        // across multiple lines then fit the meta below.
+        const pad = 6;
+        const fs = Math.max(9, Math.min(14, Math.sqrt(w * h) / 12));
+        const lineH = fs * 1.18;
+        const maxChars = Math.max(4, Math.floor((w - pad * 2) / (fs * 0.56)));
+        // Show meta whenever we can fit a 2nd line (8.5px * 1.2 ≈ 10px + pad)
+        const showMeta = h > 28 && w > 48;
+        const metaFs = Math.max(8, fs - 3.5);
+        const metaLineH = metaFs * 1.2;
+        const availH = h - pad * 2 - (showMeta ? (metaLineH + 4) : 0);
+        const maxNameLines = Math.max(1, Math.floor(availH / lineH));
+        const nameLines = wrapTextLines(nd.name || "", maxChars, maxNameLines);
+        renderMultilineText(sel, nameLines, pad, pad + fs * 0.9, lineH, fs, "cell-label");
+
+        if (showMeta) {
+          const sub = formatSubtext(nd);
+          const metaMaxChars = Math.max(4, Math.floor((w - pad * 2) / (metaFs * 0.56)));
+          // Wrap meta too — never truncate the item count
+          const metaLines = wrapTextLines(sub, metaMaxChars, 2);
+          const metaStartY = pad + nameLines.length * lineH + 2 + metaFs * 0.9;
+          renderMultilineText(sel, metaLines, pad, metaStartY, metaLineH, metaFs, "cell-sub");
+        }
+
+        // Extra body preview for post-type nodes if there's still room
+        if (nd.type === 'post' && h > 78 && w > 90) {
+          const usedH = pad + nameLines.length * lineH + (showMeta ? metaLineH * 2 + 6 : 0);
+          const remaining = h - usedH - pad;
+          if (remaining > 20) {
+            const preview = getPostBodyPreview(nd);
+            if (preview) {
+              const pfs = Math.max(9, fs - 3);
+              const plineH = pfs * 1.25;
+              const startY = usedH + pfs;
+              const maxLines2 = Math.max(1, Math.floor(remaining / plineH));
+              const maxChars2 = Math.max(6, Math.floor((w - pad * 2) / (pfs * 0.55)));
+              const lines = wrapTextLines(preview, maxChars2, maxLines2);
+              renderMultilineText(sel, lines, pad, startY, plineH, pfs, "cell-body");
+            }
+          }
+        }
+      }
+    });
+
+    leafSel.append("rect")
+      .attr("class", "cell-hit")
+      .attr("fill", "transparent")
+      .attr("width",  d => Math.max(0, d.x1 - d.x0))
+      .attr("height", d => Math.max(0, d.y1 - d.y0))
+      .attr("cursor", d => canZoomInto(d.data) ? "pointer" : "default")
+      .on("mouseenter", function (ev, d) {
+        const focusedGroup = this.parentNode;
+        d3.select(focusedGroup).select(".cell-rect")
+          .attr("fill-opacity", Math.min(0.98, opacityForNode(d.data) + 0.26));
+        // Dim other leaves
+        g.selectAll("g.leaf").filter(function () { return this !== focusedGroup; })
+          .select(".cell-rect").attr("fill-opacity", dd => opacityForNode(dd.data) * 0.4);
+        g.selectAll("g.parent").select(".parent-title-bg").attr("fill-opacity", 0.55);
+        showTooltip(ev, d.data);
+      })
+      .on("mousemove", moveTooltip)
+      .on("mouseleave", function (ev, d) {
+        // Restore
+        g.selectAll("g.leaf").select(".cell-rect")
+          .attr("fill-opacity", dd => opacityForNode(dd.data));
+        g.selectAll("g.parent").select(".parent-title-bg").attr("fill-opacity", 0.86);
+        hideTooltip();
+      })
+      .on("click", function (ev, d) {
+        if (!canZoomInto(d.data)) { showDetail(d.data); return; }
+        // Walk up d3 hierarchy parents to push any intermediate depth-1
+        // ancestor onto the path first, so the breadcrumb stays coherent.
+        const parentAncestor = d.parent && d.parent.depth === 1 ? d.parent.data : null;
+        if (parentAncestor && canZoomInto(parentAncestor)) {
+          path = path.concat([{ ...parentAncestor }, { ...d.data }]);
+          const newHash = pathToHash();
+          history.pushState(null, "", newHash || location.pathname + location.search);
+          animateZoom(true);
+          return;
+        }
+        zoomInto(d.data);
+      });
+
+    // ── Pass 2: parent cells (depth 1, non-leaf) — outlines + title ────
+    // At depth 2 the leaves already drew their own cells. The depth-1 parents
+    // are drawn as a semi-transparent strong outline + a title strip on top.
+    const parents = hRoot.descendants().filter(n => n.depth === 1 && n.children && n.children.length);
+    const parentSel = g.append("g").attr("class", "parents")
+      .selectAll("g.parent")
+      .data(parents)
+      .enter().append("g")
+      .attr("class", "parent")
+      .attr("transform", d => "translate(" + d.x0 + "," + d.y0 + ")");
+
+    parentSel.append("rect")
+      .attr("class", "parent-outline")
+      .attr("width",  d => Math.max(0, d.x1 - d.x0))
+      .attr("height", d => Math.max(0, d.y1 - d.y0))
+      .attr("fill", "none")
+      .attr("stroke", d => fillForNode(d.data))
+      .attr("stroke-opacity", d => hierarchySearchActive(d) ? 0.9 : 0.2)
+      .attr("stroke-width", 2)
+      .attr("rx", 3);
+
+    // Title strip — sits at the top of the parent, same color as the parent
+    parentSel.append("rect")
+      .attr("class", "parent-title-bg")
+      .attr("x", 0).attr("y", 0)
+      .attr("width", d => Math.max(0, d.x1 - d.x0))
+      .attr("height", d => Math.min(TITLE_STRIP_H, d.y1 - d.y0))
+      .attr("fill", d => fillForNode(d.data))
+      .attr("fill-opacity", d => hierarchySearchActive(d) ? 0.86 : 0.18)
+      .attr("rx", 2);
+
+    parentSel.each(function (d) {
+      const sel = d3.select(this);
+      const w = d.x1 - d.x0;
+      const h = d.y1 - d.y0;
+      if (w < 44 || h < 16) return;
+      // Title: wrap across at most 2 lines. Meta on its own line beneath.
+      const pad = 6;
+      const titleFs = 12;
+      const titleLineH = titleFs * 1.15;
+      const metaFs = 9.5;
+      const metaLineH = metaFs * 1.15;
+      const maxChars = Math.max(6, Math.floor((w - pad * 2) / (titleFs * 0.55)));
+      const metaMaxChars = Math.max(6, Math.floor((w - pad * 2) / (metaFs * 0.56)));
+
+      const nameLines = wrapTextLines(d.data.name || "", maxChars, 2);
+      const metaText = formatSubtext(d.data);
+      // Allow meta to spill to 2 lines so counts are never cut mid-word
+      const metaLines = metaText ? wrapTextLines(metaText, metaMaxChars, 2) : [];
+
+      // Render each name line as a tspan
+      const titleText = sel.append("text")
+        .attr("class", "parent-title")
+        .attr("x", pad).attr("y", pad + titleFs * 0.9)
+        .attr("font-size", titleFs)
+        .attr("fill", "#f7faff");
+      nameLines.forEach((line, i) => {
+        titleText.append("tspan")
+          .attr("x", pad)
+          .attr("dy", i === 0 ? 0 : titleLineH)
+          .text(line);
+      });
+
+      if (metaLines.length) {
+        const metaStartY = pad + titleFs * 0.9 + (nameLines.length - 1) * titleLineH + 2 + metaFs * 0.9;
+        const metaText2 = sel.append("text")
+          .attr("class", "parent-title-meta")
+          .attr("x", pad).attr("y", metaStartY)
+          .attr("font-size", metaFs)
+          .attr("fill", "rgba(255,255,255,0.78)");
+        metaLines.forEach((line, i) => {
+          metaText2.append("tspan")
+            .attr("x", pad)
+            .attr("dy", i === 0 ? 0 : metaLineH)
+            .text(line);
+        });
+      }
+    });
+
+    // Interaction on the title strip only (leaves handle their own clicks)
+    parentSel.append("rect")
+      .attr("class", "parent-title-hit")
+      .attr("x", 0).attr("y", 0)
+      .attr("width", d => Math.max(0, d.x1 - d.x0))
+      .attr("height", d => Math.min(TITLE_STRIP_H, d.y1 - d.y0))
+      .attr("fill", "transparent")
+      .attr("cursor", d => canZoomInto(d.data) ? "pointer" : "default")
+      .on("mouseenter", function (ev, d) {
+        d3.select(this.parentNode).select(".parent-title-bg").attr("fill-opacity", 1);
+        showTooltip(ev, d.data);
+      })
+      .on("mousemove", moveTooltip)
+      .on("mouseleave", function (ev, d) {
+        d3.select(this.parentNode).select(".parent-title-bg").attr("fill-opacity", 0.86);
+        hideTooltip();
+      })
+      .on("click", function (ev, d) {
+        if (canZoomInto(d.data)) zoomInto(d.data);
+      });
+  }
+
+  function canZoomInto(d) {
+    if (!d || !d.type) return false;
+    return d.type === 'cluster' || d.type === 'sub' || d.type === 'position' || d.type === 'post';
+  }
+
+  function fillForNode(d) {
+    // Persistent identity: subs (and anything inside them) use the sub shade
+    if (d.type === 'cluster')  return clusterColor(d.cl);
+    if (d.type === 'sub')      return d.color || clusterColor(d.cl);
+    if (d.type === 'position') return d._subColor || clusterColor(d.cl);
+    if (d.type === 'post')     return d._subColor || clusterColor(d.cl);
+    if (d.type === 'leaf') {
+      const base = d3.hsl(d._subColor || clusterColor(d.cl));
+      if (d.isPost) {
+        base.l = Math.min(0.85, base.l + 0.05);
+        return base.formatHex();
+      }
+      base.l = Math.max(0.22, base.l - 0.08);
+      return base.formatHex();
+    }
+    return "#6ea8ff";
+  }
+
+  function opacityForNode(d) {
+    let base;
+    if (d.type === 'cluster')       base = 0.74;
+    else if (d.type === 'sub')      base = 0.70;
+    else if (d.type === 'position') base = 0.66;
+    else if (d.type === 'post')     base = 0.60;
+    else if (d.type === 'leaf')     base = 0.56;
+    else                            base = 0.5;
+    // Search dim is applied later via hRoot._searchActive traversal; this
+    // function deliberately ignores the search state so sibling-hover logic
+    // can use it as a pure base opacity.
+    return base;
+  }
+
+  function nodeSelfMatches(node) {
+    if (!searchQuery) return true;
+    const name = (node.name || "").toLowerCase();
+    if (name.includes(searchQuery)) return true;
+    if (node.type === 'position' && node.description &&
+        node.description.toLowerCase().includes(searchQuery)) return true;
+    return false;
+  }
+
+  // For d3 hierarchy node `d`, returns true when the search should KEEP it
+  // bright. A node stays bright if (a) no search, (b) self matches, (c) any
+  // ancestor matches, or (d) any descendant matches.
+  function hierarchySearchActive(d) {
+    if (!searchQuery) return true;
+    // Self
+    if (nodeSelfMatches(d.data)) return true;
+    // Ancestors
+    let p = d.parent;
+    while (p) {
+      if (p.data && nodeSelfMatches(p.data)) return true;
+      p = p.parent;
+    }
+    // Descendants
+    if (d.children) {
+      const stack = d.children.slice();
+      while (stack.length) {
+        const n = stack.pop();
+        if (n.data && nodeSelfMatches(n.data)) return true;
+        if (n.children) stack.push(...n.children);
+      }
+    }
+    return false;
+  }
+
+  function formatSubtext(d) {
+    if (d.type === 'cluster')  return d.total.toLocaleString() + " items · " + (d.children ? d.children.length : "?") + " subtopics";
+    if (d.type === 'sub')      return d.total.toLocaleString() + " items · " + (d.postN ? d.postN.toLocaleString() + " posts" : "?");
+    if (d.type === 'position') return d.total.toLocaleString() + " items" + (d.description ? " · " + d.description : "");
+    if (d.type === 'post')     return d.total.toLocaleString() + " items · " + (d.commN) + " comments";
+    if (d.type === 'leaf')     return (d.isPost ? "post" : "comment") + " · r/" + d.subreddit + " · " + d.score + "↑";
+    return "";
+  }
+
+  function trimLabel(name, maxChars) {
+    if (!name) return "";
+    if (name.length <= maxChars || maxChars < 6) return name.slice(0, Math.max(0, maxChars));
+    return name.slice(0, Math.max(0, maxChars - 1)) + "…";
+  }
+
+  // Strip Reddit markdown formatting so body text reads naturally in cells.
+  // We remove emphasis markers, code fences, link syntax, and block quotes.
+  // Also collapses whitespace.
+  function cleanMarkdown(raw) {
+    if (!raw) return "";
+    let s = String(raw);
+    // Fenced code / inline code
+    s = s.replace(/```[\s\S]*?```/g, " ");
+    s = s.replace(/`([^`]+)`/g, "$1");
+    // Links: [text](url) → text
+    s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+    // Images: ![alt](url) → alt
+    s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
+    // Bold / italic markers (keeping text)
+    s = s.replace(/\*\*\*([^*]+)\*\*\*/g, "$1");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+    s = s.replace(/\*([^*]+)\*/g, "$1");
+    s = s.replace(/___([^_]+)___/g, "$1");
+    s = s.replace(/__([^_]+)__/g, "$1");
+    s = s.replace(/~~([^~]+)~~/g, "$1");
+    // Bullet markers, numbered lists
+    s = s.replace(/(^|\n)\s*[-*]\s+/g, "$1• ");
+    s = s.replace(/(^|\n)\s*\d+\.\s+/g, "$1");
+    // Block quotes: "> text" → "text"
+    s = s.replace(/(^|\n)\s*>+\s*/g, "$1");
+    // "/s" sarcasm marker at end of message
+    s = s.replace(/\s*\/s\b/gi, "");
+    // Escaped chars \* \_ etc.
+    s = s.replace(/\\([*_\[\]()~`>#])/g, "$1");
+    // Strip HTML entities commonly in Reddit dumps
+    s = s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x200B;/g, "");
+    // Collapse whitespace
+    s = s.replace(/\s+/g, " ").trim();
+    return s;
+  }
+
+  // Break raw text into up to `maxLines` lines, each of ≤ `maxChars` chars.
+  // Only ellipsizes when text genuinely overflows — preserves the full text
+  // whenever it fits. Handles long words with hard-wrap.
+  function wrapTextLines(text, maxChars, maxLines) {
+    if (!text || maxChars < 4 || maxLines < 1) return [];
+    const normalized = String(text).replace(/\s+/g, " ").trim();
+    if (!normalized) return [];
+    const words = normalized.split(" ");
+    const lines = [];
+    let cur = "";
+    let consumedWords = 0;
+    for (let wi = 0; wi < words.length; wi++) {
+      const w = words[wi];
+      const test = cur ? cur + " " + w : w;
+      if (test.length <= maxChars) {
+        cur = test;
+        consumedWords = wi + 1;
+        continue;
+      }
+      // need to flush current line and start a new one with `w`
+      if (cur) {
+        lines.push(cur);
+        if (lines.length >= maxLines) { cur = ""; break; }
+      }
+      if (w.length > maxChars) {
+        // Word itself overflows — hard-wrap
+        let rest = w;
+        while (rest.length > maxChars && lines.length < maxLines) {
+          lines.push(rest.slice(0, maxChars));
+          rest = rest.slice(maxChars);
+        }
+        if (lines.length >= maxLines) { cur = ""; break; }
+        cur = rest;
+        consumedWords = wi + 1;
+      } else {
+        cur = w;
+        consumedWords = wi + 1;
+      }
+    }
+    if (cur && lines.length < maxLines) lines.push(cur);
+
+    // If we didn't fit all words, mark the last line with an ellipsis.
+    if (consumedWords < words.length && lines.length > 0) {
+      const last = lines[lines.length - 1];
+      // Only add an ellipsis if there's truly leftover — don't eat real chars
+      // unless we must.
+      if (last.length + 1 <= maxChars) {
+        lines[lines.length - 1] = last + "…";
+      } else if (last.length >= 2) {
+        lines[lines.length - 1] = last.slice(0, -1) + "…";
+      }
+    }
+    return lines;
+  }
+
+  function renderMultilineText(sel, lines, x, y0, lineH, fs, cls) {
+    if (!lines || !lines.length) return;
+    const text = sel.append("text")
+      .attr("class", cls || "cell-body")
+      .attr("x", x).attr("y", y0)
+      .attr("font-size", fs);
+    lines.forEach((line, i) => {
+      text.append("tspan")
+        .attr("x", x)
+        .attr("dy", i === 0 ? 0 : lineH)
+        .text(line);
+    });
+  }
+
+  function getPostBodyPreview(postNode) {
+    // Look through this post's items to find the top-scoring comment body
+    if (!data || !data.points || !data.points.bodies) return "";
+    const bodies = data.points.bodies;
+    const scores = data.points.scores;
+    const typeCode = data.points.typeCode;
+    let bestIdx = -1, bestScore = -Infinity;
+    for (const i of postNode.indices) {
+      if (typeCode[i] !== 1) continue; // prefer comments
+      if (!bodies[i]) continue;
+      if (scores[i] > bestScore) { bestScore = scores[i]; bestIdx = i; }
+    }
+    if (bestIdx < 0) {
+      // Fall back to any body (post selftext perhaps)
+      for (const i of postNode.indices) {
+        if (bodies[i]) { bestIdx = i; break; }
+      }
+    }
+    return bestIdx >= 0 ? cleanMarkdown(bodies[bestIdx]) : "";
+  }
+
+  // Render a single L3 cell (leaf = individual comment/post) with wrapped body.
+  // Markdown is stripped via cleanMarkdown so the cell reads naturally.
+  function renderLeafCell(sel, d, w, h) {
+    const pad = 6;
+    const isPost = d.isPost;
+    const score = d.score;
+
+    // Tiny header strip: type + subreddit + score
+    const headerFs = 8.5;
+    const headerY = pad + headerFs * 0.85;
+    if (w > 60) {
+      const meta = (isPost ? "post" : "comment") + " · r/" + (d.subreddit || "?") + " · " + score + "↑";
+      sel.append("text")
+        .attr("class", "cell-sub")
+        .attr("x", pad)
+        .attr("y", headerY)
+        .attr("font-size", headerFs)
+        .attr("fill", "rgba(255,255,255,0.6)")
+        .text(trimLabel(meta, Math.floor((w - pad * 2) / (headerFs * 0.58))));
+    }
+
+    // Body (wrapped) — strip markdown first so formatting markers don't eat space
+    const body = cleanMarkdown(d.name || "");
+    if (!body || h < 36) return;
+    const bodyFs = Math.max(9.5, Math.min(13, Math.sqrt(w * h) / 13));
+    const lineH = bodyFs * 1.3;
+    const bodyStartY = headerY + 6 + bodyFs;
+    const availH = h - bodyStartY - pad;
+    const maxLines = Math.max(1, Math.floor(availH / lineH));
+    const maxChars = Math.max(6, Math.floor((w - pad * 2) / (bodyFs * 0.55)));
+    const lines = wrapTextLines(body, maxChars, maxLines);
+    renderMultilineText(sel, lines, pad, bodyStartY, lineH, bodyFs, "cell-leaf-body");
+  }
+
+  // ── Zoom ─────────────────────────────────────────────────────────────
+  function zoomInto(node) {
+    path = path.concat([{ ...node }]);
+    // Push a real history entry so browser Back actually walks up the tree
+    const newHash = pathToHash();
+    history.pushState(null, "", newHash || location.pathname + location.search);
+    animateZoom(true);
+  }
+
+  function zoomBack() {
+    if (path.length <= 1) return;
+    path = path.slice(0, -1);
+    const newHash = pathToHash();
+    history.pushState(null, "", newHash || location.pathname + location.search);
+    animateZoom(false);
+  }
+
+  function animateZoom(inward) {
+    // Fade out → swap → fade in. Uses raw setTimeout for reliability (d3
+    // transitions on <svg> opacity can get interrupted mid-flight).
+    const node = svg.node();
+    node.style.transition = "opacity " + (FLAGS.ZOOM_DURATION_MS * 0.3) + "ms ease";
+    node.style.opacity = "0";
+    setTimeout(() => {
+      try { render(); }
+      catch (e) { console.error('[animateZoom] render err', e); }
+      node.style.transition = "opacity " + (FLAGS.ZOOM_DURATION_MS * 0.45) + "ms ease";
+      node.style.opacity = "1";
+    }, FLAGS.ZOOM_DURATION_MS * 0.3);
+  }
+
+  // ── Breadcrumb ───────────────────────────────────────────────────────
+  function renderBreadcrumb() {
+    breadcrumbEl.innerHTML = "";
+    path.forEach((node, i) => {
+      if (i > 0) {
+        const sep = document.createElement("span");
+        sep.className = "crumb-sep";
+        sep.textContent = "›";
+        breadcrumbEl.appendChild(sep);
+      }
+      const el = document.createElement("div");
+      el.className = "crumb" + (i === 0 ? " root" : "") + (i === path.length - 1 ? " current" : "");
+      el.textContent = node.name || "";
+      if (i < path.length - 1) {
+        el.addEventListener("click", () => {
+          path = path.slice(0, i + 1);
+          const newHash = pathToHash();
+          history.pushState(null, "", newHash || location.pathname + location.search);
+          animateZoom(false);
+        });
+      }
+      breadcrumbEl.appendChild(el);
+    });
+    backBtn.disabled = path.length <= 1;
+  }
+
+  backBtn.addEventListener("click", zoomBack);
+  window.addEventListener("keydown", (e) => {
+    const sInput = document.getElementById("searchInput");
+    const typingInSearch = document.activeElement === sInput;
+    if (e.key === "Escape") {
+      if (typingInSearch || (sInput && sInput.value)) {
+        sInput.value = "";
+        setSearchQuery("");
+        sInput.blur();
+        return;
+      }
+      zoomBack();
+    } else if (e.key === "Backspace" && !typingInSearch) {
+      // Zoom out unless user is typing in the search box
+      e.preventDefault();
+      zoomBack();
+    } else if (e.key === "/" && !typingInSearch) {
+      // Quick-focus the search box
+      e.preventDefault();
+      sInput.focus();
+      sInput.select();
+    }
+  });
+
+  // Jump-to-match: rank candidates by how well they match the current query
+  // and drill into the best one. Prefers direct name hits on sub > cluster >
+  // position > post. Does nothing if there are no matches.
+  function jumpToSearchMatch() {
+    if (!searchQuery || !data) return;
+    const q = searchQuery;
+
+    // Score each sub first (most specific): direct name hit = 10, token hit = 2
+    const subCandidates = [];
+    for (const rec of data.subs) {
+      if (!rec) continue;
+      const name = (rec.name || "").toLowerCase();
+      if (name.includes(q)) subCandidates.push({ rec, score: 10 + (name.startsWith(q) ? 2 : 0) });
+    }
+    // Cluster name match
+    const clusterCandidates = [];
+    for (const [clStr, info] of Object.entries(data.clusterNames)) {
+      const name = (info && info.name ? info.name : "").toLowerCase();
+      if (name.includes(q)) clusterCandidates.push({ cl: parseInt(clStr, 10), name: info.name, score: 8 + (name.startsWith(q) ? 2 : 0) });
+    }
+    // Position name match (needs to know which sub)
+    const positionCandidates = [];
+    if (positionsData && positionsData.by_gid) {
+      for (const [gidStr, meta] of Object.entries(positionsData.by_gid)) {
+        const gid = parseInt(gidStr, 10);
+        const rec = data.subs[gid];
+        if (!rec || !meta.positions) continue;
+        for (let pi = 0; pi < meta.positions.length; pi++) {
+          const p = meta.positions[pi];
+          const name = (p.name || "").toLowerCase();
+          if (name.includes(q)) positionCandidates.push({ gid, cl: rec.cl, subName: rec.name, posIdx: pi, posName: p.name, score: 6 });
+        }
+      }
+    }
+
+    // Build target path
+    const best = pickBest();
+    if (!best) return;
+    path = best;
+    const newHash = pathToHash();
+    history.pushState(null, "", newHash || location.pathname + location.search);
+    animateZoom(true);
+
+    function pickBest() {
+      // Prefer best sub, then cluster, then position
+      if (subCandidates.length === 1) {
+        const s = subCandidates[0].rec;
+        return [
+          { type: 'root', name: 'All clusters' },
+          { type: 'cluster', cl: s.cl, name: (data.clusterNames[String(s.cl)] || {}).name || ("Cluster " + s.cl) },
+          { type: 'sub', gid: s.gid, cl: s.cl, name: s.name }
+        ];
+      }
+      if (clusterCandidates.length === 1) {
+        const c = clusterCandidates[0];
+        return [
+          { type: 'root', name: 'All clusters' },
+          { type: 'cluster', cl: c.cl, name: c.name }
+        ];
+      }
+      if (subCandidates.length > 1) {
+        // Multiple subs — jump to their common cluster if all share one
+        const cls = new Set(subCandidates.map(s => s.rec.cl));
+        if (cls.size === 1) {
+          const cl = [...cls][0];
+          return [
+            { type: 'root', name: 'All clusters' },
+            { type: 'cluster', cl, name: (data.clusterNames[String(cl)] || {}).name || ("Cluster " + cl) }
+          ];
+        }
+        // Multiple subs across multiple clusters — pick top-scoring single sub
+        subCandidates.sort((a, b) => b.score - a.score);
+        const s = subCandidates[0].rec;
+        return [
+          { type: 'root', name: 'All clusters' },
+          { type: 'cluster', cl: s.cl, name: (data.clusterNames[String(s.cl)] || {}).name || ("Cluster " + s.cl) },
+          { type: 'sub', gid: s.gid, cl: s.cl, name: s.name }
+        ];
+      }
+      if (positionCandidates.length === 1) {
+        const p = positionCandidates[0];
+        return [
+          { type: 'root', name: 'All clusters' },
+          { type: 'cluster', cl: p.cl, name: (data.clusterNames[String(p.cl)] || {}).name || ("Cluster " + p.cl) },
+          { type: 'sub', gid: p.gid, cl: p.cl, name: p.subName },
+          { type: 'position', posIdx: p.posIdx, gid: p.gid, cl: p.cl, name: p.posName }
+        ];
+      }
+      return null;
+    }
+  }
+
+  // ── Search wiring ───────────────────────────────────────────────────
+  function setSearchQuery(q) {
+    searchQuery = (q || "").toLowerCase().trim();
+    document.getElementById("search-clear").classList.toggle("visible", !!searchQuery);
+    render();
+    // Update match counter
+    const counter = document.getElementById("search-count");
+    if (!searchQuery) {
+      counter.classList.remove("visible");
+      counter.textContent = "";
+    } else {
+      const rects = document.querySelectorAll('g.leaf rect.cell-rect');
+      let bright = 0;
+      rects.forEach(r => {
+        const op = parseFloat(r.getAttribute('fill-opacity') || 0);
+        if (op >= 0.2) bright++;
+      });
+      counter.textContent = bright + " match" + (bright !== 1 ? "es" : "");
+      counter.classList.add("visible");
+    }
+  }
+  {
+    const sInput = document.getElementById("searchInput");
+    const sClear = document.getElementById("search-clear");
+    let searchTimer = null;
+    sInput.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => setSearchQuery(sInput.value), 140);
+    });
+    sInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        setSearchQuery(sInput.value);
+        // If there's a single best match among clusters or subs, jump to it.
+        jumpToSearchMatch();
+      }
+    });
+    sClear.addEventListener("click", () => {
+      sInput.value = "";
+      setSearchQuery("");
+      sInput.focus();
+    });
+  }
+
+  // ── Tooltip ──────────────────────────────────────────────────────────
+  function showTooltip(ev, d) {
+    if (d.type === 'leaf') {
+      tooltip.innerHTML =
+        '<div class="tt-name">' + escapeHtml(trimLabel(d.name, 120)) + '</div>' +
+        '<div class="tt-cluster">r/' + escapeHtml(d.subreddit) + '</div>' +
+        '<div class="tt-meta">' + (d.isPost ? 'submission' : 'comment') + ' · score ' + d.score + '</div>';
+    } else if (d.type === 'post') {
+      // Include a short body preview from the top-scoring comment
+      const preview = getPostBodyPreview(d);
+      tooltip.innerHTML =
+        '<div class="tt-name">' + escapeHtml(trimLabel(d.name, 120)) + '</div>' +
+        '<div class="tt-meta">' + d.total.toLocaleString() + ' items · ' + d.commN + ' comments</div>' +
+        (preview ? '<div style="margin-top:5px;font-size:10.5px;color:rgba(226,232,244,0.65);line-height:1.4;">' + escapeHtml(preview.slice(0, 180)) + (preview.length > 180 ? "…" : "") + '</div>' : '');
+    } else if (d.type === 'position') {
+      tooltip.innerHTML =
+        '<div class="tt-name" style="color:' + (d._subColor || clusterColor(d.cl)) + '">' + escapeHtml(d.name) + '</div>' +
+        (d.description ? '<div class="tt-cluster">' + escapeHtml(d.description) + '</div>' : '') +
+        '<div class="tt-meta">' + d.total.toLocaleString() + ' items' +
+          (d.keywords && d.keywords.length ? ' · ' + d.keywords.slice(0, 4).join(" · ") : '') +
+          '</div>';
+    } else if (d.type === 'sub') {
+      const clName = (data.clusterNames[String(d.cl)] || {}).name || ("Cluster " + d.cl);
+      tooltip.innerHTML =
+        '<div class="tt-name" style="color:' + clusterColor(d.cl) + '">' + escapeHtml(d.name) + '</div>' +
+        '<div class="tt-cluster">' + escapeHtml(clName) + '</div>' +
+        '<div class="tt-meta">' + d.total.toLocaleString() + ' items · ' + d.postN + ' posts · ' + d.commN + ' comments</div>';
+    } else if (d.type === 'cluster') {
+      tooltip.innerHTML =
+        '<div class="tt-name" style="color:' + clusterColor(d.cl) + '">' + escapeHtml(d.name) + '</div>' +
+        '<div class="tt-meta">' + d.total.toLocaleString() + ' items · ' + (d.children ? d.children.length : '?') + ' subtopics</div>';
+    }
+    moveTooltip(ev);
+    tooltip.classList.add("visible");
+  }
+  function moveTooltip(ev) {
+    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    const x = Math.min(ev.clientX + 14, window.innerWidth - tw - 8);
+    const y = Math.min(ev.clientY + 14, window.innerHeight - th - 8);
+    tooltip.style.left = x + "px"; tooltip.style.top = y + "px";
+  }
+  function hideTooltip() { tooltip.classList.remove("visible"); }
+
+  // ── Detail panel ─────────────────────────────────────────────────────
+  function showDetail(d) {
+    if (d.type === 'leaf') {
+      detailMode.textContent = d.isPost ? "Post" : "Comment";
+      detailMode.style.color = clusterColor(d.cl);
+      detailTitle.textContent = d.isPost ? (d.name || "(untitled post)") : "r/" + d.subreddit;
+      detailMeta.textContent = "r/" + d.subreddit + " · score " + d.score;
+      detailSamples.innerHTML = "";
+      if (!d.isPost && d.body) {
+        const body = document.createElement("div");
+        body.style.cssText = "padding: 14px; font-size: 12.5px; line-height: 1.6; color: rgba(226,232,244,0.88); white-space: pre-wrap;";
+        body.textContent = cleanMarkdown(d.body);
+        detailSamples.appendChild(body);
+      } else if (d.isPost && d.name) {
+        const title = document.createElement("div");
+        title.style.cssText = "padding: 14px 14px 6px; font-size: 13px; font-weight: 500; color: rgba(240,244,255,0.92);";
+        title.textContent = d.name;
+        detailSamples.appendChild(title);
+        if (d.body) {
+          const body = document.createElement("div");
+          body.style.cssText = "padding: 6px 14px 14px; font-size: 12.5px; line-height: 1.6; color: rgba(226,232,244,0.78);";
+          body.textContent = cleanMarkdown(d.body);
+          detailSamples.appendChild(body);
+        }
+      }
+      if (d.permalink) {
+        const link = document.createElement("a");
+        link.href = d.permalink;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Open on Reddit ↗";
+        link.style.cssText = "display:inline-block; margin:10px 14px 14px; color:" + clusterColor(d.cl) + "; text-decoration:none; font-size:11.5px; border-bottom:1px dashed currentColor; padding-bottom:1px;";
+        detailSamples.appendChild(link);
+      }
+      detailPanel.classList.add("visible");
+      return;
+    }
+    // Non-leaf: basic info
+    detailMode.textContent = d.type;
+    detailTitle.textContent = d.name || "";
+    detailMeta.textContent = (d.total || 0).toLocaleString() + " items";
+    detailSamples.innerHTML = "";
+    detailPanel.classList.add("visible");
+  }
+  detailClose.addEventListener("click", () => detailPanel.classList.remove("visible"));
+
+  // Resize
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(render, 120);
+  });
+
+  main();
+})();
+</script>
+</body>
+</html>

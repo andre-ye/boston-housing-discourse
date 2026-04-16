@@ -35,3 +35,9 @@ viz/tsne_d3_viewer.html
 
 # ── Pipeline scripts (local only, not needed for deploy) ─────────────────────
 scripts/
+
+# ── Position-labeling pipeline intermediates (local only) ────────────────────
+# The merged positions.json IS committed — these are the per-sub inputs/outputs.
+viz/tsne_chunks/sub_samples.json
+viz/tsne_chunks/sub_samples/
+viz/tsne_chunks/positions/
