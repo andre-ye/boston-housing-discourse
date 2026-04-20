@@ -33,8 +33,8 @@ viz/tsne_full_split.html
 viz/tsne_interactive_bge_strict_split.html
 viz/tsne_d3_viewer.html
 
-# ── Pipeline scripts (local only, not needed for deploy) ─────────────────────
-scripts/
+# Pipeline logs and run-state produced by scripts/ (but keep scripts/ itself)
+scripts/logs/
 
 # ── Position-labeling pipeline intermediates (local only) ────────────────────
 # The merged positions.json IS committed — these are the per-sub inputs/outputs.

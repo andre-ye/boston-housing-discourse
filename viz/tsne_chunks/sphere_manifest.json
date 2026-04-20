@@ -1,0 +1,1 @@
+{"n": 422114, "format": "float32 interleaved (lat, lon) radians", "method": "openTSNE-3D + whiten + radial normalize"}
