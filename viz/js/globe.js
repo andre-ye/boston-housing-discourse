@@ -1,12 +1,12 @@
 // Three.js globe renderer.
 // - Points geometry with per-point color (cluster palette).
 // - Underlying sphere mesh with a baked KDE-style surface texture.
-// - Orbit controls via mouse drag, scroll zoom, arrow keys.
+// - Orbit controls via mouse drag, two-finger horizontal swipe, scroll zoom, arrow keys.
 // - Thread arcs (post → comment) drawn as great-circle cubic bezier tubes.
 
 import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=231';
+import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE, pointPassesViewerFilters } from './data.js?v=231';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -287,9 +287,10 @@ export class GlobeView extends EventTarget {
   }
 
   _initSurface() {
-    // Just a plain dark sphere behind the points — no painted continents or
-    // texture; points alone make the viz pop.
-    const backMat = new THREE.MeshBasicMaterial({ color: 0x0a0c12, side: THREE.FrontSide });
+    // Plain sphere behind the points; color follows CSS theme variable.
+    const root = getComputedStyle(document.documentElement);
+    const backHex = (root.getPropertyValue('--globe-backdrop-hex') || '').trim() || '#0a0c12';
+    const backMat = new THREE.MeshBasicMaterial({ color: backHex, side: THREE.FrontSide });
     const backGeom = new THREE.SphereGeometry(GLOBE_RADIUS * 0.998, 64, 32);
     this.surfaceBackdrop = new THREE.Mesh(backGeom, backMat);
     this.worldGroup.add(this.surfaceBackdrop);
@@ -306,11 +307,22 @@ export class GlobeView extends EventTarget {
     if (this.surface) this.surface.visible = v;
   }
 
+  refreshThemeFromCss() {
+    if (!this.surfaceBackdrop?.material) return;
+    const root = getComputedStyle(document.documentElement);
+    const backHex = (root.getPropertyValue('--globe-backdrop-hex') || '').trim() || '#0a0c12';
+    this.surfaceBackdrop.material.color.set(backHex);
+    this.surfaceBackdrop.material.needsUpdate = true;
+  }
+
   _bindInteraction() {
     const canvas = this.canvas;
-    let dragging = false;
-    let lastX = 0, lastY = 0;
+    /** @type {Map<number, {x: number, y: number}>} */
+    const pointers = new Map();
+    let lastX = 0, lastY = 0; // one-finger drag
+    let lastCx = 0, lastCy = 0, twoFingerReady = false; // two-finger centroid
     let didDrag = false;
+    let everMulti = false; // 2+ pointers this gesture — no synthetic point click
     const ROT_SPEED = 0.0055;
     const KEY_STEP = 0.06;
 
@@ -329,29 +341,118 @@ export class GlobeView extends EventTarget {
       this.worldQuatTarget.premultiply(qx).premultiply(qy);
     };
 
+    const centroid = () => {
+      if (pointers.size < 2) return null;
+      let sx = 0, sy = 0;
+      for (const p of pointers.values()) {
+        sx += p.x;
+        sy += p.y;
+      }
+      const n = pointers.size;
+      return { x: sx / n, y: sy / n };
+    };
+
     canvas.addEventListener('pointerdown', (e) => {
-      dragging = true; didDrag = false; lastX = e.clientX; lastY = e.clientY;
-      canvas.setPointerCapture(e.pointerId);
+      if (typeof canvas.focus === 'function') canvas.focus();
+      const wasEmpty = pointers.size === 0;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (wasEmpty) {
+        didDrag = false;
+        everMulti = false;
+      }
+      if (pointers.size >= 2) everMulti = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* */ }
       canvas.classList.add('grabbing');
+      if (pointers.size === 1) {
+        lastX = e.clientX;
+        lastY = e.clientY;
+        twoFingerReady = false;
+      } else if (pointers.size === 2) {
+        const c = centroid();
+        if (c) {
+          lastCx = c.x;
+          lastCy = c.y;
+        }
+        // Next move re-baselines centroid (avoids a jump when the 2nd finger lands)
+        twoFingerReady = false;
+      }
     });
     canvas.addEventListener('pointerup', (e) => {
-      dragging = false;
-      canvas.classList.remove('grabbing');
-      if (!didDrag) this._handleClick(e);
+      pointers.delete(e.pointerId);
+      if (pointers.size === 1) {
+        const p = pointers.values().next().value;
+        if (p) { lastX = p.x; lastY = p.y; }
+        twoFingerReady = false;
+      } else if (pointers.size === 0) {
+        canvas.classList.remove('grabbing');
+        if (!didDrag && !everMulti) this._handleClick(e);
+        everMulti = false;
+        twoFingerReady = false;
+      } else if (pointers.size === 2) {
+        const c = centroid();
+        if (c) {
+          lastCx = c.x;
+          lastCy = c.y;
+        }
+        twoFingerReady = false;
+      } else {
+        twoFingerReady = false;
+      }
+    });
+    canvas.addEventListener('pointercancel', (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0) {
+        canvas.classList.remove('grabbing');
+        twoFingerReady = false;
+        everMulti = false;
+      }
     });
     canvas.addEventListener('pointermove', (e) => {
-      if (dragging) {
+      if (pointers.has(e.pointerId)) {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      if (pointers.size === 0) {
+        this._updateHover(e);
+        return;
+      }
+      if (pointers.size >= 2) {
+        const c = centroid();
+        if (!c) return;
+        if (!twoFingerReady) {
+          lastCx = c.x;
+          lastCy = c.y;
+          twoFingerReady = true;
+          return;
+        }
+        const dcx = c.x - lastCx;
+        if (Math.abs(dcx) > 0.25) didDrag = true;
+        // Two-finger swipe: horizontal only (Y-axis rotation, sideways on the globe)
+        applyScreenRotation(dcx, 0);
+        lastCx = c.x;
+        lastCy = c.y;
+        return;
+      }
+      // one pointer: full drag
+      if (pointers.size === 1) {
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
         if (Math.abs(dx) + Math.abs(dy) > 2) didDrag = true;
-        lastX = e.clientX; lastY = e.clientY;
+        lastX = e.clientX;
+        lastY = e.clientY;
         applyScreenRotation(dx, dy);
-      } else {
-        this._updateHover(e);
+        return;
       }
+      this._updateHover(e);
     });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      const adx = Math.abs(e.deltaX);
+      const ady = Math.abs(e.deltaY);
+      // Trackpad two-finger horizontal scroll (wheel deltaX) — same sideways spin as touch
+      if (adx > ady && adx > 0.5) {
+        applyScreenRotation(e.deltaX * 0.11, 0);
+        return;
+      }
       // Adaptive zoom: gentler when already zoomed in (small distance) so
       // the user doesn't get whip-lashed near the surface.
       const t = (this.distanceTarget - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
@@ -361,7 +462,9 @@ export class GlobeView extends EventTarget {
     }, { passive: false });
 
     window.addEventListener('keydown', (e) => {
-      if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+      if (e.key === 'Escape') return;
+      const t = document.activeElement;
+      if (t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable)) return;
       let dx = 0, dy = 0;
       // Arrow direction = direction content moves on screen (push-the-globe).
       if (e.key === 'ArrowLeft')  dx = -100;
@@ -507,6 +610,7 @@ export class GlobeView extends EventTarget {
     const st = this.state;
     const f = this._filter;
     const dim = this.pointGeom.attributes.dim.array;
+    const inRange = (i) => pointPassesViewerFilters(st, i);
     const hasMultiC = f.multiClusters && f.multiClusters.size > 0;
     const hasMultiS = f.multiSubs && f.multiSubs.size > 0;
     const hasSR = f.subredditIds && f.subredditIds.size > 0;
@@ -515,9 +619,15 @@ export class GlobeView extends EventTarget {
     const monthAssign = st.monthAssignments;
     const noFilter = f.focusCl == null && f.focusSubLocal == null && !hasMultiC && !hasMultiS && !hasSR && !hasMonth;
     if (noFilter) {
-      dim.fill(1.0);
+      for (let i = 0; i < st.N; i++) {
+        dim[i] = inRange(i) ? 1.0 : 0.12;
+      }
     } else {
       for (let i = 0; i < st.N; i++) {
+        if (!inRange(i)) {
+          dim[i] = 0.12;
+          continue;
+        }
         let ok = true;
         if (f.focusCl != null && st.cluster[i] !== f.focusCl) ok = false;
         if (ok && f.focusSubLocal &&

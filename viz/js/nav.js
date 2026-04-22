@@ -392,7 +392,7 @@ export class NavController extends EventTarget {
           const cl = mapping.dominant_cl;
           const gid = mapping.top_sub_gid;
           const subInfo = gid != null ? byGid[gid] : null;
-          const clName = clusterMeta[String(cl)]?.name || `Cluster ${cl}`;
+          const clName = clusterMeta[String(cl)]?.name || `Topic ${cl}`;
           for (const text of cell.samples || []) {
             if (typeof text !== 'string' || !text) continue;
             flat.push({ text, cl, gid, subName: subInfo?.name || '', clusterName: clName });
@@ -811,7 +811,7 @@ export class NavController extends EventTarget {
     const clusters = this.state.clusterMeta || {};
     for (const [clStr, meta] of Object.entries(clusters)) {
       const cl = +clStr;
-      out.push({ kind: 'cluster', cl, label: meta.name || `Cluster ${cl}`,
+      out.push({ kind: 'cluster', cl, label: meta.name || `Topic ${cl}`,
         color: clusterColor(cl), context: '' });
     }
     const subMeta = this.state.subMeta || {};
@@ -1014,7 +1014,7 @@ export class NavController extends EventTarget {
     }
     const topCls = [...byCluster.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
     for (const [cl, count] of topCls) {
-      const name = this.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
+      const name = this.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
       out.push({
         kind: 'cluster', cl, label: name,
         color: clusterColor(cl),
@@ -1289,7 +1289,7 @@ export class NavController extends EventTarget {
       const c = document.createElement('div');
       c.className = 'crumb' + (this.focusGid == null ? ' active' : '');
       c.style.color = clusterColor(this.focusCl);
-      c.textContent = meta ? meta.name : `Cluster ${this.focusCl}`;
+      c.textContent = meta ? meta.name : `Topic ${this.focusCl}`;
       c.onclick = () => this.focus({ cl: this.focusCl });
       el.appendChild(c);
       linkCrumb(c, this.stackL1, String(this.focusCl));
@@ -1656,18 +1656,18 @@ export class NavController extends EventTarget {
     if (this._hoverCloseTimer) { clearTimeout(this._hoverCloseTimer); this._hoverCloseTimer = null; }
     for (const c of document.querySelectorAll('.bar-column.narrow.open')) c.classList.remove('open');
     document.getElementById('nav')?.classList.remove('nav-narrow-open');
-    // When a level is collapsed to a narrow strip, show "Cluster: X" /
-    // "Subtopic: Y" in the rotated label so the user sees WHICH cluster /
+    // When a level is collapsed to a narrow strip, show "Topic: X" /
+    // "Subtopic: Y" in the rotated label so the user sees WHICH topic /
     // subtopic they've drilled into without expanding the column.
     const t1 = document.getElementById('title-l1');
     const t2 = document.getElementById('title-l2');
     const t3 = document.getElementById('title-l3');
     if (t1) {
       if (cl != null) {
-        const name = this.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
-        t1.textContent = `Cluster: ${name}`;
+        const name = this.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
+        t1.textContent = `Topic: ${name}`;
       } else {
-        t1.textContent = t1.dataset.default || 'Clusters';
+        t1.textContent = t1.dataset.default || 'Topics';
       }
     }
     if (t2) {

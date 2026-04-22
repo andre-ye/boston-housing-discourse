@@ -1,13 +1,25 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=231';
+import {
+  loadData,
+  App,
+  buildSubGidMap,
+  getPointDetails,
+  clusterColor,
+  SPHERE_PALETTE,
+  clusterAnchor,
+  subAnchor,
+  latLonToXYZ,
+  pointPassesViewerFilters,
+} from './data.js?v=231';
+import { NavController } from './nav.js?v=231';
+import { GlobeView } from './globe.js?v=231';
+import * as THREE from 'three';
+
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
   return SPHERE_PALETTE[i];
 }
-import { NavController } from './nav.js?v=231';
-import { GlobeView } from './globe.js?v=231';
-import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
 const loadingMsg = document.getElementById('loading-msg');
@@ -321,92 +333,6 @@ async function boot() {
   const fvoices = document.getElementById('focus-voices');
   const fsubs = document.getElementById('focus-subs');
 
-  // Copy-as-markdown for the focus card, mirroring the position card's
-  // affordance. Reads current focus state at click-time so one handler
-  // covers both cluster and sub focus. Includes the subreddit mix, a
-  // "top stances" list at cluster level, trend, and a deep-link.
-  (() => {
-    const btn = document.getElementById('fc-copy-md');
-    if (!btn) return;
-    btn.onclick = async () => {
-      const cl = nav.focusCl;
-      const gid = nav.focusGid;
-      if (cl == null) return;
-      const clMeta = App.state.clusterMeta?.[String(cl)];
-      const clName = clMeta?.name || `Cluster ${cl}`;
-      const range = globe._filter?.monthRange || null;
-      const rangeLabel = range
-        ? ` (${App.state.monthLabels[range.lo]} → ${App.state.monthLabels[range.hi]})`
-        : '';
-      const title = gid != null ? (App.subGidMap.byGid[gid]?.name || `sub ${gid}`) : clName;
-      const series = gid != null ? getSubSeries(gid) : getClusterSeries(cl);
-      const t = getTrendInfo(series);
-      const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
-      // Subreddit mix (top 3)
-      const bd = gid != null
-        ? (App.state.subredditBreakdown?.by_sub_gid?.[String(gid)] || [])
-        : (App.state.subredditBreakdown?.by_cluster?.[String(cl)] || []);
-      const subTotal = bd.reduce((s, e) => s + (e.n || 0), 0);
-      const mixLine = bd.slice(0, 3)
-        .map(e => `r/${e.r} ${Math.round(100 * e.n / subTotal)}%`)
-        .join(' · ');
-      const total = series ? series.reduce((s, v) => s + v, 0) : 0;
-      // Top stances — only at cluster level (sub has its own drill list).
-      let stancesBlock = '';
-      if (gid == null) {
-        const rows = [...document.querySelectorAll('#focus-stances .fc-stance')]
-          .slice(0, 5)
-          .map(row => {
-            const name = row.querySelector('.fc-st-name')?.textContent?.trim();
-            const sub = row.querySelector('.fc-st-sub')?.textContent?.trim();
-            const count = row.querySelector('.fc-st-count')?.textContent?.trim();
-            return name ? `- ${name} *(${sub})* — ${count}` : null;
-          })
-          .filter(Boolean);
-        if (rows.length) stancesBlock = '\n**Loudest stances:**\n' + rows.join('\n');
-      }
-      // Shareable link — carry every active filter so the recipient lands
-      // on the exact view (matches the position-card link in v=193).
-      const parts = [`cl=${cl}`];
-      if (gid != null) parts.push(`gid=${gid}`);
-      if (range) { parts.push(`from=${range.lo}`); parts.push(`to=${range.hi}`); }
-      if (_activeSubredditFilter) parts.push(`sr=${_activeSubredditFilter.id}`);
-      const q = document.getElementById('search-input')?.value?.trim();
-      if (q) parts.push(`q=${encodeURIComponent(q)}`);
-      const link = `${location.origin}${location.pathname}#${parts.join('&')}`;
-      const md = [
-        `## ${title}${trendStr}${rangeLabel}`,
-        gid != null ? `*${clName} ▸ ${title}*` : '',
-        '',
-        `**Volume:** ${total.toLocaleString()} posts`,
-        mixLine ? `**Voiced by:** ${mixLine}` : '',
-        stancesBlock,
-        `\n[View on globe](${link})`,
-      ].filter(Boolean).join('\n').trim();
-      let ok = false;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(md);
-          ok = true;
-        }
-      } catch {}
-      if (!ok) {
-        const ta = document.createElement('textarea');
-        ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        try { ok = document.execCommand('copy'); } catch {}
-        ta.remove();
-      }
-      btn.classList.toggle('copied', ok);
-      btn.classList.toggle('copy-err', !ok);
-      btn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
-      setTimeout(() => {
-        btn.classList.remove('copied', 'copy-err');
-        btn.removeAttribute('data-msg');
-      }, 1600);
-    };
-  })();
-
   // Which subreddits dominate this cluster / sub? Renders a 3-segment
   // horizontal bar + labels. Tiny file (~32 KB) pre-baked by
   // scripts/compute_subreddit_breakdown.py.
@@ -645,7 +571,7 @@ async function boot() {
       detailEl.classList.add('empty');
       detailKind.textContent = 'the whole globe';
       detailTitle.textContent = '422,114 voices';
-      detailDesc.textContent = 'Pick a cluster on the left to see what people in that region of the conversation are saying.';
+      detailDesc.textContent = 'Pick a topic on the left to see what people in that region of the conversation are saying.';
       detailMeta.textContent = '';
       detailList.innerHTML = '';
       return;
@@ -672,8 +598,8 @@ async function boot() {
       detailMeta.textContent = '';
     } else {
       const clMeta = App.state.clusterMeta?.[String(cl)];
-      detailKind.textContent = 'cluster';
-      detailTitle.textContent = clMeta?.name || `Cluster ${cl}`;
+      detailKind.textContent = 'topic';
+      detailTitle.textContent = clMeta?.name || `Topic ${cl}`;
       detailDesc.textContent = '';
       detailMeta.textContent = '';
     }
@@ -864,9 +790,9 @@ async function boot() {
   // header crumbs are tiny; these are big enough to reliably hit.
   function renderFocusCrumbs(cl, gid) {
     if (!fcrumbs) return;
-    const parts = [`<button class="fc-up" data-level="all">← All clusters</button>`];
+    const parts = [`<button class="fc-up" data-level="all">← All topics</button>`];
     if (cl != null && gid != null) {
-      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
+      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
       parts.push(`<button class="fc-up" data-level="cluster" style="color:${sphereColor(cl)}">${escapeHtml(clName)}</button>`);
     }
     fcrumbs.innerHTML = parts.join('<span class="fc-sep">›</span>');
@@ -936,9 +862,9 @@ async function boot() {
       const a = clusterAnchor(App.state, cl);
       if (a) globe.rotateTo(a.lat, a.lon, 1.9);
       const meta = App.state.clusterMeta[String(cl)];
-      ftitle.textContent = meta ? meta.name : `Cluster ${cl}`;
+      ftitle.textContent = meta ? meta.name : `Topic ${cl}`;
       ftitle.style.color = sphereColor(cl);
-      fkind.innerHTML = `cluster ${renderTrendBadge(getClusterSeries(cl))}`;
+      fkind.innerHTML = `topic ${renderTrendBadge(getClusterSeries(cl))}`;
       fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
       if (fspark) fspark.innerHTML = renderClusterSparkline(cl, sphereColor(cl));
       renderFocusCrumbs(cl, null);
@@ -1021,7 +947,7 @@ async function boot() {
       const title = (details.title || '').trim();
       const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
       const meta = App.state.clusterMeta[String(details.cluster)];
-      const catName = meta ? meta.name : `Cluster ${details.cluster}`;
+      const catName = meta ? meta.name : `Topic ${details.cluster}`;
       const clColor = sphereColor(details.cluster);
       pointTooltip.innerHTML = `
         <div class="hv-cluster" style="color:${clColor}">${catName}</div>
@@ -2155,9 +2081,8 @@ async function boot() {
 
     el.innerHTML = `
       <button class="pc2-close" id="pc2-close" aria-label="Close">×</button>
-      <button class="pc2-copy-md" id="pc2-copy-md" aria-label="Copy as markdown" title="Copy stance summary as markdown (for notes / writeups)">📋</button>
       <nav class="pc2-breadcrumbs">
-        <button class="pc2-up" data-level="all" aria-label="All clusters">All</button>
+        <button class="pc2-up" data-level="all" aria-label="All topics">All</button>
         <span class="pc2-sep">›</span>
         <button class="pc2-up" data-level="cluster" style="color:${color}">${escapeHtml(doc.cluster_name)}</button>
         <span class="pc2-sep">›</span>
@@ -2303,78 +2228,6 @@ async function boot() {
       }
     };
 
-    // "Copy as markdown" — gives researchers a pasteable stance summary
-    // (cluster ▸ sub ▸ stance, description, subreddit mix, 3 evidence
-    // quotes, shareable link) so they can lift a finding straight into
-    // notes or a writeup without retyping.
-    const copyBtn = document.getElementById('pc2-copy-md');
-    if (copyBtn) {
-      copyBtn.onclick = async () => {
-        const subArr = getPositionSubredditCounts(gid, posIdx) || [];
-        const subTotal = subArr.reduce((s, e) => s + e.n, 0);
-        // Match the visible card's threshold — when attributed points < 5
-        // the subreddit signal is too thin to report honestly.
-        const mixLine = subTotal >= 5 ? subArr.slice(0, 3)
-          .map(s => `r/${s.name} ${Math.round(100 * s.n / subTotal)}%`)
-          .join(' · ') : '';
-        const t = getTrendInfo(getPositionSeries(gid, posIdx));
-        const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
-        const kwStr = (pos.keywords || []).slice(0, 6).join(', ');
-        // Sample items have class .pc2-sample; we want just their text,
-        // stripping any footer bylines we rendered inside.
-        const sampleEls = Array.from(document.querySelectorAll('#pc2-sample-list .pc2-sample'))
-          .slice(0, 3)
-          .map(e => {
-            const clone = e.cloneNode(true);
-            clone.querySelectorAll('.pc2-sample-meta, .pc2-sample-sub, [class*="byline"]').forEach(n => n.remove());
-            return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-          })
-          .filter(Boolean);
-        const sampleLines = sampleEls.map(s => `- ${s.length > 280 ? s.slice(0, 277) + '…' : s}`);
-        // Carry active filter state into the link so the recipient lands
-        // on the same view (matches focus-card copy-md behavior in v=146).
-        const linkParts = [`cl=${cl}`, `gid=${gid}`, `pos=${posIdx}`];
-        const mr = globe._filter?.monthRange;
-        if (mr) { linkParts.push(`from=${mr.lo}`); linkParts.push(`to=${mr.hi}`); }
-        if (_activeSubredditFilter) linkParts.push(`sr=${_activeSubredditFilter.id}`);
-        const qNow = document.getElementById('search-input')?.value?.trim();
-        if (qNow) linkParts.push(`q=${encodeURIComponent(qNow)}`);
-        const link = `${location.origin}${location.pathname}#${linkParts.join('&')}`;
-        const md = [
-          `## ${pos.name}${trendStr}`,
-          `*${doc.cluster_name} ▸ ${doc.sub_name}*`,
-          '',
-          (pos.description || '').trim(),
-          '',
-          mixLine ? `**Voiced by:** ${mixLine}` : '',
-          kwStr ? `**Signal phrases:** ${kwStr}` : '',
-          `**Volume:** ${pos.count.toLocaleString()} posts (${Math.round(100 * pos.count / (doc.total_in_sub || 1))}% of *${doc.sub_name}*)`,
-          sampleLines.length ? '\n**Evidence:**\n' + sampleLines.join('\n') : '',
-          `\n[View on globe](${link})`,
-        ].filter(Boolean).join('\n').trim();
-        let ok = false;
-        try {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(md);
-            ok = true;
-          }
-        } catch (e) { /* fallback below */ }
-        if (!ok) {
-          const ta = document.createElement('textarea');
-          ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
-          document.body.appendChild(ta); ta.select();
-          try { ok = document.execCommand('copy'); } catch {}
-          ta.remove();
-        }
-        copyBtn.classList.toggle('copied', ok);
-        copyBtn.classList.toggle('copy-err', !ok);
-        copyBtn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
-        setTimeout(() => {
-          copyBtn.classList.remove('copied', 'copy-err');
-          copyBtn.removeAttribute('data-msg');
-        }, 1600);
-      };
-    }
     // Inline breadcrumb buttons — direct jump up the hierarchy without
     // having to reach for the small crumbs in the header.
     el.querySelectorAll('.pc2-up').forEach(b => {
@@ -2846,7 +2699,7 @@ async function boot() {
     // Group by cluster (name → array of placements).
     const byCluster = new Map();
     for (const p of placements) {
-      const name = App.state.clusterMeta?.[String(p.cluster)]?.name || `Cluster ${p.cluster}`;
+      const name = App.state.clusterMeta?.[String(p.cluster)]?.name || `Topic ${p.cluster}`;
       if (!byCluster.has(p.cluster)) byCluster.set(p.cluster, { name, items: [] });
       byCluster.get(p.cluster).items.push(p);
     }
@@ -2942,7 +2795,7 @@ async function boot() {
     const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id) || {};
     const cl = pin.cluster;
     const clColor = sphereColor(cl);
-    const clName = pin.cluster_name || (App.state.clusterMeta?.[String(cl)]?.name) || `Cluster ${cl}`;
+    const clName = pin.cluster_name || (App.state.clusterMeta?.[String(cl)]?.name) || `Topic ${cl}`;
     const fields = [
       ['Lives', iv.lives],
       ['Would live', iv.would_live],
@@ -3473,10 +3326,11 @@ async function boot() {
     const postIdx = await buildPostIndex();
     if (myEpoch !== hoverEpoch) return;
     const pIdx = postIdx.get(postId);
-    const siblings = await siblingsForThread(postId);
+    const siblingsAll = await siblingsForThread(postId);
     if (myEpoch !== hoverEpoch) return;
-    const pairs = [];
     const anchor = pIdx != null ? pIdx : idx;
+    const siblings = siblingsAll.filter((i) => i === idx || i === anchor || pointPassesViewerFilters(st, i));
+    const pairs = [];
     for (const s of siblings) {
       if (s === anchor) continue;
       pairs.push([anchor, s]);

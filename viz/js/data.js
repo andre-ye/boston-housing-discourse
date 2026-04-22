@@ -223,6 +223,11 @@ export async function loadData(onProgress) {
   App.loadingMsg('Loading chunk manifest…');
   const manifest = await fetchJSON('tsne_chunks/manifest.json');
 
+  let topicDesc = { topics: {}, subtopics: {} };
+  try {
+    topicDesc = await fetchJSON('tsne_chunks/topic_descriptions.json');
+  } catch (e) { /* optional file */ }
+
   const state = {
     N: sphere.N,
     coords: sphere.coords,     // Float32 [lat, lon] interleaved
@@ -245,9 +250,23 @@ export async function loadData(onProgress) {
     monthLabels,               // [label, label, ...]
     positionTimeHist,          // { labels: [], by_position: { "<gid>:<pos>": [counts] } }
     manifest,
+    topicDesc,
     // lazy-loaded per-chunk payload cache, keyed by chunk index → promise
     chunkCache: new Map(),
   };
+
+  const months = manifest.months || [];
+  state.months = months;
+  state.filterMonthMin = 0;
+  state.filterMonthMax = Math.max(0, months.length - 1);
+  state.filterKind = 'all';
+  const [monthIdx, pointKind] = await Promise.all([
+    loadMonthIndices(state, sphere.N, App.loadingMsg),
+    loadPointKinds(state, sphere.N, App.loadingMsg),
+  ]);
+  state.monthIdx = monthIdx;
+  state.pointKind = pointKind;
+
   return state;
 }
 
@@ -268,6 +287,80 @@ export function subAnchor(state, cl, sub) {
   const c = state.centroids?.subclusters?.[key];
   if (c) return { lat: c.lat, lon: c.lon, count: c.count, density: 1 };
   return null;
+}
+
+/** Inclusive month bucket index vs viewer range (manifest.months indices). */
+export function pointInMonthRange(state, i) {
+  const monthsLen = (state.months && state.months.length) || 0;
+  if (!state.monthIdx || monthsLen === 0) return true;
+  let lo = state.filterMonthMin;
+  let hi = state.filterMonthMax;
+  if (lo == null) lo = 0;
+  if (hi == null) hi = monthsLen - 1;
+  lo = Math.max(0, Math.min(monthsLen - 1, lo));
+  hi = Math.max(0, Math.min(monthsLen - 1, hi));
+  if (lo > hi) { const t = lo; lo = hi; hi = t; }
+  const m = state.monthIdx[i];
+  return m >= lo && m <= hi;
+}
+
+/** 0 = comment, 1 = submission/post — matches point_kind.bin */
+export function pointInKindFilter(state, i) {
+  const mode = state.filterKind || 'all';
+  if (mode === 'all') return true;
+  const pk = state.pointKind;
+  if (!pk || i < 0 || i >= pk.length) return true;
+  const isPost = pk[i] === 1;
+  if (mode === 'posts') return isPost;
+  if (mode === 'comments') return !isPost;
+  return true;
+}
+
+export function pointPassesViewerFilters(state, i) {
+  return pointInMonthRange(state, i) && pointInKindFilter(state, i);
+}
+
+async function loadPointKinds(state, N, onProgress) {
+  try {
+    onProgress('Loading comment vs post flags…');
+    const buf = await fetchBinary('tsne_chunks/point_kind.bin');
+    if (buf.byteLength !== N) throw new Error(`point_kind.bin length ${buf.byteLength} != N ${N}`);
+    return new Uint8Array(buf.buffer, buf.byteOffset, N);
+  } catch (e) {
+    console.warn('point_kind.bin missing or wrong size; scanning chunks (slow):', e?.message || e);
+    const out = new Uint8Array(N);
+    const files = state.manifest.files;
+    for (let ci = 0; ci < files.length; ci++) {
+      onProgress(`Loading item types… ${ci + 1}/${files.length}`);
+      const c = await loadChunk(state, ci);
+      for (let j = 0; j < c.n; j++) {
+        const t = String(c.type[j] || '').toLowerCase();
+        out[c.offset + j] = t === 'submission' || t === 'post' ? 1 : 0;
+      }
+    }
+    return out;
+  }
+}
+
+async function loadMonthIndices(state, N, onProgress) {
+  try {
+    onProgress('Loading month index…');
+    const buf = await fetchBinary('tsne_chunks/month_idx.bin');
+    if (buf.byteLength !== N) throw new Error(`month_idx.bin length ${buf.byteLength} != N ${N}`);
+    return new Uint8Array(buf.buffer, buf.byteOffset, N);
+  } catch (e) {
+    console.warn('month_idx.bin missing or wrong size; scanning chunks (slow):', e?.message || e);
+    const monthIdx = new Uint8Array(N);
+    const files = state.manifest.files;
+    for (let ci = 0; ci < files.length; ci++) {
+      onProgress(`Loading dates… ${ci + 1}/${files.length}`);
+      const c = await loadChunk(state, ci);
+      for (let j = 0; j < c.n; j++) {
+        monthIdx[c.offset + j] = c.month_idx[j] & 0xff;
+      }
+    }
+    return monthIdx;
+  }
 }
 
 function computeCentroids(coords, labels) {
@@ -328,6 +421,7 @@ export async function getPointDetails(state, idx) {
     score: c.score[j],
     month: c.year_month[j],
     cluster: c.cluster[j],
+    subLocal: state.subLocal[idx],
   };
 }
 
@@ -353,6 +447,7 @@ export function buildSubGidMap(subMeta) {
 export function summarizeClusters(state) {
   const counts = new Map();
   for (let i = 0; i < state.N; i++) {
+    if (!pointPassesViewerFilters(state, i)) continue;
     const cl = state.cluster[i];
     counts.set(cl, (counts.get(cl) || 0) + 1);
   }
@@ -375,6 +470,7 @@ export function summarizeSubs(state, cl, subGidMap) {
   const counts = new Map();
   for (let i = 0; i < state.N; i++) {
     if (cluster[i] !== cl) continue;
+    if (!pointPassesViewerFilters(state, i)) continue;
     const s = local[i];
     if (s === 255) continue;
     counts.set(s, (counts.get(s) || 0) + 1);
