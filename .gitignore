@@ -24,6 +24,11 @@ viz/tsne_interactive_preview.html
 .DS_Store
 *.swp
 .env
+.claude/
+
+# Scratch/audit scripts from ad-hoc runs
+/audit_script.py
+/categorize_cluster_8.py
 
 # ── Old GitHub Pages deploy dir (has its own nested .git) ──────────────────
 deploy_pages/

@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js';
+import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=231';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -26,7 +26,7 @@ export class GlobeView extends EventTarget {
     this.state = state;
     this.hoverIdx = -1;
     this.threadArcs = null;
-    this.threadArcsEnabled = true;
+    this.threadArcsEnabled = false;   // off by default — per-hover arcs still draw on demand
     this.surfaceEnabled = true;
     this.highlightCl = null;
     this.highlightGid = null;
@@ -35,9 +35,113 @@ export class GlobeView extends EventTarget {
     this._initScene();
     this._initPoints();
     this._initSurface();
+    this._initPins();
     this._bindInteraction();
     this._tick = this._tick.bind(this);
     requestAnimationFrame(this._tick);
+  }
+
+  _initPins() {
+    // Pins live in their own group above the sphere surface, with custom
+    // picking that runs *before* point picking. Each pin is a small
+    // billboarded sprite (inner disc + outer pulse ring).
+    this.pinsGroup = new THREE.Group();
+    this.pinsEnabled = true;
+    this.worldGroup.add(this.pinsGroup);
+    this.pins = [];            // [{data, pos:Vector3, screenX, screenY}]
+    this.hoverPinIdx = -1;
+    // Pin sprite DOM layer (not WebGL) — richer typography + shadows + click
+    // handling than Three.js sprites, while still driven by projected world
+    // coords each frame.
+    this.pinLayer = document.getElementById('pin-labels');
+    if (!this.pinLayer) {
+      this.pinLayer = document.createElement('div');
+      this.pinLayer.id = 'pin-labels';
+      this.pinLayer.className = 'pin-labels';
+      this.canvas.parentElement.appendChild(this.pinLayer);
+    }
+  }
+
+  setInterviewPins(placements, interviewsDoc) {
+    // Build one DOM pin per placement. Positioned every frame by
+    // _updatePinScreenPositions() below.
+    const ivByIdMap = new Map((interviewsDoc?.interviews || []).map(iv => [iv.id, iv]));
+    this.pinLayer.innerHTML = '';
+    this.pins = [];
+    for (const pl of placements || []) {
+      const iv = ivByIdMap.get(pl.id);
+      const cl = pl.cluster;
+      const color = sphereColor(cl);
+      const clMeta = this.state.clusterMeta?.[String(cl)];
+      const data = {
+        ...pl,
+        role: iv?.role,
+        lives: iv?.lives,
+        would_live: iv?.would_live,
+        cluster_name: clMeta?.name,
+      };
+      const el = document.createElement('button');
+      el.className = 'pin';
+      el.innerHTML = `
+        <span class="pin-ring" style="background:${color}"></span>
+        <span class="pin-dot" style="background:${color}"></span>
+        <span class="pin-id" style="color:${color}">${pl.id}</span>
+      `;
+      el.dataset.id = pl.id;
+      el.onmouseenter = (e) => {
+        this.hoverPinIdx = this.pins.findIndex(p => p.data.id === pl.id);
+        this.dispatchEvent(new CustomEvent('pinhover', { detail: { pin: data, clientX: e.clientX, clientY: e.clientY } }));
+      };
+      el.onmousemove = (e) => {
+        this.dispatchEvent(new CustomEvent('pinhover', { detail: { pin: data, clientX: e.clientX, clientY: e.clientY } }));
+      };
+      el.onmouseleave = () => {
+        this.hoverPinIdx = -1;
+        this.dispatchEvent(new CustomEvent('pinunhover'));
+      };
+      el.onclick = (e) => {
+        e.stopPropagation();
+        this.dispatchEvent(new CustomEvent('pinclick', { detail: { pin: data } }));
+      };
+      this.pinLayer.appendChild(el);
+      this.pins.push({ data, el, lat: pl.lat, lon: pl.lon });
+    }
+  }
+
+  _updatePinScreenPositions() {
+    if (!this.pins || this.pins.length === 0) return;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    const camPos = this.camera.position;
+    const _v = new THREE.Vector3();
+    const focusCl = this.highlightCl;   // set by setHighlight when a cluster is focused
+    for (const p of this.pins) {
+      const wp = this.worldPositionOf(p.lat, p.lon, POINT_RADIUS * 1.04);
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      if (!this.pinsEnabled || facing <= 0) {
+        p.el.style.opacity = '0';
+        p.el.style.pointerEvents = 'none';
+        continue;
+      }
+      _v.copy(wp).project(this.camera);
+      if (_v.z > 1) { p.el.style.opacity = '0'; p.el.style.pointerEvents = 'none'; continue; }
+      const sx = (_v.x * 0.5 + 0.5) * w;
+      const sy = (-_v.y * 0.5 + 0.5) * h;
+      p.el.style.transform = `translate(${sx}px, ${sy}px)`;
+      const inFocus = (focusCl == null) || (p.data.cluster === focusCl);
+      const baseOp = Math.min(1, 0.55 + 0.45 * Math.min(1, facing));
+      p.el.style.opacity = String(inFocus ? baseOp : baseOp * 0.22);
+      p.el.style.pointerEvents = inFocus ? 'auto' : 'none';
+      p.el.classList.toggle('dimmed', !inFocus);
+    }
+  }
+
+  setPinsEnabled(v) { this.pinsEnabled = v; }
+
+  lookTargetWorld() {
+    // The point on the sphere nearest the camera — i.e. the visible centre.
+    // Since we orbit by rotating the world and keep the camera at +Z, this is
+    // just +Z direction at radius 1.
+    return new THREE.Vector3(0, 0, 1);
   }
 
   _initScene() {
@@ -168,7 +272,7 @@ export class GlobeView extends EventTarget {
           // Crisp filled disc with a 1-pixel antialias edge — no halo.
           float disc = 1.0 - smoothstep(0.42, 0.50, d);
           vec3 col = mix(vec3(0.30), vColor, vDim);
-          float alpha = (0.45 + 0.55 * vDim) * disc;
+          float alpha = (0.28 + 0.42 * vDim) * disc;
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -183,82 +287,18 @@ export class GlobeView extends EventTarget {
   }
 
   _initSurface() {
-    // Surface shading removed per user request — keep only a dark backdrop
-    // so back-of-sphere points are occluded.
-    const _backMat = new THREE.MeshBasicMaterial({ color: 0x0a0c12, side: THREE.FrontSide });
-    const _backGeom = new THREE.SphereGeometry(GLOBE_RADIUS * 0.998, 64, 32);
-    this.surfaceBackdrop = new THREE.Mesh(_backGeom, _backMat);
+    // Just a plain dark sphere behind the points — no painted continents or
+    // texture; points alone make the viz pop.
+    const backMat = new THREE.MeshBasicMaterial({ color: 0x0a0c12, side: THREE.FrontSide });
+    const backGeom = new THREE.SphereGeometry(GLOBE_RADIUS * 0.998, 64, 32);
+    this.surfaceBackdrop = new THREE.Mesh(backGeom, backMat);
     this.worldGroup.add(this.surfaceBackdrop);
     this.surface = null;
     this.surfaceMat = null;
     return;
-    // ── unreachable (kept for revertibility) ──
+    // ── unreachable leftover of the KDE painter (kept for easy revert) ──
     // eslint-disable-next-line no-unreachable
-    {
-    const W = 2048, H = 1024;
-    const canvas = document.createElement('canvas');
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#0a0c12';
-    ctx.fillRect(0, 0, W, H);
-    const st = this.state;
-    const N = st.N;
-    // KDE-style surface: per-cluster channel accumulation in offscreen
-    // buffers, then resolved into the final canvas as a saturated argmax.
-    const stride = Math.max(1, Math.floor(N / 80000));
-    const colorCache = new Map();
-    function getColor(cl) {
-      if (!colorCache.has(cl)) colorCache.set(cl, clusterColor(cl));
-      return colorCache.get(cl);
-    }
-
-    // Shuffled draw order so no cluster sits "on top" everywhere.
-    const order = [];
-    for (let i = 0; i < N; i += stride) order.push(i);
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = (Math.random() * (i + 1)) | 0;
-      [order[i], order[j]] = [order[j], order[i]];
-    }
-    ctx.globalCompositeOperation = 'source-over';
-    const R = 30;
-    for (const i of order) {
-      const lat = st.coords[2*i];
-      const lon = st.coords[2*i+1];
-      const u = ((lon + Math.PI) / (2 * Math.PI)) * W;
-      const v = ((Math.PI/2 - lat) / Math.PI) * H;
-      const col = getColor(st.cluster[i]);
-      const grd = ctx.createRadialGradient(u, v, 0, u, v, R);
-      grd.addColorStop(0, col + '14');     // ~8% alpha center, very subtle
-      grd.addColorStop(0.5, col + '08');
-      grd.addColorStop(1, col + '00');
-      ctx.fillStyle = grd;
-      ctx.beginPath();
-      ctx.arc(u, v, R, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(8,10,16,0.7)';
-    ctx.fillRect(0, 0, W, H);
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    tex.needsUpdate = true;
-
-    const geom = new THREE.SphereGeometry(GLOBE_RADIUS, 96, 64);
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: true,
-    });
-    this.surfaceMat = mat;
-    this.surfaceTex = tex;
-    this.surfaceCanvas = canvas;
-    this.surface = new THREE.Mesh(geom, mat);
-    this.surface.rotation.y = -Math.PI / 2;
     this.worldGroup.add(this.surface);
-    }  // close eslint block
   }
 
   setSurfaceEnabled(v) {
@@ -276,13 +316,16 @@ export class GlobeView extends EventTarget {
 
     const applyScreenRotation = (dx, dy) => {
       // Drag/up-arrow moves the visible content in the same direction as
-      // the cursor / arrow. Camera is at +Z looking at origin; positive
-      // rotation about +Y slides equatorial points right on screen, and
-      // negative rotation about +X tilts the visible band upward.
+      // the cursor / arrow. Rotation speed scales with zoom distance so
+      // a given pixel of motion covers roughly the same arc-length on
+      // screen — at close zoom the globe rotates slowly, far out it
+      // rotates fast. Keeps the user from getting dizzy up close.
+      const zoomScale = Math.max(0.35, this.distanceTarget / 3.0);
+      const speed = ROT_SPEED * zoomScale;
       const qx = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0), dx * ROT_SPEED);
+        new THREE.Vector3(0, 1, 0), dx * speed);
       const qy = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), dy * ROT_SPEED);
+        new THREE.Vector3(1, 0, 0), dy * speed);
       this.worldQuatTarget.premultiply(qx).premultiply(qy);
     };
 
@@ -320,11 +363,18 @@ export class GlobeView extends EventTarget {
     window.addEventListener('keydown', (e) => {
       if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
       let dx = 0, dy = 0;
+      // Arrow direction = direction content moves on screen (push-the-globe).
       if (e.key === 'ArrowLeft')  dx = -100;
       if (e.key === 'ArrowRight') dx = 100;
       if (e.key === 'ArrowUp')    dy = -100;
       if (e.key === 'ArrowDown')  dy = 100;
-      if (dx || dy) { applyScreenRotation(dx * KEY_STEP / ROT_SPEED * 0.001, dy * KEY_STEP / ROT_SPEED * 0.001); e.preventDefault(); return; }
+      if (dx || dy) {
+        // Zoom-scaling is now handled inside applyScreenRotation.
+        const mag = (KEY_STEP / ROT_SPEED) * 0.001;
+        applyScreenRotation(dx * mag, dy * mag);
+        e.preventDefault();
+        return;
+      }
       const tk = (this.distanceTarget - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
       const stepFactor = 0.04 + 0.12 * Math.max(0, Math.min(1, tk));   // 0.04 in, 0.16 out
       if (e.key === '+' || e.key === '=' || e.key === 'w' || e.key === 'W') {
@@ -438,33 +488,96 @@ export class GlobeView extends EventTarget {
     if (distance != null) this.distanceTarget = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, distance));
   }
 
-  setHighlight({ cl = null, gid = null, posIdx = null, subLocal = null } = {}) {
-    this.highlightCl = cl;
-    this.highlightGid = gid;
-    this.highlightPosIdx = posIdx;
-
+  // Composite dim state. Each setter updates one slot and calls
+  // _recomputeDim(); filters intersect rather than overwrite, fixing the
+  // bug where e.g. a position drill wiped an active subreddit filter.
+  //   focusCl           : number | null
+  //   focusSubLocal     : { cl, sub } | null
+  //   focusPosIdx       : number | null   (requires focusSubLocal)
+  //   multiClusters     : Set<number> | null
+  //   multiSubs         : Set<string "cl_sub"> | null
+  //   subredditIds      : Set<number> | null
+  //   monthRange        : { lo, hi } inclusive month-idx | null
+  _filter = {
+    focusCl: null, focusSubLocal: null, focusPosIdx: null,
+    multiClusters: null, multiSubs: null, subredditIds: null,
+    monthRange: null,
+  };
+  _recomputeDim() {
     const st = this.state;
+    const f = this._filter;
     const dim = this.pointGeom.attributes.dim.array;
-    if (cl == null && gid == null && posIdx == null) {
+    const hasMultiC = f.multiClusters && f.multiClusters.size > 0;
+    const hasMultiS = f.multiSubs && f.multiSubs.size > 0;
+    const hasSR = f.subredditIds && f.subredditIds.size > 0;
+    const assign = st.subredditAssignments;
+    const hasMonth = !!f.monthRange;
+    const monthAssign = st.monthAssignments;
+    const noFilter = f.focusCl == null && f.focusSubLocal == null && !hasMultiC && !hasMultiS && !hasSR && !hasMonth;
+    if (noFilter) {
       dim.fill(1.0);
     } else {
-      let matchSub = null;
-      if (gid != null) {
-        // find local sub for this gid
-        for (const entry of Object.values(window.App.subGidMap.byGid)) {/* unused */}
-        const g = window.App.subGidMap.byGid[gid];
-        if (g) matchSub = { cl: g.cl, sub: g.sub };
-      }
       for (let i = 0; i < st.N; i++) {
-        let match = true;
-        if (cl != null && st.cluster[i] !== cl) match = false;
-        if (match && matchSub) {
-          if (st.cluster[i] !== matchSub.cl || st.subLocal[i] !== matchSub.sub) match = false;
+        let ok = true;
+        if (f.focusCl != null && st.cluster[i] !== f.focusCl) ok = false;
+        if (ok && f.focusSubLocal &&
+            (st.cluster[i] !== f.focusSubLocal.cl || st.subLocal[i] !== f.focusSubLocal.sub)) ok = false;
+        if (ok && f.focusPosIdx != null && st.positionAssignments &&
+            st.positionAssignments[i] !== f.focusPosIdx) ok = false;
+        if (ok && hasMultiC && !hasMultiS && !f.multiClusters.has(st.cluster[i])) ok = false;
+        if (ok && hasMultiS && !f.multiSubs.has(`${st.cluster[i]}_${st.subLocal[i]}`)) ok = false;
+        if (ok && hasSR && assign && !f.subredditIds.has(assign[i])) ok = false;
+        if (ok && hasMonth && monthAssign) {
+          const m = monthAssign[i];
+          if (m < f.monthRange.lo || m > f.monthRange.hi) ok = false;
         }
-        dim[i] = match ? 1.0 : 0.18;
+        dim[i] = ok ? 1.0 : 0.12;
       }
     }
     this.pointGeom.attributes.dim.needsUpdate = true;
+    this._multiHighlightActive = hasMultiC || hasMultiS;
+    this._subredditHighlightActive = hasSR;
+  }
+
+  setHighlight({ cl = null, gid = null, posIdx = null } = {}) {
+    this.highlightCl = cl;
+    this.highlightGid = gid;
+    this.highlightPosIdx = posIdx;
+    const f = this._filter;
+    f.focusCl = cl;
+    f.focusSubLocal = null;
+    f.focusPosIdx = posIdx;
+    if (gid != null) {
+      const g = window.App?.subGidMap?.byGid?.[gid];
+      if (g) f.focusSubLocal = { cl: g.cl, sub: g.sub };
+    }
+    // Changing a cluster-level focus invalidates sibling multi-selects
+    // and subreddit filters would no longer make sense on a different
+    // cluster; keep them and let _recomputeDim intersect.
+    this._recomputeDim();
+  }
+
+  // Regex-on-globe paint for search: unions of clusters + subs.
+  setMultiHighlight({ clusters = null, subs = null } = {}) {
+    const f = this._filter;
+    f.multiClusters = clusters && clusters.size > 0 ? clusters : null;
+    f.multiSubs = subs && subs.size > 0 ? subs : null;
+    this._recomputeDim();
+  }
+
+  // Subreddit filter. Intersects with whatever focus state is already active.
+  setSubredditHighlight(idSet /* , opts — kept for compat but unused */) {
+    const f = this._filter;
+    f.subredditIds = idSet && idSet.size > 0 ? idSet : null;
+    this._recomputeDim();
+  }
+
+  // Filter globe to a month-idx range, intersected with everything else.
+  // Pass null to clear. lo/hi are inclusive.
+  setMonthRange(range) {
+    const f = this._filter;
+    f.monthRange = range && range.lo != null && range.hi != null ? range : null;
+    this._recomputeDim();
   }
 
   setThreadsEnabled(v) {
@@ -472,8 +585,10 @@ export class GlobeView extends EventTarget {
     if (this.threadArcs) this.threadArcs.visible = v;
   }
 
-  async loadThreadArcs(pairs) {
-    // Render each post→comment pair as a thick, lifted great-circle tube.
+  async loadThreadArcs(pairs, opts = {}) {
+    // Render each post→comment pair as a lifted great-circle tube. `opts`:
+    //   thin    → half the default tube radius (used for shift-preview)
+    //   opacity → override material opacity (default 0.92)
     if (this.threadArcs) {
       this.worldGroup.remove(this.threadArcs);
       this.threadArcs.geometry.dispose();
@@ -484,7 +599,7 @@ export class GlobeView extends EventTarget {
 
     const st = this.state;
     const SEG = 28;
-    const TUBE_RAD = 0.0048;
+    const TUBE_RAD = opts.thin ? 0.0022 : 0.0048;
     const TUBE_FACETS = 5;  // 5-sided "tube" (cheaper than full circle, looks fine)
     const geometries = [];
 
@@ -532,7 +647,7 @@ export class GlobeView extends EventTarget {
     const mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.92,
+      opacity: opts.opacity != null ? opts.opacity : 0.92,
       depthWrite: false,
       blending: THREE.NormalBlending,
     });
@@ -546,15 +661,11 @@ export class GlobeView extends EventTarget {
     this.distance += (this.distanceTarget - this.distance) * 0.14;
     this.worldGroup.quaternion.copy(this.worldQuat);
 
-    // Right-bias: lookAt a point to the LEFT of origin so the world origin
-    // (where the globe sits) projects to the right portion of the canvas.
-    const w = this.canvas.clientWidth || 1;
-    const h = this.canvas.clientHeight || 1;
-    const fovTan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const halfWorldW = this.distance * fovTan * (w / h);
-    const shift = halfWorldW * 0.30;  // ≈ 30% off-center → globe in right ~65%
+    // Globe is centred in its own panel now (the canvas itself sits between
+    // the left nav and the right detail panel), so the camera looks at
+    // origin — no right-bias offset.
     this.camera.position.set(0, 0, this.distance);
-    this.camera.lookAt(-shift, 0, 0);
+    this.camera.lookAt(0, 0, 0);
     this.camera.up.set(0, 1, 0);
 
     if (this._onFrame) this._onFrame();

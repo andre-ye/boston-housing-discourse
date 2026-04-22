@@ -1,12 +1,12 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE } from './data.js';
+import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=231';
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
   return SPHERE_PALETTE[i];
 }
-import { NavController } from './nav.js';
-import { GlobeView } from './globe.js';
+import { NavController } from './nav.js?v=231';
+import { GlobeView } from './globe.js?v=231';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -20,10 +20,63 @@ async function boot() {
     App.state = await loadData(updateMsg);
   } catch (e) {
     console.error(e);
-    updateMsg('Failed to load: ' + (e.message || e));
+    // Attach a retry link so users hitting a transient fetch failure can
+    // recover without reaching for the browser refresh. Uses textContent
+    // plus an <a> node to avoid any innerHTML-injection of the error body.
+    loadingMsg.textContent = 'Failed to load: ' + (e.message || e);
+    const retry = document.createElement('a');
+    retry.href = location.href;
+    retry.textContent = 'retry';
+    retry.style.cssText = 'display:inline-block;margin-top:10px;color:var(--accent);text-decoration:underline;cursor:pointer';
+    retry.onclick = (ev) => { ev.preventDefault(); location.reload(); };
+    loadingMsg.appendChild(document.createElement('br'));
+    loadingMsg.appendChild(retry);
     return;
   }
   App.subGidMap = buildSubGidMap(App.state.subMeta);
+
+  // Corpus-level growth ratio (recent 6 months / prior months). Used to
+  // normalize per-series trends so "surging" means "faster than the
+  // overall conversation is growing," not "has more recent data."
+  // Without this, the Reddit corpus's own 2.2× growth over the window
+  // makes nearly every sub/cluster read as ▲ and the marker becomes noise.
+  (() => {
+    const total = App.state.timeHist?.total || [];
+    if (total.length < 12) { App._corpusRatio = 1; return; }
+    const n = total.length;
+    const rc = total.slice(n - 6).reduce((a, v) => a + v, 0) / 6;
+    const bs = total.slice(0, n - 6).reduce((a, v) => a + v, 0) / (n - 6);
+    App._corpusRatio = rc / Math.max(0.8, bs);
+  })();
+
+  // One-time scan of 422k points building a (gid,pos) → Map<srId,count>
+  // table so the position card, sibling chips and resonant chips can all
+  // cheaply answer "whose voice is this?" without each reopening a full
+  // scan. ~50 ms on load, then O(1) lookups forever.
+  (() => {
+    const st = App.state;
+    if (!st.positionAssignments || !st.subredditAssignments) return;
+    const cluster = st.cluster, subLocal = st.subLocal;
+    const pa = st.positionAssignments, sa = st.subredditAssignments;
+    const N = cluster.length;
+    const byLocal = App.subGidMap.byLocal;
+    const table = new Map();
+    for (let i = 0; i < N; i++) {
+      const p = pa[i];
+      if (p === 255) continue;
+      const row = byLocal[cluster[i]];
+      if (!row) continue;
+      const gid = row[subLocal[i]];
+      if (gid == null) continue;
+      const sr = sa[i];
+      if (sr === 255) continue;
+      const key = (gid << 8) | p;
+      let m = table.get(key);
+      if (!m) { m = new Map(); table.set(key, m); }
+      m.set(sr, (m.get(sr) || 0) + 1);
+    }
+    App._posSubTable = table;
+  })();
 
   updateMsg(`Building globe from ${App.state.N.toLocaleString()} points…`);
 
@@ -39,134 +92,1890 @@ async function boot() {
     window.App.nav = nav;
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
-  // Hide loader on next macrotask — rAF can be starved by the render loop.
-  setTimeout(() => {
+  // Dismiss the loader after the globe has actually rendered its first
+  // frame — observable via renderer.info.render.calls incrementing. Polls
+  // at rAF cadence with a hard cap so we always clear the splash.
+  const dismissLoader = () => {
     try {
       globe._resize();
       nav.drawRibbons();
       loadingEl.classList.add('gone');
     } catch (e) { console.error('post-mount failed:', e); updateMsg('Post-mount: ' + e.message); }
-  }, 60);
+  };
+  (() => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; dismissLoader(); } };
+    let frames = 0;
+    const waitForFrame = () => {
+      if (done) return;
+      const calls = globe.renderer?.info?.render?.calls ?? 0;
+      if (calls > 0 || ++frames >= 20) finish();
+      else requestAnimationFrame(waitForFrame);
+    };
+    requestAnimationFrame(waitForFrame);
+    // Safety net — rAF is throttled in backgrounded tabs; clear the
+    // splash within 500ms even if no frame has rendered.
+    setTimeout(finish, 500);
+  })();
 
-  // Nav click → globe rotate + highlight
+  // ─── Idle auto-rotate ───────────────────────────────────────────
+  // Slow continuous drift toward the top-right until the user touches
+  // the globe (drag, wheel, or arrow/zoom key) or drills into a cluster.
+  // Typing in the search box does NOT stop it.
+  (() => {
+    let spinning = true;
+    const DX = 0.18;   // rightward px-equivalent per frame (~11 px/sec @60fps)
+    const DY = -0.09;  // upward
+    const STOP_KEYS = new Set([
+      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+      'w','W','s','S','+','=','-','_',
+    ]);
+    const stop = () => {
+      if (!spinning) return;
+      spinning = false;
+      canvas.removeEventListener('pointerdown', stop, true);
+      canvas.removeEventListener('wheel', stop, true);
+      window.removeEventListener('keydown', onKey, true);
+      nav?.removeEventListener?.('focus', stop);
+    };
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (STOP_KEYS.has(e.key)) stop();
+    };
+    canvas.addEventListener('pointerdown', stop, true);
+    canvas.addEventListener('wheel', stop, true);
+    window.addEventListener('keydown', onKey, true);
+    nav?.addEventListener?.('focus', stop);
+    const tick = () => {
+      if (!spinning) return;
+      globe.nudge?.(DX, DY);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  })();
+
+  // Cluster-level surgers + sub-level hot spikes in the empty state.
+  // Re-rendered when the timeline range changes so the reader sees the
+  // period-specific top instead of stale all-time entries.
+  function _rangeSum(series, lo, hi) {
+    let s = 0;
+    const end = Math.min(hi, series.length - 1);
+    for (let i = Math.max(0, lo); i <= end; i++) s += series[i] || 0;
+    return s;
+  }
+  function refreshSurgeNow(range) {
+    const grid = document.getElementById('surge-now-chips');
+    const byCl = App.state.timeHist?.by_cluster;
+    const section = document.getElementById('surge-now');
+    const labelEl = section?.querySelector('.surge-now-label');
+    if (!grid || !byCl || !section) return;
+    const entries = [];
+    if (range) {
+      // In-range mode: rank by post count within the active period.
+      for (const [clStr, series] of Object.entries(byCl)) {
+        const n = _rangeSum(series, range.lo, range.hi);
+        if (n < 20) continue;
+        const cl = +clStr;
+        const meta = App.state.clusterMeta?.[String(cl)];
+        if (!meta) continue;
+        entries.push({ cl, name: meta.name, count: n });
+      }
+      entries.sort((a, b) => b.count - a.count);
+      if (labelEl) labelEl.textContent = 'Top continents — this period';
+    } else {
+      for (const [clStr, series] of Object.entries(byCl)) {
+        const t = getTrendInfo(series);
+        if (t.dir !== 'up') continue;
+        const cl = +clStr;
+        const meta = App.state.clusterMeta?.[String(cl)];
+        if (!meta) continue;
+        entries.push({ cl, name: meta.name, rel: t.rel, ratio: t.ratio });
+      }
+      entries.sort((a, b) => b.rel - a.rel);
+      if (labelEl) labelEl.textContent = 'Surging continents';
+    }
+    if (entries.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    grid.innerHTML = '';
+    for (const e of entries.slice(0, 5)) {
+      const chip = document.createElement('button');
+      chip.className = 'surge-now-chip';
+      const col = sphereColor(e.cl);
+      chip.style.setProperty('--surge-color', col);
+      const measure = range
+        ? `<span class="sn-rel" title="${e.count.toLocaleString()} posts in the selected months">${e.count >= 1000 ? Math.round(e.count/1000) + 'k' : e.count}</span>`
+        : `<span class="sn-rel" title="${e.ratio.toFixed(1)}× historical avg — ${e.rel.toFixed(1)}× the corpus's own growth">${e.rel.toFixed(1)}×</span>`;
+      chip.innerHTML = `
+        <span class="sn-swatch" style="background:${col}; color:${col}"></span>
+        <span class="sn-name">${escapeHtml(e.name)}</span>
+        ${measure}
+      `;
+      chip.onclick = () => nav.focus({ cl: e.cl });
+      grid.appendChild(chip);
+    }
+  }
+  function refreshHotNow(range) {
+    const hist = App.state.timeHist;
+    const grid = document.getElementById('hot-now-chips');
+    const section = document.getElementById('hot-now');
+    const labelEl = section?.querySelector('.hot-now-label');
+    if (!hist || !grid) return;
+    const entries = [];
+    const corpus = App._corpusRatio || 1;
+    if (range) {
+      for (const [gidStr, series] of Object.entries(hist.by_sub_gid || {})) {
+        const n = _rangeSum(series, range.lo, range.hi);
+        if (n < 8) continue;
+        const gid = +gidStr;
+        const sub = App.subGidMap.byGid[gid];
+        if (!sub) continue;
+        entries.push({ gid, cl: sub.cl, name: sub.name, count: n });
+      }
+      entries.sort((a, b) => b.count - a.count);
+      if (labelEl) labelEl.textContent = 'Top regions — this period';
+    } else {
+      for (const [gidStr, series] of Object.entries(hist.by_sub_gid || {})) {
+        const n = series.length;
+        if (n < 12) continue;
+        const recent = series.slice(n - 6).reduce((a, v) => a + v, 0) / 6;
+        const base = series.slice(0, n - 6).reduce((a, v) => a + v, 0) / (n - 6);
+        if (recent < 8 || base < 2) continue;
+        const ratio = recent / Math.max(0.8, base);
+        const rel = ratio / corpus;
+        if (rel < 1.3) continue;
+        const gid = +gidStr;
+        const sub = App.subGidMap.byGid[gid];
+        if (!sub) continue;
+        entries.push({ gid, cl: sub.cl, name: sub.name, ratio, rel });
+      }
+      entries.sort((a, b) => b.rel - a.rel);
+      if (labelEl) labelEl.textContent = 'Hot this quarter';
+    }
+    grid.innerHTML = '';
+    for (const e of entries.slice(0, 5)) {
+      const chip = document.createElement('button');
+      chip.className = 'hot-now-chip';
+      const col = sphereColor(e.cl);
+      const bd = App.state.subredditBreakdown?.by_sub_gid?.[String(e.gid)];
+      const topSub = bd?.[0]?.r || null;
+      const voiceTag = topSub
+        ? `<span class="hot-now-voice" title="voiced mostly in r/${escapeHtml(topSub)}">r/${escapeHtml(topSub)}</span>`
+        : '';
+      const measure = range
+        ? `<span class="hot-now-ratio" title="${e.count.toLocaleString()} posts in the selected months">${e.count >= 1000 ? Math.round(e.count/1000) + 'k' : e.count}</span>`
+        : `<span class="hot-now-ratio" title="Recent-6mo mean is ${e.ratio.toFixed(1)}× the historical mean — ${e.rel.toFixed(1)}× the corpus's own ${corpus.toFixed(2)}× growth">${e.ratio.toFixed(1)}×</span>`;
+      chip.innerHTML = `
+        <span class="hot-now-swatch" style="background:${col}; color:${col}"></span>
+        <span class="hot-now-name">${escapeHtml(e.name)}</span>
+        ${voiceTag}
+        ${measure}
+      `;
+      chip.onclick = () => nav.focus({ cl: e.cl, gid: e.gid });
+      grid.appendChild(chip);
+    }
+  }
+  refreshSurgeNow(null);
+  refreshHotNow(null);
+  // Expose so the timeline scrubber can re-render when the range changes.
+  App._refreshEmptyStateForRange = (range) => {
+    refreshSurgeNow(range);
+    refreshHotNow(range);
+  };
+
+  // "Explore by community" chipset — mirrors hot-now but indexes the
+  // other axis: which subreddit's voice do you want to listen to? Clicking
+  // a chip applies the sub filter, which surfaces the agenda panel built
+  // in v=193. Keeps top-down navigation possible when the user has no
+  // specific topic in mind.
+  (() => {
+    const grid = document.getElementById('browse-voices-chips');
+    const names = App.state.subredditNames;
+    if (!grid || !names) return;
+    // Rank by total post count; cap so the chipset stays visually compact.
+    const picks = names
+      .filter(s => s.count >= 2000)
+      .slice()
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12);
+    grid.innerHTML = '';
+    for (const s of picks) {
+      const chip = document.createElement('button');
+      chip.className = 'browse-voices-chip';
+      chip.innerHTML = `
+        <span class="bv-name">r/${escapeHtml(s.name)}</span>
+        <span class="bv-count">${s.count >= 10000 ? `${Math.round(s.count/1000)}k` : s.count.toLocaleString()}</span>
+      `;
+      chip.onclick = () => toggleSubredditFilter(s.id, s.name);
+      grid.appendChild(chip);
+    }
+  })();
+
+  // ─── Focus → globe rotate + highlight + focus card ───────────────
+  const focusCard = document.getElementById('focus-card');
+  const fkind = document.getElementById('focus-kind');
+  const ftitle = document.getElementById('focus-title');
+  const fmeta = document.getElementById('focus-meta');
+  const fspark = document.getElementById('focus-spark');
+  const fcrumbs = document.getElementById('fc-breadcrumbs');
+  const fvoices = document.getElementById('focus-voices');
+  const fsubs = document.getElementById('focus-subs');
+
+  // Copy-as-markdown for the focus card, mirroring the position card's
+  // affordance. Reads current focus state at click-time so one handler
+  // covers both cluster and sub focus. Includes the subreddit mix, a
+  // "top stances" list at cluster level, trend, and a deep-link.
+  (() => {
+    const btn = document.getElementById('fc-copy-md');
+    if (!btn) return;
+    btn.onclick = async () => {
+      const cl = nav.focusCl;
+      const gid = nav.focusGid;
+      if (cl == null) return;
+      const clMeta = App.state.clusterMeta?.[String(cl)];
+      const clName = clMeta?.name || `Cluster ${cl}`;
+      const range = globe._filter?.monthRange || null;
+      const rangeLabel = range
+        ? ` (${App.state.monthLabels[range.lo]} → ${App.state.monthLabels[range.hi]})`
+        : '';
+      const title = gid != null ? (App.subGidMap.byGid[gid]?.name || `sub ${gid}`) : clName;
+      const series = gid != null ? getSubSeries(gid) : getClusterSeries(cl);
+      const t = getTrendInfo(series);
+      const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
+      // Subreddit mix (top 3)
+      const bd = gid != null
+        ? (App.state.subredditBreakdown?.by_sub_gid?.[String(gid)] || [])
+        : (App.state.subredditBreakdown?.by_cluster?.[String(cl)] || []);
+      const subTotal = bd.reduce((s, e) => s + (e.n || 0), 0);
+      const mixLine = bd.slice(0, 3)
+        .map(e => `r/${e.r} ${Math.round(100 * e.n / subTotal)}%`)
+        .join(' · ');
+      const total = series ? series.reduce((s, v) => s + v, 0) : 0;
+      // Top stances — only at cluster level (sub has its own drill list).
+      let stancesBlock = '';
+      if (gid == null) {
+        const rows = [...document.querySelectorAll('#focus-stances .fc-stance')]
+          .slice(0, 5)
+          .map(row => {
+            const name = row.querySelector('.fc-st-name')?.textContent?.trim();
+            const sub = row.querySelector('.fc-st-sub')?.textContent?.trim();
+            const count = row.querySelector('.fc-st-count')?.textContent?.trim();
+            return name ? `- ${name} *(${sub})* — ${count}` : null;
+          })
+          .filter(Boolean);
+        if (rows.length) stancesBlock = '\n**Loudest stances:**\n' + rows.join('\n');
+      }
+      // Shareable link — carry every active filter so the recipient lands
+      // on the exact view (matches the position-card link in v=193).
+      const parts = [`cl=${cl}`];
+      if (gid != null) parts.push(`gid=${gid}`);
+      if (range) { parts.push(`from=${range.lo}`); parts.push(`to=${range.hi}`); }
+      if (_activeSubredditFilter) parts.push(`sr=${_activeSubredditFilter.id}`);
+      const q = document.getElementById('search-input')?.value?.trim();
+      if (q) parts.push(`q=${encodeURIComponent(q)}`);
+      const link = `${location.origin}${location.pathname}#${parts.join('&')}`;
+      const md = [
+        `## ${title}${trendStr}${rangeLabel}`,
+        gid != null ? `*${clName} ▸ ${title}*` : '',
+        '',
+        `**Volume:** ${total.toLocaleString()} posts`,
+        mixLine ? `**Voiced by:** ${mixLine}` : '',
+        stancesBlock,
+        `\n[View on globe](${link})`,
+      ].filter(Boolean).join('\n').trim();
+      let ok = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(md);
+          ok = true;
+        }
+      } catch {}
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { ok = document.execCommand('copy'); } catch {}
+        ta.remove();
+      }
+      btn.classList.toggle('copied', ok);
+      btn.classList.toggle('copy-err', !ok);
+      btn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
+      setTimeout(() => {
+        btn.classList.remove('copied', 'copy-err');
+        btn.removeAttribute('data-msg');
+      }, 1600);
+    };
+  })();
+
+  // Which subreddits dominate this cluster / sub? Renders a 3-segment
+  // horizontal bar + labels. Tiny file (~32 KB) pre-baked by
+  // scripts/compute_subreddit_breakdown.py.
+  function renderFocusSubreddits(cl, gid, color) {
+    if (!fsubs) return;
+    fsubs.innerHTML = '';
+    const data = App.state.subredditBreakdown;
+    if (!data) return;
+    const top = gid != null
+      ? (data.by_sub_gid?.[String(gid)] || [])
+      : (data.by_cluster?.[String(cl)] || []);
+    if (!top.length) return;
+    const picks = top.slice(0, 3);
+    const total = picks.reduce((s, e) => s + (e.n || 0), 0);
+    if (total === 0) return;
+    const segs = picks.map(e => {
+      const pct = (100 * e.n / total).toFixed(0);
+      return `<span class="fs-seg" style="flex:${e.n}; background:${color}" title="r/${escapeHtml(e.r)}: ${e.n.toLocaleString()} posts (${pct}% of top-3 shown)"></span>`;
+    }).join('<span class="fs-gap"></span>');
+    const names = App.state.subredditNames || [];
+    const labels = picks.map(e => {
+      const pct = Math.round(100 * e.n / total);
+      const match = names.find(n => n.name === e.r);
+      const srId = match?.id ?? -1;
+      const activeCls = (_activeSubredditFilter && _activeSubredditFilter.id === srId) ? ' active' : '';
+      return `
+        <button class="fs-lbl${activeCls}" data-sr-id="${srId}" data-sr-name="${escapeHtml(e.r)}"
+                title="${e.n.toLocaleString()} posts · click to filter globe to r/${escapeHtml(e.r)}">
+          <span class="fs-lbl-name">r/${escapeHtml(e.r)}</span>
+          <span class="fs-lbl-pct">${pct}%</span>
+        </button>
+      `;
+    }).join('');
+    // Hint shown only to first-time visitors; localStorage flag below marks
+    // seen after the user actually clicks one.
+    const hintSeen = (() => { try { return localStorage.getItem('vizFsHintSeen') === '1'; } catch(e) { return false; } })();
+    const hintHtml = hintSeen ? '' : ' <span class="fs-hint">· click to filter globe</span>';
+    fsubs.innerHTML = `
+      <div class="fs-head">where it lives${hintHtml}</div>
+      <div class="fs-bar">${segs}</div>
+      <div class="fs-legend">${labels}</div>
+    `;
+    fsubs.querySelectorAll('.fs-lbl').forEach(btn => {
+      btn.onclick = () => {
+        const id = +btn.dataset.srId;
+        if (id < 0) return;
+        try { localStorage.setItem('vizFsHintSeen', '1'); } catch(e) {}
+        toggleSubredditFilter(id, btn.dataset.srName, cl, gid);
+      };
+    });
+  }
+  // Active subreddit filter state + chip UI in the nav header.
+  let _activeSubredditFilter = null;   // { id, name }
+  window.App.toggleSubredditFilter = (...args) => toggleSubredditFilter(...args);
+  function toggleSubredditFilter(id, name, contextCl, contextGid) {
+    if (_activeSubredditFilter && _activeSubredditFilter.id === id) {
+      _activeSubredditFilter = null;
+      globe.setSubredditHighlight(null);
+      _updateSubredditFilterChip();
+      renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
+      // Re-render cluster-level "loudest stances" now that sub-gating is off.
+      if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
+      return;
+    }
+    _activeSubredditFilter = { id, name };
+    const clSet = contextCl != null ? new Set([contextCl]) : null;
+    const g = contextGid != null ? App.subGidMap.byGid[contextGid] : null;
+    const subSet = g ? new Set([`${g.cl}_${g.sub}`]) : null;
+    globe.setSubredditHighlight(new Set([id]), { extraClusters: clSet, extraSubs: subSet });
+    _updateSubredditFilterChip();
+    renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
+    // Cluster-level stance list now gates by the active sub.
+    if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
+    if (typeof writeHash === 'function') writeHash();
+    if (typeof refreshCaptions === 'function') setTimeout(refreshCaptions, 200);
+  }
+  function _updateSubredditFilterChip() {
+    const header = document.getElementById('nav-header');
+    let chip = document.getElementById('sr-filter-chip');
+    if (!_activeSubredditFilter) {
+      chip?.remove();
+      document.getElementById('sr-agenda-panel')?.remove();
+      return;
+    }
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.id = 'sr-filter-chip';
+      chip.className = 'sr-filter-chip';
+      header?.appendChild(chip);
+    }
+    // Count currently-bright points so the user sees the intersection
+    // result (with any active cluster/sub focus already composed in).
+    let bright = 0;
+    const dim = globe.pointGeom?.attributes?.dim?.array;
+    if (dim) { for (let i = 0; i < dim.length; i++) if (dim[i] >= 0.9) bright++; }
+    chip.innerHTML = `<span><b>${bright.toLocaleString()}</b> in <b>r/${escapeHtml(_activeSubredditFilter.name)}</b></span><button class="sr-x" aria-label="Clear">×</button>`;
+    chip.querySelector('.sr-x').onclick = () => {
+      _activeSubredditFilter = null;
+      globe.setSubredditHighlight(null);
+      _updateSubredditFilterChip();
+      renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
+    };
+    _renderSubredditAgendaPanel();
+  }
+
+  // "What r/X voices most" — shown directly below the filter chip. Surfaces
+  // the stances where this community dominates the conversation, turning a
+  // simple dim-filter into a community-study entry point.
+  function _renderSubredditAgendaPanel() {
+    const host = document.getElementById('nav-header');
+    let panel = document.getElementById('sr-agenda-panel');
+    if (!_activeSubredditFilter) { panel?.remove(); return; }
+    const range = globe._filter?.monthRange || null;
+    const rows = range
+      ? getTopStancesForSubredditInRange(_activeSubredditFilter.id, range, 6)
+      : getTopStancesForSubreddit(_activeSubredditFilter.id, 6);
+    if (!rows.length) { panel?.remove(); return; }
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'sr-agenda-panel';
+      panel.className = 'sr-agenda-panel';
+      host?.appendChild(panel);
+    }
+    const srName = _activeSubredditFilter.name;
+    const listHtml = rows.map(r => {
+      const col = sphereColor(r.cl);
+      const t = getTrendInfo(getPositionSeries(r.gid, r.posIdx));
+      const arrow = t.dir === 'up' ? '<span class="sra-up" title="trending up">▲</span>'
+                  : t.dir === 'down' ? '<span class="sra-down" title="fading">▼</span>' : '';
+      return `
+        <button class="sra-row" data-cl="${r.cl}" data-gid="${r.gid}" data-pos="${r.posIdx}"
+                title="${escapeHtml(r.description)}">
+          <span class="sra-dot" style="background:${col}"></span>
+          <span class="sra-name">${escapeHtml(r.pos_name)}</span>
+          ${arrow}
+          <span class="sra-sub">${escapeHtml(r.sub_name)}</span>
+          <span class="sra-share">${Math.round(r.share * 100)}%</span>
+        </button>
+      `;
+    }).join('');
+    const headLabel = range
+      ? `what <b>r/${escapeHtml(srName)}</b> voiced this period`
+      : `what <b>r/${escapeHtml(srName)}</b> voices most`;
+    panel.innerHTML = `
+      <div class="sra-head">${headLabel}</div>
+      <div class="sra-list">${listHtml}</div>
+    `;
+    panel.querySelectorAll('.sra-row').forEach(btn => {
+      btn.onclick = () => {
+        const cl = +btn.dataset.cl, gid = +btn.dataset.gid, posIdx = +btn.dataset.pos;
+        nav.focus({ cl, gid });
+        setTimeout(() => focusPosition(cl, gid, posIdx), 180);
+      };
+    });
+  }
+  // Refresh the chip count whenever focus changes so the user sees the
+  // new intersection size (e.g. "cl 32 + r/cambridgema = 1,571").
+  nav.addEventListener('focus', () => {
+    if (_activeSubredditFilter) setTimeout(_updateSubredditFilterChip, 50);
+  });
+
+  // ─── Right-side detail panel ────────────────────────────────────
+  // Detail panel was removed per user request. All lookups return null
+  // and the refresh function below guards against that.
+  const detailEl = document.getElementById('detail');
+  const detailKind = document.getElementById('detail-kind');
+  const detailTitle = document.getElementById('detail-title');
+  const detailDesc = document.getElementById('detail-desc');
+  const detailMeta = document.getElementById('detail-meta');
+  const detailList = document.getElementById('detail-list');
+  const MAX_LIST = 40;
+
+  function pickLinkedIndices(cl, gid, posIdx) {
+    const st = App.state;
+    if (!st.cluster || !st.subLocal) return [];
+    const clusters = st.cluster, subLocals = st.subLocal;
+    const pa = st.positionAssignments;
+    const N = clusters.length;
+    let targetCl = cl, targetSub = null;
+    if (gid != null) {
+      const g = App.subGidMap.byGid[gid];
+      if (g) { targetCl = g.cl; targetSub = g.sub; }
+    }
+    const matches = [];
+    // Single pass. Cap at a reasonable candidate count to keep this fast
+    // even on 422 k points; downstream sort will narrow to MAX_LIST.
+    for (let i = 0; i < N; i++) {
+      if (targetCl != null && clusters[i] !== targetCl) continue;
+      if (targetSub != null && subLocals[i] !== targetSub) continue;
+      if (posIdx != null && pa && pa[i] !== posIdx) continue;
+      matches.push(i);
+      if (matches.length >= 1500) break;
+    }
+    return matches;
+  }
+
+  async function loadDetails(indices) {
+    // Fetch in chunks — getPointDetails already caches chunks internally.
+    const out = [];
+    for (const i of indices) {
+      try {
+        const d = await getPointDetails(App.state, i);
+        if (!d) continue;
+        out.push({ idx: i, ...d });
+      } catch (e) { /* skip */ }
+    }
+    return out;
+  }
+
+  function renderDetailList(rows) {
+    detailList.innerHTML = '';
+    if (!rows.length) {
+      detailList.innerHTML = `<div class="dl-row"><div class="dl-body" style="color:var(--fg-mute); font-style:italic">No linked posts in the current filter.</div></div>`;
+      return;
+    }
+    for (const d of rows) {
+      const row = document.createElement('div');
+      row.className = 'dl-row';
+      const title = (d.title || '').trim();
+      const body = (d.body || '').replace(/\n{3,}/g, '\n\n');
+      row.innerHTML = `
+        <div class="dl-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(d.type || 'post')} · ${escapeHtml(d.month || '')}${d.score != null ? ` · score ${d.score}` : ''}</div>
+        ${title ? `<div class="dl-title">${escapeHtml(title)}</div>` : ''}
+        ${body ? `<div class="dl-body">${escapeHtml(body)}</div>` : ''}
+      `;
+      row.onclick = () => row.classList.toggle('expanded');
+      detailList.appendChild(row);
+    }
+  }
+
+  let detailFetchToken = 0;
+  async function refreshDetailPanel(cl, gid, posIdx) {
+    if (!detailEl) return;   // panel removed
+    const token = ++detailFetchToken;
+    if (cl == null) {
+      detailEl.classList.add('empty');
+      detailKind.textContent = 'the whole globe';
+      detailTitle.textContent = '422,114 voices';
+      detailDesc.textContent = 'Pick a cluster on the left to see what people in that region of the conversation are saying.';
+      detailMeta.textContent = '';
+      detailList.innerHTML = '';
+      return;
+    }
+    detailEl.classList.remove('empty');
+
+    // Header content depends on drill depth.
+    if (posIdx != null && gid != null) {
+      const doc = App.state.positionAnchors?.[String(gid)];
+      const pos = doc?.positions?.[posIdx];
+      const posDoc = App.state.positionsDoc?.[String(gid)]?.positions?.[posIdx]
+                  || App.state.positionAnchors?.[String(gid)]?.positions?.[posIdx];
+      const sub = App.subGidMap.byGid[gid];
+      detailKind.textContent = 'position · within ' + (sub?.name || '');
+      detailTitle.textContent = posDoc?.name || pos?.name || `Position ${posIdx}`;
+      detailDesc.textContent = posDoc?.description || '';
+      detailMeta.textContent = (pos?.count || 0).toLocaleString() + ' points tagged with this position';
+    } else if (gid != null) {
+      const sub = App.subGidMap.byGid[gid];
+      const clMeta = App.state.clusterMeta?.[String(cl)];
+      detailKind.textContent = 'subtopic · within ' + (clMeta?.name || '');
+      detailTitle.textContent = sub?.name || `Subtopic ${gid}`;
+      detailDesc.textContent = '';
+      detailMeta.textContent = '';
+    } else {
+      const clMeta = App.state.clusterMeta?.[String(cl)];
+      detailKind.textContent = 'cluster';
+      detailTitle.textContent = clMeta?.name || `Cluster ${cl}`;
+      detailDesc.textContent = '';
+      detailMeta.textContent = '';
+    }
+
+    detailList.innerHTML = `<div class="dl-row"><div class="dl-body" style="color:var(--fg-mute); font-style:italic">Loading posts…</div></div>`;
+    const all = pickLinkedIndices(cl, gid, posIdx);
+    // Sample up to MAX_LIST — even stride across the match list so we
+    // don't just get the first N (which would bias by chunk order).
+    const step = Math.max(1, Math.floor(all.length / MAX_LIST));
+    const picks = [];
+    for (let i = 0; i < all.length && picks.length < MAX_LIST; i += step) {
+      picks.push(all[i]);
+    }
+    const rows = await loadDetails(picks);
+    if (token !== detailFetchToken) return;       // stale — newer focus fired
+    // Sort: submissions first (more substantive), then by score desc.
+    rows.sort((a, b) => {
+      const ta = (a.type === 'submission' || a.type === 'post') ? 0 : 1;
+      const tb = (b.type === 'submission' || b.type === 'post') ? 0 : 1;
+      if (ta !== tb) return ta - tb;
+      return (b.score || 0) - (a.score || 0);
+    });
+    renderDetailPanelMeta(all.length);
+    renderDetailList(rows);
+  }
+  function renderDetailPanelMeta(total) {
+    const existing = detailMeta.textContent;
+    const bit = `${total.toLocaleString()} linked`;
+    detailMeta.textContent = existing ? `${existing} · ${bit}` : bit;
+  }
+
+  nav.addEventListener('focus', (ev) => {
+    const { cl, gid, posIdx } = ev.detail || {};
+    refreshDetailPanel(cl, gid, posIdx);
+  });
+  // Initial empty state render once subGidMap is ready.
+  refreshDetailPanel(null, null, null);
+
+  // Find street-interview subjects whose pin is within this cluster (or
+  // sub, when gid given). Makes the anchor-to-real-voices connection
+  // much more visible than leaving users to notice matching colors.
+  function renderFocusVoices(cl, gid) {
+    if (!fvoices) return;
+    fvoices.innerHTML = '';
+    const pins = App.state.interviewPins?.placements || [];
+    const ivs = App.state.interviews?.interviews || [];
+    const ivById = new Map(ivs.map(i => [i.id, i]));
+    const g = gid != null ? App.subGidMap.byGid[gid] : null;
+    const matches = pins.filter(p => {
+      if (p.cluster !== cl) return false;
+      if (g && p.sub !== g.sub) return false;
+      return true;
+    });
+    if (matches.length === 0) return;
+    const chips = matches.map(p => {
+      const iv = ivById.get(p.id);
+      const role = (iv?.role || '').slice(0, 40);
+      const quote = (iv?.quote || '').slice(0, 90);
+      return `
+        <button class="fc-voice" data-id="${p.id}" title="${escapeHtml(quote)}">
+          <span class="fc-voice-id">${p.id}</span>
+          <span class="fc-voice-role">${escapeHtml(role)}</span>
+        </button>
+      `;
+    }).join('');
+    fvoices.innerHTML = `
+      <div class="fc-voices-label">${matches.length === 1 ? 'Voice pinned here' : `Voices pinned here · ${matches.length}`}</div>
+      <div class="fc-voices-list">${chips}</div>
+    `;
+    fvoices.querySelectorAll('.fc-voice').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        const pin = pins.find(p => p.id === id);
+        if (pin) {
+          // Enrich with interview data fields the card renderer expects
+          const iv = ivById.get(id);
+          const meta = App.state.clusterMeta?.[String(pin.cluster)];
+          const full = { ...pin, role: iv?.role, lives: iv?.lives, would_live: iv?.would_live, cluster_name: meta?.name };
+          showInterviewCard(full);
+        }
+      };
+    });
+  }
+
+  // At cluster level, drill the reader straight into the loudest voices
+  // across all subs within — a shortcut that lets them hit a specific
+  // stance without first picking a sub. Ranks by volume with a trend
+  // boost, so surging minority stances surface alongside the mainstays.
+  const fstances = document.getElementById('focus-stances');
+  function renderFocusStances(cl) {
+    if (!fstances) return;
+    fstances.innerHTML = '';
+    if (cl == null) return;
+    const anchors = App.state.positionAnchors;
+    if (!anchors) return;
+    // Honor the active timeline filter so the "loudest here" list reflects
+    // the period the user is studying, not all-time totals.
+    const range = globe._filter?.monthRange || null;
+    const entries = [];
+    // Respect an active subreddit filter: when r/X is pinned the user
+    // is studying that community — the "loudest here" list should reflect
+    // stances where r/X actually voices, not generic all-time tops.
+    const srId = _activeSubredditFilter?.id ?? null;
+    const posSubTable = App._posSubTable;
+    for (const [gidStr, doc] of Object.entries(anchors)) {
+      if (doc.cl !== cl) continue;
+      const gid = +gidStr;
+      const positions = doc.positions || [];
+      positions.forEach((p, idx) => {
+        const allCount = p.count || 0;
+        if (allCount < 30) return;
+        let subCount = null;
+        if (srId != null && posSubTable) {
+          const m = posSubTable.get((gid << 8) | idx);
+          const n = m ? (m.get(srId) || 0) : 0;
+          if (n < 5) return;
+          subCount = n;
+        }
+        const series = getPositionSeries(gid, idx);
+        const rawCount = range
+          ? (series ? _rangeSum(series, range.lo, range.hi) : 0)
+          : allCount;
+        if (range && rawCount < 10) return;
+        // Prefer the sub count when a sub filter is active, so weighting
+        // matches what the user cares about in this view.
+        const count = subCount != null ? subCount : rawCount;
+        const t = getTrendInfo(series);
+        const boost = Math.max(0, t.rel - 1) * 0.5;
+        const score = (range || subCount != null) ? count : count * (1 + boost);
+        entries.push({ gid, posIdx: idx, cl: doc.cl, name: p.name,
+                       sub_name: doc.sub_name, count, rel: t.rel, dir: t.dir,
+                       score, description: p.description || '', inRange: !!range, inSub: !!srId });
+      });
+    }
+    if (entries.length === 0) return;
+    entries.sort((a, b) => b.score - a.score);
+    const top = entries.slice(0, 6);
+    const color = sphereColor(cl);
+    // What's the cluster's dominant voice? Used as a reference point so
+    // each stance row can flag when it diverges — a "most stances here
+    // are r/boston but this one is r/medfordma" callout, in line with
+    // the ⇋ marker already used on the position card.
+    const cData = App.state.subredditBreakdown?.by_cluster?.[String(cl)] || [];
+    const clusterTopName = cData[0]?.r || null;
+    const chips = top.map(e => {
+      const arrow = e.dir === 'up' ? '<span class="fc-st-up" title="trending up">▲</span>'
+                  : e.dir === 'down' ? '<span class="fc-st-down" title="fading">▼</span>' : '';
+      const dom = getPositionDominantSub(e.gid, e.posIdx);
+      const different = dom && clusterTopName && dom.name !== clusterTopName;
+      const voice = dom ? `
+        <span class="fc-st-voice${different ? ' fc-st-voice-diff' : ''}"
+              title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — different from this cluster's dominant r/${clusterTopName}` : `voiced mostly in r/${dom.name}`)}">
+          ${different ? '<span class="fc-st-cross">⇋</span>' : ''}r/${escapeHtml(dom.name)}
+        </span>` : '';
+      // Full name + description in tooltip for the ellipsized fc-st-name.
+      const titleTxt = e.description ? `${e.name} — ${e.description}` : e.name;
+      return `
+        <button class="fc-stance${different ? ' fc-stance-diff' : ''}"
+                data-cl="${e.cl}" data-gid="${e.gid}" data-pos="${e.posIdx}"
+                style="--stance-color:${color}"
+                title="${escapeHtml(titleTxt)}">
+          <span class="fc-st-name">${escapeHtml(e.name)}</span>
+          ${arrow}
+          ${voice}
+          <span class="fc-st-sub">${escapeHtml(e.sub_name)}</span>
+          <span class="fc-st-count">${e.count.toLocaleString()}</span>
+        </button>
+      `;
+    }).join('');
+    let sectionLabel = 'loudest stances here';
+    if (top[0]?.inSub && top[0]?.inRange) sectionLabel = `loudest in r/${_activeSubredditFilter.name} · this period`;
+    else if (top[0]?.inSub) sectionLabel = `loudest in r/${_activeSubredditFilter.name}`;
+    else if (top[0]?.inRange) sectionLabel = 'loudest stances — this period';
+    fstances.innerHTML = `
+      <div class="fc-stances-label">${sectionLabel}</div>
+      <div class="fc-stances-list">${chips}</div>
+    `;
+    fstances.querySelectorAll('.fc-stance').forEach(btn => {
+      btn.onclick = () => {
+        const cl2 = +btn.dataset.cl, gid2 = +btn.dataset.gid, posIdx2 = +btn.dataset.pos;
+        nav.focus({ cl: cl2, gid: gid2 });
+        setTimeout(() => focusPosition(cl2, gid2, posIdx2), 180);
+      };
+    });
+  }
+
+  // Render up-navigation breadcrumbs inside the focus card. The default
+  // header crumbs are tiny; these are big enough to reliably hit.
+  function renderFocusCrumbs(cl, gid) {
+    if (!fcrumbs) return;
+    const parts = [`<button class="fc-up" data-level="all">← All clusters</button>`];
+    if (cl != null && gid != null) {
+      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
+      parts.push(`<button class="fc-up" data-level="cluster" style="color:${sphereColor(cl)}">${escapeHtml(clName)}</button>`);
+    }
+    fcrumbs.innerHTML = parts.join('<span class="fc-sep">›</span>');
+    fcrumbs.querySelectorAll('.fc-up').forEach(b => {
+      b.onclick = () => {
+        const lvl = b.dataset.level;
+        if (lvl === 'all') nav.focus({});
+        else if (lvl === 'cluster') nav.focus({ cl });
+      };
+    });
+  }
+  const inspBody = document.getElementById('insp-body');
+  const inspEmpty = document.getElementById('insp-empty-main');
+
+  // Shared helpers for inspector state management.
+  // Returning users who've already drilled in get a compact empty state
+  // (no intro paragraph) so the three chip sections all fit in the fold
+  // without scrolling. Tracked in localStorage.
+  function _markEmptyCompactIfSeen() {
+    try {
+      if (localStorage.getItem('vizIntroSeen') === '1') {
+        inspEmpty?.classList.add('compact');
+      }
+    } catch {}
+  }
+  _markEmptyCompactIfSeen();
+  function hideInspectorEmpty() {
+    if (inspEmpty) {
+      inspEmpty.classList.add('hidden');
+      // First real navigation marks the intro as seen so future empty-state
+      // visits are compact.
+      try { localStorage.setItem('vizIntroSeen', '1'); } catch {}
+      inspEmpty.classList.add('compact');
+    }
+  }
+  function showInspectorEmpty() {
+    const anyOpen =
+      !focusCard.classList.contains('hidden') ||
+      !document.getElementById('detail-card').classList.contains('hidden') ||
+      !document.getElementById('interview-card').classList.contains('hidden') ||
+      !document.getElementById('position-card').classList.contains('hidden') ||
+      !document.getElementById('voices-list-inline').classList.contains('hidden');
+    if (!anyOpen && inspEmpty) inspEmpty.classList.remove('hidden');
+  }
+
   nav.addEventListener('focus', (ev) => {
     const { cl, gid, posIdx } = ev.detail;
     globe.setHighlight({ cl, gid, posIdx });
-    const focusCard = document.getElementById('focus-card');
-    const fkind = document.getElementById('focus-kind');
-    const ftitle = document.getElementById('focus-title');
-    const fmeta = document.getElementById('focus-meta');
 
     if (cl == null) {
       globe.rotateTo(0, 0, 3.0, 700);
-      focusCard.classList.remove('show');
+      focusCard.classList.add('hidden');
+      if (fspark) fspark.innerHTML = '';
       globe.loadThreadArcs([]);
+      showInspectorEmpty();
       return;
     }
+    // Focusing a cluster/sub closes any open interview card — the user
+    // shifted their attention away from the pinned voice.
+    const iv = document.getElementById('interview-card');
+    if (iv && !iv.classList.contains('hidden')) {
+      iv.classList.add('hidden');
+      document.querySelectorAll('.pin.selected').forEach(el => el.classList.remove('selected'));
+    }
+    hideInspectorEmpty();
     if (gid == null) {
-      const c = (App.state.centroids.clusters || {})[String(cl)];
-      if (c) globe.rotateTo(c.lat, c.lon, 2.1);
+      const a = clusterAnchor(App.state, cl);
+      if (a) globe.rotateTo(a.lat, a.lon, 1.9);
       const meta = App.state.clusterMeta[String(cl)];
       ftitle.textContent = meta ? meta.name : `Cluster ${cl}`;
-      ftitle.style.color = clusterColor(cl);
-      fkind.textContent = 'cluster';
-      fmeta.textContent = `${(c?.count ?? 0).toLocaleString()} items`;
-      focusCard.classList.add('show');
+      ftitle.style.color = sphereColor(cl);
+      fkind.innerHTML = `cluster ${renderTrendBadge(getClusterSeries(cl))}`;
+      fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
+      if (fspark) fspark.innerHTML = renderClusterSparkline(cl, sphereColor(cl));
+      renderFocusCrumbs(cl, null);
+      renderFocusSubreddits(cl, null, sphereColor(cl));
+      renderFocusStances(cl);
+      renderFocusVoices(cl, null);
+      focusCard.classList.remove('hidden');
       globe.loadThreadArcs([]);
       return;
     }
-    // gid level
-    const subs = (App.state.centroids.subclusters || {});
     const g = App.subGidMap.byGid[gid];
-    const key = g ? `${g.cl}_${g.sub}` : null;
-    const c = key ? subs[key] : null;
-    if (c) globe.rotateTo(c.lat, c.lon, 1.7);
-    ftitle.textContent = g ? g.name : `Sub ${gid}`;
-    ftitle.style.color = clusterColor(g.cl);
-    fkind.textContent = 'subtopic';
-    fmeta.textContent = `${(c?.count ?? 0).toLocaleString()} items`;
-    focusCard.classList.add('show');
+    if (g) {
+      const a = subAnchor(App.state, g.cl, g.sub);
+      if (a) { globe.rotateTo(a.lat, a.lon, 1.55); pulseAt(a.lat, a.lon, sphereColor(g.cl)); }
+      ftitle.textContent = g.name;
+      ftitle.style.color = sphereColor(g.cl);
+      fkind.innerHTML = `subtopic ${renderTrendBadge(getSubSeries(gid))}`;
+      fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
+      if (fspark) fspark.innerHTML = renderSubSparkline(gid, sphereColor(g.cl));
+      renderFocusCrumbs(cl, gid);
+      renderFocusSubreddits(cl, gid, sphereColor(g.cl));
+      renderFocusStances(null);  // clear the cluster-level shortcut
+      renderFocusVoices(cl, gid);
+      focusCard.classList.remove('hidden');
+    }
     globe.loadThreadArcs([]);
   });
 
-  // Globe hover → point card + thread arcs to siblings
-  const pointCard = document.getElementById('point-card');
-  let lastHoverIdx = -1;
+  // Hoisted here so the hover handlers below can check it; actual
+  // keydown/keyup listeners live farther down in the sprout block.
+  let _spaceDown = false;
+  // Hover-card on/off (user toggles with `h`). Default on.
+  let hoverCardEnabled = true;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'h' && e.key !== 'H') return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    hoverCardEnabled = !hoverCardEnabled;
+    const hint = document.getElementById('hover-hint');
+    if (hint) hint.classList.toggle('off', !hoverCardEnabled);
+    if (!hoverCardEnabled) {
+      const tip = document.getElementById('point-tooltip');
+      tip?.classList.remove('visible');
+      tip?.classList.add('hidden');
+    }
+  });
+
+  // ─── Globe hover → floating cursor tooltip + thread arcs ────────
+  // Tooltip is a fixed-position card that follows the mouse. It replaces
+  // the old sidebar preview + the "Hot now" placeholder block.
+  const pointTooltip = document.getElementById('point-tooltip');
+  const positionTooltip = (cx, cy) => {
+    // Flip to the other side of the cursor if we'd overflow the viewport.
+    const r = pointTooltip.getBoundingClientRect();
+    const pad = 18;
+    let x = cx + 18, y = cy + 18;
+    if (x + r.width + pad > window.innerWidth) x = cx - r.width - 18;
+    if (y + r.height + pad > window.innerHeight) y = cy - r.height - 18;
+    pointTooltip.style.left = `${Math.max(8, x)}px`;
+    pointTooltip.style.top  = `${Math.max(8, y)}px`;
+  };
+  const hideTooltip = () => {
+    pointTooltip.classList.remove('visible');
+    pointTooltip.classList.add('hidden');
+  };
   globe.addEventListener('hover', async (ev) => {
+    // Suppress the hover card entirely while SPACE is held — otherwise
+    // moving the mouse around to read the sprouts keeps flashing
+    // tooltips at the cursor. Also suppress if the user has toggled it
+    // off via the `h` key.
+    if (_spaceDown || !hoverCardEnabled) { hideTooltip(); return; }
     const { idx, clientX, clientY } = ev.detail;
-    lastHoverIdx = idx;
     if (idx < 0) {
-      pointCard.classList.remove('show');
-      // Don't clear cluster-level arcs; only clear hover-specific arcs.
+      hideTooltip();
       if (globe._hoverArcsActive) restoreFocusThreads();
       return;
     }
     try {
       const details = await getPointDetails(App.state, idx);
-      const title = details.title || '(comment)';
-      const body = (details.body || '').slice(0, 340);
+      const title = (details.title || '').trim();
+      const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
       const meta = App.state.clusterMeta[String(details.cluster)];
       const catName = meta ? meta.name : `Cluster ${details.cluster}`;
-      pointCard.innerHTML = '';
-      const cat = document.createElement('div');
-      cat.className = 'pc-subreddit';
-      cat.style.color = sphereColor(details.cluster);
-      cat.textContent = catName;
-      pointCard.appendChild(cat);
-      const meta2 = document.createElement('div');
-      meta2.className = 'pc-subreddit';
-      meta2.textContent = `r/${details.subreddit} · ${details.type} · ${details.month} · score ${details.score}`;
-      pointCard.appendChild(meta2);
-      if (title) {
-        const t = document.createElement('div');
-        t.className = 'pc-title';
-        t.textContent = title;
-        pointCard.appendChild(t);
-      }
-      const b = document.createElement('div');
-      b.className = 'pc-body';
-      b.textContent = body;
-      pointCard.appendChild(b);
-      positionCard(pointCard, clientX, clientY);
-      pointCard.classList.add('show');
-      // Build hover arcs: connect this point to its post (or all comments).
+      const clColor = sphereColor(details.cluster);
+      pointTooltip.innerHTML = `
+        <div class="hv-cluster" style="color:${clColor}">${catName}</div>
+        <div class="hv-meta">r/${details.subreddit} · ${details.type} · ${details.month} · score ${details.score}</div>
+        ${title ? `<div class="hv-title">${escapeHtml(title)}</div>` : ''}
+        <div class="hv-body">${escapeHtml(body)}</div>
+      `;
+      pointTooltip.classList.remove('hidden');
+      pointTooltip.classList.add('visible');
+      if (clientX != null) positionTooltip(clientX, clientY);
       buildHoverArcs(idx, details);
     } catch (e) {}
   });
   globe.addEventListener('hovermove', (ev) => {
-    positionCard(pointCard, ev.detail.clientX, ev.detail.clientY);
+    if (!pointTooltip.classList.contains('visible')) return;
+    const { clientX, clientY } = ev.detail || {};
+    if (clientX != null) positionTooltip(clientX, clientY);
   });
-  globe.addEventListener('bgclick', () => pointCard.classList.remove('show'));
+  globe.addEventListener('bgclick', () => {
+    hideInterviewCard();
+  });
   globe.addEventListener('pointclick', async (ev) => {
     const details = await getPointDetails(App.state, ev.detail.idx);
-    showDetailCard(details);
+    if (details?.permalink) {
+      window.open(details.permalink, '_blank', 'noopener,noreferrer');
+    } else {
+      showDetailCard(details);
+    }
+  });
+  globe.addEventListener('pinhover', (ev) => {
+    showPinTooltip(ev.detail);
+  });
+  globe.addEventListener('pinunhover', () => {
+    hidePinTooltip();
+  });
+  // ─── Hover halo: bright ring on the currently-hovered point ────
+  const hoverHaloEl = document.getElementById('hover-halo');
+  let hoverPointIdx = -1;
+  globe.addEventListener('hover', (ev) => {
+    if (_spaceDown) { hoverPointIdx = -1; return; }
+    hoverPointIdx = ev?.detail?.idx ?? -1;
+  });
+  function updateHoverHalo() {
+    if (!hoverHaloEl) return;
+    if (hoverPointIdx < 0 || !App.state?.coords) {
+      hoverHaloEl.classList.remove('show');
+      return;
+    }
+    const lat = App.state.coords[2 * hoverPointIdx];
+    const lon = App.state.coords[2 * hoverPointIdx + 1];
+    const wp = globe.worldPositionOf(lat, lon, 1.012);
+    const camPos = globe.camera.position;
+    const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+    if (facing <= 0) { hoverHaloEl.classList.remove('show'); return; }
+    const p = wp.clone().project(globe.camera);
+    if (p.z > 1) { hoverHaloEl.classList.remove('show'); return; }
+    const w = globe.canvas.clientWidth;
+    const h = globe.canvas.clientHeight;
+    const sx = (p.x * 0.5 + 0.5) * w;
+    const sy = (-p.y * 0.5 + 0.5) * h;
+    const cl = App.state.cluster?.[hoverPointIdx];
+    const col = cl != null ? sphereColor(cl) : '#ffffff';
+    hoverHaloEl.style.left = `${sx}px`;
+    hoverHaloEl.style.top = `${sy}px`;
+    hoverHaloEl.style.borderColor = col;
+    hoverHaloEl.style.boxShadow =
+      `0 0 0 2px rgba(0,0,0,0.45), 0 0 20px 5px ${col}99, inset 0 0 10px 2px ${col}66`;
+    hoverHaloEl.classList.add('show');
+  }
+
+  // ─── Space-to-sprout: ephemeral comment samples on the visible area
+  const sproutsEl = document.getElementById('sprouts');
+  const sproutLinesEl = document.getElementById('sprout-lines');
+  const SPROUT_COUNT = 5;   // always exactly 5
+  const SPROUT_BODY_CAP = 240;
+  const SPROUT_MARGIN_PX = 14;
+  let activeSprouts = [];   // { idx, lat, lon, el, line, offX, offY, w, h }
+
+  // "In the current viewport" means both:
+  //   1. forward-facing (facing > 0) — otherwise the point is on the back
+  //      of the sphere and not rendered
+  //   2. its projected screen position lies inside the canvas rect
+  // _screenOf returns null when either fails.
+  function _screenOf(lat, lon) {
+    const wp = globe.worldPositionOf(lat, lon, 1.012);
+    const camPos = globe.camera.position;
+    const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+    if (facing <= 0.02) return null;
+    const p = wp.clone().project(globe.camera);
+    if (p.z > 1) return null;
+    const w = globe.canvas.clientWidth;
+    const h = globe.canvas.clientHeight;
+    const x = (p.x * 0.5 + 0.5) * w;
+    const y = (-p.y * 0.5 + 0.5) * h;
+    if (x < SPROUT_MARGIN_PX || x > w - SPROUT_MARGIN_PX) return null;
+    if (y < SPROUT_MARGIN_PX || y > h - SPROUT_MARGIN_PX) return null;
+    return { x, y };
+  }
+
+  async function sproutSpawn() {
+    if (activeSprouts.length > 0) return;     // already up
+    const state = App.state;
+    if (!state?.coords || !state?.N) return;
+    const N = state.N;
+    const n = SPROUT_COUNT;
+
+    // "Respects any filter, including hovering" → read the globe's own
+    // dim buffer. dim[i] ≈ 1 means the point is drawn in full color
+    // (it passes every active filter — focus, nav-segment hover, subreddit
+    // filter, regex paint, timeline range). dim[i] ≈ 0.12 means faded —
+    // skip those so the sprouts only come from what the user actually
+    // sees as colored.
+    const dimArr = globe.pointGeom?.attributes?.dim?.array;
+    const matchesFocus = (i) => dimArr ? dimArr[i] > 0.5 : true;
+
+    // 1) Collect ALL on-screen + focus-matching points (up to a cap).
+    const POOL_CAP = 800;
+    const pool = [];
+    const stride = Math.max(1, Math.floor(N / 4000));
+    const offset = Math.floor(Math.random() * stride);
+    for (let idx = offset; idx < N && pool.length < POOL_CAP; idx += stride) {
+      if (!matchesFocus(idx)) continue;
+      const lat = state.coords[2 * idx];
+      const lon = state.coords[2 * idx + 1];
+      const s = _screenOf(lat, lon);
+      if (!s) continue;
+      pool.push({ idx, lat, lon, sx: s.x, sy: s.y });
+    }
+    // If we skipped too many by stride (e.g. zoomed way in, or filter is
+    // narrow), do a dense second sweep.
+    if (pool.length < n * 3 && stride > 1) {
+      for (let idx = 0; idx < N && pool.length < POOL_CAP; idx++) {
+        if (idx % stride === offset) continue;   // already tried
+        if (!matchesFocus(idx)) continue;
+        const lat = state.coords[2 * idx];
+        const lon = state.coords[2 * idx + 1];
+        const s = _screenOf(lat, lon);
+        if (!s) continue;
+        pool.push({ idx, lat, lon, sx: s.x, sy: s.y });
+      }
+    }
+    if (pool.length === 0) return;
+
+    // 2) Pick 5 with progressive spatial diversity. Start with a generous
+    //    min-distance threshold and relax if we can't fill the quota.
+    const W = globe.canvas.clientWidth;
+    const H = globe.canvas.clientHeight;
+    const minAxis = Math.min(W, H);
+    const diversitySteps = [0.18, 0.13, 0.08, 0.04, 0];   // fractions of minAxis
+    let kept = [];
+    for (const frac of diversitySteps) {
+      const min2 = (minAxis * frac) ** 2;
+      const order = pool.slice().sort(() => Math.random() - 0.5);
+      kept = [];
+      for (const c of order) {
+        if (kept.length >= n) break;
+        let ok = true;
+        for (const k of kept) {
+          const dx = k.sx - c.sx, dy = k.sy - c.sy;
+          if (dx*dx + dy*dy < min2) { ok = false; break; }
+        }
+        if (ok) kept.push(c);
+      }
+      if (kept.length >= n) break;
+    }
+    // If the viewport is literally so small we can't fit n distinct points,
+    // keep whatever we have.
+    if (kept.length === 0) return;
+
+    // Fetch details and build DOM boxes.
+    const placed = [];   // {x,y,w,h} already-placed boxes
+    const margin = 8;
+
+    // Preload details serially to keep DOM in sample-kept order.
+    const details = [];
+    for (const k of kept) {
+      try {
+        const d = await getPointDetails(state, k.idx);
+        details.push({ k, d });
+      } catch { /* skip */ }
+    }
+
+    // Layout + render.
+    activeSprouts = [];
+    for (const { k, d } of details) {
+      if (!d) continue;
+      const title = (d.title || '').trim();
+      const body = (d.body || '').replace(/\s+/g, ' ').trim();
+      const bodyShort = body.length > SPROUT_BODY_CAP ? body.slice(0, SPROUT_BODY_CAP).trim() + '…' : body;
+      if (!title && !bodyShort) continue;
+
+      const pointClEarly = App.state.cluster?.[k.idx];
+      const anchorColorEarly = pointClEarly != null ? sphereColor(pointClEarly) : '#ffffff';
+
+      // Use an <a> so the whole box is a proper new-tab link (with the
+      // affordances browsers give to anchors — cmd-click, middle-click,
+      // copy-link). Falls back to a div if there's no permalink.
+      const hasLink = !!d.permalink;
+      const el = document.createElement(hasLink ? 'a' : 'div');
+      el.className = 'sprout';
+      if (hasLink) {
+        el.href = d.permalink;
+        el.target = '_blank';
+        el.rel = 'noopener noreferrer';
+      }
+      // Border + thin glow in the cluster color so the caption reads as
+      // belonging to the same cluster as its tether + halo.
+      el.style.borderColor = anchorColorEarly;
+      el.style.boxShadow =
+        `0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px ${anchorColorEarly}55, 0 0 12px ${anchorColorEarly}44`;
+      el.innerHTML = `
+        <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(d.type || 'post')}${d.month ? ' · ' + escapeHtml(d.month) : ''}</div>
+        ${title ? `<div class="sp-title">${escapeHtml(title)}</div>` : ''}
+        ${bodyShort ? `<div class="sp-body">${escapeHtml(bodyShort)}</div>` : ''}
+        ${hasLink ? '<span class="sp-link">↗</span>' : ''}
+      `;
+      sproutsEl.appendChild(el);
+      // Measure.
+      const bw = el.offsetWidth || 200;
+      const bh = el.offsetHeight || 80;
+
+      // Try many offsets radially around the anchor to find a spot that
+      // both fits inside the viewport and doesn't overlap any previously
+      // placed box (with a 12 px buffer). If nothing works on the first
+      // pass, expand the search radius up to 6× — guarantees no overlap
+      // so long as the viewport has room.
+      const BUFFER = 12;
+      const overlaps = (bx, by) => {
+        for (const p of placed) {
+          if (bx < p.x + p.w + BUFFER &&
+              bx + bw + BUFFER > p.x &&
+              by < p.y + p.h + BUFFER &&
+              by + bh + BUFFER > p.y) {
+            return true;
+          }
+        }
+        return false;
+      };
+      const R = Math.max(60, Math.min(bw, bh) * 0.8);
+      const anchor = { x: k.sx, y: k.sy };
+      let bestPos = null;
+      for (let r = R; r < R * 6 && !bestPos; r *= 1.25) {
+        const angleJitter = Math.random() * Math.PI * 2;
+        for (let a = 0; a < 24 && !bestPos; a++) {
+          const ang = (a / 24) * Math.PI * 2 + angleJitter;
+          const ox = Math.cos(ang) * r;
+          const oy = Math.sin(ang) * r;
+          const bx = anchor.x + ox - (ox < 0 ? bw : 0);
+          const by = anchor.y + oy - (oy < 0 ? bh : 0);
+          if (bx < margin || by < margin || bx + bw > W - margin || by + bh > H - margin) continue;
+          if (overlaps(bx, by)) continue;
+          bestPos = { bx, by };
+        }
+      }
+      // Last-ditch: scan the canvas on a 40 px grid for any non-overlapping
+      // spot, even if it's far from the anchor. Guarantees we never draw
+      // overlapping boxes (at worst, the tether line is long).
+      if (!bestPos) {
+        outer:
+        for (let by = margin; by + bh <= H - margin; by += 40) {
+          for (let bx = margin; bx + bw <= W - margin; bx += 40) {
+            if (!overlaps(bx, by)) { bestPos = { bx, by }; break outer; }
+          }
+        }
+      }
+      if (!bestPos) { el.remove(); continue; }
+
+      el.style.left = `${bestPos.bx}px`;
+      el.style.top = `${bestPos.by}px`;
+      placed.push({ x: bestPos.bx, y: bestPos.by, w: bw, h: bh });
+      requestAnimationFrame(() => el.classList.add('show'));
+
+      // Per-anchor cluster color so line + halo visually tie back to the
+      // matching point.
+      const pointCl = App.state.cluster?.[k.idx];
+      const anchorColor = pointCl != null ? sphereColor(pointCl) : '#ffffff';
+
+      // Tether line from anchor to nearest box edge. Made bold + tinted
+      // to the cluster color so the link between caption and point reads
+      // at a glance. Opacity is controlled by the .show class so spawn /
+      // clear fade it in lockstep with the caption box.
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('stroke', anchorColor);
+      line.setAttribute('stroke-width', '2.5');
+      line.setAttribute('stroke-opacity', '0.85');
+      sproutLinesEl.appendChild(line);
+      requestAnimationFrame(() => line.classList.add('show'));
+
+      // Halo around the anchor point itself.
+      const halo = document.createElement('div');
+      halo.className = 'sprout-anchor';
+      halo.style.borderColor = anchorColor;
+      halo.style.boxShadow =
+        `0 0 0 2px rgba(0,0,0,0.5), 0 0 18px 4px ${anchorColor}aa`;
+      sproutsEl.appendChild(halo);
+      requestAnimationFrame(() => halo.classList.add('show'));
+
+      activeSprouts.push({
+        idx: k.idx, lat: k.lat, lon: k.lon,
+        el, line, halo,
+        bx: bestPos.bx, by: bestPos.by, bw, bh,
+      });
+    }
+    // Set SVG viewBox so line coords are in CSS pixels.
+    sproutLinesEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    sproutLinesEl.setAttribute('width', W);
+    sproutLinesEl.setAttribute('height', H);
+  }
+  function sproutClear() {
+    for (const s of activeSprouts) {
+      s.el.classList.remove('show');
+      s.line?.classList.remove('show');
+      s.halo?.classList.remove('show');
+      const el = s.el, line = s.line, halo = s.halo;
+      setTimeout(() => { el.remove(); line?.remove(); halo?.remove(); }, 240);
+    }
+    activeSprouts = [];
+  }
+  function updateSprouts() {
+    if (!activeSprouts.length) return;
+    const W = globe.canvas.clientWidth;
+    const H = globe.canvas.clientHeight;
+    sproutLinesEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    sproutLinesEl.setAttribute('width', W);
+    sproutLinesEl.setAttribute('height', H);
+    for (const s of activeSprouts) {
+      const scr = _screenOf(s.lat, s.lon);
+      if (!scr) {
+        s.line.setAttribute('stroke-opacity', '0');
+        if (s.halo) s.halo.style.opacity = '0';
+        continue;
+      }
+      // Closest edge midpoint on the box to the anchor.
+      const cx = Math.max(s.bx, Math.min(scr.x, s.bx + s.bw));
+      const cy = Math.max(s.by, Math.min(scr.y, s.by + s.bh));
+      s.line.setAttribute('x1', scr.x);
+      s.line.setAttribute('y1', scr.y);
+      s.line.setAttribute('x2', cx);
+      s.line.setAttribute('y2', cy);
+      s.line.setAttribute('stroke-opacity', '0.85');
+      if (s.halo) {
+        s.halo.style.left = `${scr.x}px`;
+        s.halo.style.top = `${scr.y}px`;
+        s.halo.style.opacity = '';   // let the class rule control opacity
+      }
+    }
+  }
+  // _spaceDown was hoisted above; don't redeclare.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (_spaceDown) return;
+    _spaceDown = true;
+    e.preventDefault();
+    sproutSpawn();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code !== 'Space') return;
+    _spaceDown = false;
+    sproutClear();
   });
 
-  // HUD buttons
+  globe.addEventListener('pinclick', (ev) => {
+    showInterviewCard(ev.detail.pin);
+    // Mark the pin as selected, others unselected
+    document.querySelectorAll('.pin').forEach(el => el.classList.toggle('selected', el.dataset.id === ev.detail.pin.id));
+  });
+
+  // ─── HUD buttons ────────────────────────────────────────────────
   const btnThreads = document.getElementById('btn-threads');
-  btnThreads.onclick = () => {
+  // Per-toggle preferences persist so the user doesn't have to re-disable
+  // labels / pins / threads on every reload. Keys: vizPref.labels, .pins,
+  // .threads — each 'on' | 'off'. Defaults: labels on, pins on, threads off.
+  const _prefKey = 'vizPref';
+  const _prefs = (() => {
+    try { return JSON.parse(localStorage.getItem(_prefKey) || '{}'); }
+    catch { return {}; }
+  })();
+  function _savePrefs() {
+    try { localStorage.setItem(_prefKey, JSON.stringify(_prefs)); } catch {}
+  }
+  if (btnThreads) btnThreads.onclick = () => {
     const next = !globe.threadArcsEnabled;
     globe.setThreadsEnabled(next);
     btnThreads.classList.toggle('on', next);
+    _prefs.threads = next ? 'on' : 'off';
+    _savePrefs();
   };
   const btnLabels = document.getElementById('btn-labels');
-  btnLabels.onclick = () => {
+  if (btnLabels) btnLabels.onclick = () => {
     labelsEnabled = !labelsEnabled;
     btnLabels.classList.toggle('on', labelsEnabled);
     document.getElementById('globe-labels').style.display = labelsEnabled ? '' : 'none';
+    _prefs.labels = labelsEnabled ? 'on' : 'off';
+    _savePrefs();
   };
+  const btnPins = document.getElementById('btn-pins');
+  if (btnPins) btnPins.onclick = () => {
+    const next = !globe.pinsEnabled;
+    globe.setPinsEnabled(next);
+    btnPins.classList.toggle('on', next);
+    document.getElementById('pin-labels').style.display = next ? '' : 'none';
+    _prefs.pins = next ? 'on' : 'off';
+    _savePrefs();
+  };
+  // Apply saved prefs after the rest of boot has run so any let-bindings
+  // referenced by the click handlers (e.g. labelsEnabled at line ~1225)
+  // are initialized. queueMicrotask guarantees we run after this tick.
+  // Buttons were removed from the toolbar; we re-apply prefs by invoking
+  // the handlers directly (via synthetic click when the button still
+  // exists) so saved state survives.
+  queueMicrotask(() => {
+    if (_prefs.labels === 'off' && btnLabels?.classList.contains('on')) btnLabels.click();
+    if (_prefs.pins === 'off' && btnPins?.classList.contains('on')) btnPins.click();
+    if (_prefs.threads === 'on' && btnThreads && !btnThreads.classList.contains('on')) btnThreads.click();
+  });
   const btnReset = document.getElementById('btn-reset');
-  btnReset.onclick = () => { nav.focus({}); };
+  // True reset — unwinds drill focus, subreddit filter, timeline range,
+  // regex paint, text-search state, and any open overlays. A single
+  // affordance that returns the viz to its fresh-load state.
+  if (btnReset) btnReset.onclick = () => {
+    // Focus drill
+    nav.focus({});
+    hideInterviewCard();
+    // Subreddit filter
+    if (_activeSubredditFilter) {
+      _activeSubredditFilter = null;
+      globe.setSubredditHighlight(null);
+      _updateSubredditFilterChip();
+    }
+    // Regex / text paint
+    if (typeof nav._clearRegexPaint === 'function') nav._clearRegexPaint();
+    // Timeline range via scrubber API (exposed on App)
+    if (typeof App._timelineClear === 'function') App._timelineClear();
+    // Search input
+    const si = document.getElementById('search-input');
+    if (si) { si.value = ''; si.blur(); }
+    const ss = document.getElementById('search-suggestions');
+    ss?.classList.add('hidden');
+    // Close position card if open
+    document.getElementById('position-card')?.classList.add('hidden');
+    // Clear hash last — after all state changes
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  };
 
-  // ─── Control pad (arrow + zoom buttons) ─────────────────────────
+  // ─── Share: copy the current URL (incl. drill hash) to clipboard.
+  //   Button flashes "Copied!" for ~1.6s. Falls back to textarea/execCommand
+  //   if navigator.clipboard is unavailable (e.g. insecure http).
+  const btnShare = document.getElementById('btn-share');
+  if (btnShare) {
+    let shareResetTimer = null;
+    btnShare.onclick = async () => {
+      const url = window.location.href;
+      let ok = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          ok = true;
+        }
+      } catch (e) { /* ignored; fallback below */ }
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { ok = document.execCommand('copy'); } catch (e) {}
+        ta.remove();
+      }
+      btnShare.classList.toggle('copied', ok);
+      btnShare.classList.toggle('share-err', !ok);
+      btnShare.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
+      clearTimeout(shareResetTimer);
+      shareResetTimer = setTimeout(() => {
+        btnShare.classList.remove('copied', 'share-err');
+        btnShare.removeAttribute('data-msg');
+      }, 1600);
+    };
+  }
+
+  // ─── Timeline scrubber: drag a date range to filter the globe ───
+  (() => {
+    const tl = document.getElementById('timeline-scrubber');
+    const svg = document.getElementById('tl-svg');
+    const toggle = document.getElementById('tl-toggle');
+    const labelEl = document.getElementById('tl-label');
+    const clearBtn = document.getElementById('tl-clear');
+    const hintEl = document.getElementById('tl-hint');
+    const labels = App.state.monthLabels;
+    const total = App.state.timeHist?.total;
+    if (!tl || !svg || !labels || !total) return;
+
+    const N = labels.length;
+    let lo = 0, hi = N - 1;
+    const maxCount = total.reduce((m, v) => v > m ? v : m, 1);
+    function buildBg() {
+      svg.innerHTML = '';
+      const w = svg.clientWidth || 500;
+      const h = svg.clientHeight || 42;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.setAttribute('preserveAspectRatio', 'none');
+      const bw = w / N;
+      for (let i = 0; i < N; i++) {
+        const v = total[i];
+        const bh = (v / maxCount) * h * 0.8 + 2;
+        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        r.setAttribute('class', 'tl-bar');
+        r.setAttribute('x', (i * bw).toFixed(2));
+        r.setAttribute('y', (h - bh).toFixed(2));
+        r.setAttribute('width', Math.max(1, bw - 0.5).toFixed(2));
+        r.setAttribute('height', bh.toFixed(2));
+        r.dataset.idx = i;
+        svg.appendChild(r);
+      }
+      for (let i = 0; i < N; i++) {
+        if (!labels[i].endsWith('-01')) continue;
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('class', 'tl-tick');
+        t.setAttribute('x', (i * bw).toFixed(2));
+        t.setAttribute('y', h - 1);
+        t.textContent = labels[i].slice(0, 4);
+        svg.appendChild(t);
+      }
+    }
+    function paintRange() {
+      svg.querySelectorAll('.tl-bar').forEach(b => {
+        const i = +b.dataset.idx;
+        b.classList.toggle('in-range', i >= lo && i <= hi);
+      });
+    }
+    function rangeCount() {
+      let s = 0;
+      for (let i = lo; i <= hi; i++) s += total[i] || 0;
+      return s;
+    }
+    function updateLabel() {
+      const full = lo === 0 && hi === N - 1;
+      if (full) {
+        labelEl.innerHTML = `<b>Whole corpus</b> · ${rangeCount().toLocaleString()} posts`;
+        hintEl.style.display = '';
+      } else {
+        labelEl.innerHTML = `<b>${escapeHtml(labels[lo])} → ${escapeHtml(labels[hi])}</b> · ${rangeCount().toLocaleString()} posts`;
+        hintEl.style.display = 'none';
+      }
+    }
+    // Always-visible chip mirroring the sub-filter one so the active time
+    // range is legible even when the scrubber is collapsed. Header has
+    // limited space — keep the label compact (MMM YYYY → MMM YYYY).
+    function _updateTimelineChip() {
+      const header = document.getElementById('nav-header');
+      let chip = document.getElementById('tl-filter-chip');
+      if (lo === 0 && hi === N - 1) { chip?.remove(); return; }
+      if (!chip) {
+        chip = document.createElement('div');
+        chip.id = 'tl-filter-chip';
+        chip.className = 'tl-filter-chip';
+        header?.appendChild(chip);
+      }
+      const fmt = (iso) => {
+        // labels are "YYYY-MM"; re-format to "MMM YYYY".
+        const [y, m] = iso.split('-');
+        const mName = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1] || m;
+        return `${mName} ${y}`;
+      };
+      // Sum of in-range monthly totals — gives users an immediate sense
+      // of how restrictive the filter is (vs. the 422k corpus). Labels
+      // have gaps for months with no data, so report calendar-month span
+      // (derived from the two endpoints) rather than label-array length.
+      let n = 0;
+      for (let i = lo; i <= hi; i++) n += total[i] || 0;
+      const [y1, m1] = labels[lo].split('-').map(Number);
+      const [y2, m2] = labels[hi].split('-').map(Number);
+      const calMonths = (y2 - y1) * 12 + (m2 - m1) + 1;
+      const monthsStr = calMonths >= 12 ? `${(calMonths/12).toFixed(1)} yr` : `${calMonths} mo`;
+      const countStr = n >= 100000 ? `${Math.round(n/1000)}k` : n.toLocaleString();
+      chip.innerHTML = `<span><b>${escapeHtml(fmt(labels[lo]))}</b> → <b>${escapeHtml(fmt(labels[hi]))}</b> <span class="tl-chip-count">· ${monthsStr} · ${countStr} posts</span></span><button class="tl-x" aria-label="Clear">×</button>`;
+      chip.querySelector('.tl-x').onclick = () => { lo = 0; hi = N - 1; applyFilter(); };
+    }
+    function applyFilter() {
+      const range = (lo === 0 && hi === N - 1) ? null : { lo, hi };
+      globe.setMonthRange(range);
+      paintRange();
+      updateLabel();
+      _updateTimelineChip();
+      // Paint the active range as a band on every mini-sparkline so
+      // the user sees the filter reflected wherever they look.
+      updateSparklineBands(lo, hi, N - 1);
+      // Re-rank the empty-state chips so the "hot" and "surging" lists
+      // reflect the active period rather than stale all-time numbers.
+      if (typeof App._refreshEmptyStateForRange === 'function') {
+        App._refreshEmptyStateForRange(range);
+      }
+      // If a cluster focus card is open, re-render its "loudest stances"
+      // list so in-range counts replace the all-time numbers.
+      if (nav.focusCl != null && nav.focusGid == null) {
+        renderFocusStances(nav.focusCl);
+      }
+      // If the subreddit filter is active, re-rank its agenda panel so
+      // "what r/X voiced" reflects the selected period, not all-time.
+      if (_activeSubredditFilter) {
+        _renderSubredditAgendaPanel();
+      }
+      // Persist to URL hash so deep-links carry timeline state.
+      if (typeof writeHash === 'function') writeHash();
+      // Refresh zoom captions so they surface posts from the new period.
+      if (typeof refreshCaptions === 'function') {
+        setTimeout(refreshCaptions, 200);
+      }
+    }
+    // Let freshly-rendered sparklines pick up the current range.
+    window._tlApplyBands = () => updateSparklineBands(lo, hi, N - 1);
+
+    // Play button — time-lapse sweep with a 12-month rolling window.
+    const playBtn = document.getElementById('tl-play');
+    let _playTimer = null;
+    const stopPlay = () => {
+      if (_playTimer) { clearInterval(_playTimer); _playTimer = null; }
+      if (playBtn) { playBtn.textContent = '▶'; playBtn.classList.remove('playing'); }
+    };
+    const startPlay = () => {
+      if (_playTimer) { stopPlay(); return; }
+      const WINDOW = 12;
+      const STEP_MS = 280;
+      let head = Math.max(hi, WINDOW - 1);
+      if (!isRangeActive()) head = WINDOW - 1;
+      playBtn.textContent = '❚❚';
+      playBtn.classList.add('playing');
+      _playTimer = setInterval(() => {
+        lo = Math.max(0, head - WINDOW + 1);
+        hi = head;
+        applyFilter();
+        head++;
+        if (head > N - 1) stopPlay();
+      }, STEP_MS);
+    };
+    if (playBtn) playBtn.onclick = startPlay;
+    svg.addEventListener('pointerdown', () => stopPlay());
+    if (clearBtn) {
+      const prevOnclick = clearBtn.onclick;
+      clearBtn.onclick = (e) => { stopPlay(); if (prevOnclick) prevOnclick.call(clearBtn, e); };
+    }
+
+    // URL hash restore entry point — applied when a deep-link includes
+    // from=X&to=Y. Opens the scrubber silently so bands + chip reflect.
+    window._tlApplyHashRange = (newLo, newHi) => {
+      lo = Math.max(0, Math.min(N - 1, newLo));
+      hi = Math.max(0, Math.min(N - 1, newHi));
+      if (tl.classList.contains('hidden')) {
+        tl.classList.remove('hidden');
+        toggle.classList.add('active');
+        setTimeout(() => { if (!svg.childElementCount) { buildBg(); } paintRange(); updateLabel(); applyFilter(); }, 30);
+      } else {
+        applyFilter();
+      }
+    };
+    // dragMode:
+    //   'new'      — reset range from mousedown index (default when
+    //                clicking outside the current range or when there IS
+    //                no active range)
+    //   'edge-lo'  — drag the low edge; hi stays pinned
+    //   'edge-hi'  — drag the high edge; lo stays pinned
+    let dragMode = null, dragPinned = null;
+    function idxFromEvent(e) {
+      const rect = svg.getBoundingClientRect();
+      const frac = (e.clientX - rect.left) / rect.width;
+      return Math.max(0, Math.min(N - 1, Math.round(frac * (N - 1))));
+    }
+    function isRangeActive() { return !(lo === 0 && hi === N - 1); }
+    svg.addEventListener('pointerdown', (e) => {
+      svg.setPointerCapture(e.pointerId);
+      const i = idxFromEvent(e);
+      if (isRangeActive() && i > lo && i < hi) {
+        // Inside range: grab nearer edge.
+        if (i - lo < hi - i) { dragMode = 'edge-lo'; dragPinned = hi; }
+        else { dragMode = 'edge-hi'; dragPinned = lo; }
+      } else if (isRangeActive() && Math.abs(i - lo) <= 2) {
+        // Near lo edge
+        dragMode = 'edge-lo'; dragPinned = hi;
+      } else if (isRangeActive() && Math.abs(i - hi) <= 2) {
+        // Near hi edge
+        dragMode = 'edge-hi'; dragPinned = lo;
+      } else {
+        // New range starting at i.
+        dragMode = 'new'; dragPinned = i;
+        lo = hi = i;
+        applyFilter();
+      }
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!dragMode) return;
+      const i = idxFromEvent(e);
+      if (dragMode === 'edge-lo') {
+        lo = Math.min(i, dragPinned);
+        hi = Math.max(i, dragPinned);
+      } else if (dragMode === 'edge-hi') {
+        lo = Math.min(i, dragPinned);
+        hi = Math.max(i, dragPinned);
+      } else {
+        lo = Math.min(dragPinned, i);
+        hi = Math.max(dragPinned, i);
+      }
+      applyFilter();
+    });
+    svg.addEventListener('pointerup', () => { dragMode = null; });
+    svg.addEventListener('pointercancel', () => { dragMode = null; });
+    const tlTooltip = document.getElementById('tl-tooltip');
+    svg.addEventListener('pointermove', (e) => {
+      // Exact month + count under cursor — makes the histogram readable
+      // beyond just proportional height.
+      if (tlTooltip) {
+        const i = idxFromEvent(e);
+        const tlRect = tl.getBoundingClientRect();
+        const svgRect = svg.getBoundingClientRect();
+        tlTooltip.innerHTML = `<b>${escapeHtml(labels[i])}</b> · ${(total[i] || 0).toLocaleString()} posts`;
+        tlTooltip.classList.remove('hidden');
+        tlTooltip.style.left = `${e.clientX - tlRect.left}px`;
+        tlTooltip.style.top = `${svgRect.top - tlRect.top - 24}px`;
+      }
+      if (dragMode) return;
+      if (!isRangeActive()) { svg.style.cursor = 'crosshair'; return; }
+      const i = idxFromEvent(e);
+      if (Math.abs(i - lo) <= 2 || Math.abs(i - hi) <= 2) svg.style.cursor = 'col-resize';
+      else if (i > lo && i < hi) svg.style.cursor = 'grab';
+      else svg.style.cursor = 'crosshair';
+    });
+    svg.addEventListener('pointerleave', () => {
+      if (tlTooltip) tlTooltip.classList.add('hidden');
+    });
+    clearBtn.onclick = (e) => {
+      e.stopPropagation();
+      lo = 0; hi = N - 1;
+      applyFilter();
+    };
+    // Expose for the global Reset button so it can unwind the time filter
+    // alongside everything else.
+    App._timelineClear = () => { lo = 0; hi = N - 1; applyFilter(); };
+    toggle.onclick = () => {
+      const wasHidden = tl.classList.contains('hidden');
+      tl.classList.toggle('hidden');
+      toggle.classList.toggle('active', !tl.classList.contains('hidden'));
+      // On first reveal (or any re-reveal), rebuild with accurate width.
+      // Use setTimeout rather than rAF — more robust across paint cycles
+      // when the element is transitioning from display:none.
+      if (wasHidden) {
+        setTimeout(() => { buildBg(); paintRange(); }, 30);
+      }
+      // Persist open/closed state so returning users pick up where they
+      // left off — parallel to the other toolbar prefs.
+      try {
+        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+        p.timeline = tl.classList.contains('hidden') ? 'off' : 'on';
+        localStorage.setItem('vizPref', JSON.stringify(p));
+      } catch {}
+    };
+    // Restore on first load if previously open.
+    try {
+      const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+      if (p.timeline === 'on' && tl.classList.contains('hidden')) {
+        queueMicrotask(() => toggle.click());
+      }
+    } catch {}
+    updateLabel();
+  })();
+
+  // ─── Surprise Me: drop the user at a random, well-supported position.
+  //   Weights by sqrt(count) so larger stances dominate but small surprising
+  //   ones still appear. Reuses focusPosition, which pulses + captions.
+  const btnSurprise = document.getElementById('btn-surprise');
+  let _inSurpriseMode = false;
+  if (btnSurprise) {
+    const _surpriseRecent = [];
+    // Pre-compute relative trend per series (normalized by corpus growth)
+    // so Surprise Me picks stances that are genuinely hot, not just riding
+    // the corpus's own growth curve.
+    function trendRatio(series) {
+      return getTrendInfo(series).rel;
+    }
+    // Bounded queue of recently-visited clusters so Surprise doesn't
+    // drown the user in one topic. Separate from _surpriseRecent (which
+    // is stance-level) — if three picks in a row hit the same cluster,
+    // that cluster gets softly down-weighted for the next draw.
+    const _surpriseRecentClusters = [];
+    function pickSurprise() {
+      const anchors = App.state.positionAnchors || {};
+      const candidates = [];
+      const mr = globe._filter?.monthRange;
+      const hasTimeFilter = !!mr;
+      // Honor active subreddit filter too — if the user filtered to r/X,
+      // Surprise should land on stances where r/X actually has a voice.
+      const srId = _activeSubredditFilter?.id ?? null;
+      const posSubTable = App._posSubTable;
+      // How many of the last N picks came from each cluster? A 0.5× per
+      // prior hit gives genuine anti-clustering without eliminating
+      // coherent follow-on picks entirely.
+      const clusterPenalty = new Map();
+      for (const cl of _surpriseRecentClusters) {
+        clusterPenalty.set(cl, (clusterPenalty.get(cl) || 1) * 0.55);
+      }
+      for (const [gidStr, doc] of Object.entries(anchors)) {
+        const gid = +gidStr;
+        const subSeries = App.state?.timeHist?.by_sub_gid?.[String(gid)];
+        const subRatio = trendRatio(subSeries);
+        (doc.positions || []).forEach((p, idx) => {
+          if (p.lat == null || !p.count || p.count < 40) return;
+          const key = `${gid}:${idx}`;
+          if (_surpriseRecent.includes(key)) return;
+          const posSeries = App.state?.positionTimeHist?.by_position?.[`${gid}:${idx}`];
+          const ratio = posSeries ? trendRatio(posSeries) : subRatio;
+          const boost = Math.max(0.5, Math.min(2.5, ratio));
+          let weight = p.count;
+          if (hasTimeFilter && posSeries) {
+            let inRange = 0;
+            for (let m = mr.lo; m <= mr.hi && m < posSeries.length; m++) inRange += posSeries[m] || 0;
+            if (inRange < 5) return;
+            weight = inRange;
+          }
+          // Sub filter gate: skip stances where that subreddit has < 5
+          // attributed points. Also weight by the sub-specific count so
+          // strongly-voiced stances float higher.
+          if (srId != null && posSubTable) {
+            const m = posSubTable.get((gid << 8) | idx);
+            const nSr = m ? (m.get(srId) || 0) : 0;
+            if (nSr < 5) return;
+            weight = nSr;
+          }
+          const clDamp = clusterPenalty.get(doc.cl) || 1;
+          candidates.push({ cl: doc.cl, gid, posIdx: idx, w: Math.sqrt(weight) * boost * clDamp });
+        });
+      }
+      if (candidates.length === 0) return;
+      const total = candidates.reduce((s, c) => s + c.w, 0);
+      let r = Math.random() * total;
+      let pick = candidates[0];
+      for (const c of candidates) { r -= c.w; if (r <= 0) { pick = c; break; } }
+      _surpriseRecent.push(`${pick.gid}:${pick.posIdx}`);
+      if (_surpriseRecent.length > 10) _surpriseRecent.shift();
+      _surpriseRecentClusters.push(pick.cl);
+      if (_surpriseRecentClusters.length > 4) _surpriseRecentClusters.shift();
+      _inSurpriseMode = true;
+      nav.focus({ cl: pick.cl, gid: pick.gid });
+      setTimeout(() => {
+        focusPosition(pick.cl, pick.gid, pick.posIdx);
+        // Append next-surprise hint on a delay so showPositionCard's
+        // innerHTML replace has finished. Otherwise the hint gets wiped.
+        setTimeout(() => {
+          const pc = document.getElementById('position-card');
+          if (!pc || pc.classList.contains('hidden')) return;
+          if (pc.querySelector('.pc2-next-hint')) return;
+          const hint = document.createElement('button');
+          hint.className = 'pc2-next-hint';
+          hint.innerHTML = '✦ next surprise  <kbd>Space</kbd>';
+          hint.onclick = () => pickSurprise();
+          pc.appendChild(hint);
+        }, 60);
+      }, 250);
+      btnSurprise.classList.add('flashing');
+      setTimeout(() => btnSurprise.classList.remove('flashing'), 600);
+    }
+    btnSurprise.onclick = pickSurprise;
+
+    // Space key advances the surprise loop (only when a surprise card is
+    // currently focused — never hijacks Space anywhere else).
+    window.addEventListener('keydown', (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key !== ' ' && e.code !== 'Space') return;
+      const pc = document.getElementById('position-card');
+      if (!_inSurpriseMode || !pc || pc.classList.contains('hidden')) return;
+      e.preventDefault();
+      pickSurprise();
+    });
+    // Any drill-down exit leaves surprise mode.
+    nav.addEventListener('focus', (ev) => {
+      // If the user navigated manually (not via pickSurprise), the currentFocusedPosition
+      // gets cleared upstream. We detect manual nav by checking: if Surprise is advancing,
+      // the new gid matches the most recent recent-entry's gid.
+      const recent = _surpriseRecent[_surpriseRecent.length - 1];
+      if (recent) {
+        const [gRecent] = recent.split(':').map(Number);
+        if (ev.detail.gid !== gRecent) _inSurpriseMode = false;
+      } else { _inSurpriseMode = false; }
+    });
+  }
+
+  // Wire the clickable "s for a surprise" hint (top-right of globe) to
+  // synthesize the same keydown the nav controller listens for. Works in
+  // both the minimal layout (nav.js fallback picks a random cluster) and
+  // the original (calls btn-surprise).
+  (() => {
+    const hint = document.getElementById('surprise-hint');
+    if (!hint) return;
+    const trigger = (e) => {
+      e?.preventDefault?.();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true }));
+    };
+    hint.addEventListener('click', trigger);
+    hint.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') trigger(e);
+    });
+  })();
+
+  // ─── Lateral keyboard navigation ───────────────────────────
+  //   [ / ] → prev/next position within the current sub
+  //   { / } → prev/next sub within the current cluster
+  // Registered unconditionally (not gated on btn-surprise existing) so
+  // these shortcuts work in the minimal layout too.
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === '[' || k === ']') {
+      const gid = nav.focusGid;
+      if (gid == null) return;
+      const doc = App.state.positionAnchors?.[String(gid)];
+      const positions = (doc?.positions || []).filter(p => p.count > 0);
+      if (positions.length === 0) return;
+      const realIdxs = (doc.positions || []).map((p, i) => ({ p, i })).filter(o => o.p.count > 0).map(o => o.i);
+      const currIdx = realIdxs.indexOf(currentFocusedPosition?.posIdx ?? nav.focusPosIdx ?? -1);
+      let nextIdx;
+      if (currIdx < 0) nextIdx = 0;
+      else nextIdx = (currIdx + (k === ']' ? 1 : -1) + realIdxs.length) % realIdxs.length;
+      focusPosition(doc.cl, gid, realIdxs[nextIdx]);
+      e.preventDefault();
+      return;
+    }
+    if (k === '{' || k === '}') {
+      const cl = nav.focusCl;
+      if (cl == null) return;
+      const subs = App.state.subMeta?.[String(cl)] || [];
+      if (subs.length === 0) return;
+      const gidList = subs.map(s => App.subGidMap.byLocal[cl]?.[s.sub]).filter(g => g != null);
+      if (gidList.length === 0) return;
+      const curr = gidList.indexOf(nav.focusGid);
+      const idx = curr < 0 ? 0 : (curr + (k === '}' ? 1 : -1) + gidList.length) % gidList.length;
+      nav.focus({ cl, gid: gidList[idx] });
+      e.preventDefault();
+      return;
+    }
+  });
+
+  // ─── Control pad ─────────────────────────────────────────────
+  // Pad buttons mirror arrow keys: the button arrow points at where content
+  // will move on screen. Speed scales with distance for proportional feel.
   const padHandlers = {
-    up:    () => globe.nudge(0, -120),
-    down:  () => globe.nudge(0, 120),
-    left:  () => globe.nudge(-120, 0),
-    right: () => globe.nudge(120, 0),
+    up:    () => { const s = padZoomScale(); globe.nudge(0, -120 * s); },
+    down:  () => { const s = padZoomScale(); globe.nudge(0, 120 * s); },
+    left:  () => { const s = padZoomScale(); globe.nudge(-120 * s, 0); },
+    right: () => { const s = padZoomScale(); globe.nudge(120 * s, 0); },
     zoomin:  () => globe.zoom(0.85),
     zoomout: () => globe.zoom(1.18),
   };
+  function padZoomScale() {
+    return Math.max(0.35, (globe.distanceTarget || 3) / 3.0);
+  }
   for (const btn of document.querySelectorAll('#ctrlpad .kbkey')) {
     const act = btn.dataset.act;
     let timer = null;
@@ -182,93 +1991,1479 @@ async function boot() {
     btn.onpointercancel = stop;
   }
 
-  // ─── Floating cluster + subcluster labels on the globe ─────────
+  // ─── Floating cluster + subcluster labels ──────────────────────
   let labelsEnabled = true;
   const labelSvg = document.getElementById('globe-labels');
-  // Build label DOM once.
+
+  // Build cluster labels, anchored at density peaks (not centroids).
   const clusterLabelEls = new Map();
   for (const [clStr, meta] of Object.entries(App.state.clusterMeta)) {
-    const c = (App.state.centroids.clusters || {})[clStr];
-    if (!c) continue;
+    const cl = +clStr;
+    const a = clusterAnchor(App.state, cl);
+    if (!a) continue;
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t.classList.add('lbl-cluster');
     t.textContent = meta.name;
-    t.style.fill = sphereColor(+clStr);
+    t.style.fill = sphereColor(cl);
     labelSvg.appendChild(t);
-    clusterLabelEls.set(+clStr, { el: t, lat: c.lat, lon: c.lon });
+    clusterLabelEls.set(cl, { el: t, lat: a.lat, lon: a.lon, cl, density: a.density, count: a.count, name: meta.name });
+    // Secondary peaks for very sprawly clusters — a second, smaller label.
+    if (a.peaks && a.peaks.length > 1) {
+      for (let i = 1; i < Math.min(a.peaks.length, 2); i++) {
+        const p = a.peaks[i];
+        if (p.density < 0.08) continue;   // skip thin peaks
+        const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t2.classList.add('lbl-cluster', 'lbl-secondary');
+        t2.textContent = meta.name;
+        t2.style.fill = sphereColor(cl);
+        labelSvg.appendChild(t2);
+        clusterLabelEls.set(`${cl}_s${i}`, {
+          el: t2, lat: p.lat, lon: p.lon, cl, density: p.density,
+          count: Math.round(a.count * p.density / a.density), name: meta.name, secondary: true
+        });
+      }
+    }
   }
+
   const subLabelEls = new Map();
+  // cl == null → build sub labels for ALL clusters (used at close zoom
+  // without focus). cl != null → build only that cluster's subs.
   function rebuildSubLabels(cl) {
     for (const e of subLabelEls.values()) e.el.remove();
     subLabelEls.clear();
-    if (cl == null) return;
-    const subs = (App.state.subMeta[String(cl)] || []);
-    for (const s of subs) {
-      const key = `${cl}_${s.sub}`;
-      const c = (App.state.centroids.subclusters || {})[key];
-      if (!c) continue;
-      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.classList.add('lbl-sub');
-      t.textContent = s.name;
-      labelSvg.appendChild(t);
-      subLabelEls.set(key, { el: t, lat: c.lat, lon: c.lon });
+    const clusters = cl == null
+      ? Object.keys(App.state.subMeta || {}).map(Number)
+      : [cl];
+    for (const c of clusters) {
+      const subs = (App.state.subMeta[String(c)] || []);
+      for (const s of subs) {
+        const a = subAnchor(App.state, c, s.sub);
+        if (!a) continue;
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.classList.add('lbl-sub');
+        t.textContent = s.name;
+        labelSvg.appendChild(t);
+        subLabelEls.set(`${c}_${s.sub}`, { el: t, lat: a.lat, lon: a.lon, count: a.count, name: s.name, cl: c });
+      }
+    }
+  }
+  // Boot with the all-clusters set so close zoom shows subcluster labels
+  // even before the user drills into anything.
+  rebuildSubLabels(null);
+
+  // ─── Position labels (sub-sub, LLM statement-style) ─────────────
+  // Only populated when a specific subtopic is focused. Each label is
+  // rendered as a little flag-shaped stance statement anchored at the
+  // density peak of points attributed to that position.
+  const posLabelEls = [];   // live position DOM elements
+  // Position flags on the globe are disabled. They anchored each LLM
+  // position to a single density-peak point, which was misleading —
+  // positions should describe *stances held across many points*, not
+  // one. The L3 nav stripe is the only place they surface now.
+  function rebuildPositionLabels(_cl, _gid) {
+    for (const e of posLabelEls) e.el.remove();
+    posLabelEls.length = 0;
+  }
+
+  let currentFocusedPosition = null;   // { cl, gid, posIdx }
+  function focusPosition(cl, gid, posIdx) {
+    currentFocusedPosition = { cl, gid, posIdx };
+    applyPositionHighlight(cl, gid, posIdx);
+    const g = App.subGidMap.byGid[gid];
+    const doc = App.state.positionAnchors[String(gid)];
+    const pos = doc?.positions?.[posIdx];
+    if (pos && pos.lat != null) {
+      globe.rotateTo(pos.lat, pos.lon, Math.min(globe.distanceTarget, 1.35));
+      pulseAt(pos.lat, pos.lon, sphereColor(cl));
+    }
+    showPositionCard(cl, gid, posIdx);
+    // Mark the selected flag
+    posLabelEls.forEach(p => p.el.classList.toggle('selected', p.posIdx === posIdx));
+    if (typeof writeHash === 'function') writeHash();
+  }
+
+  // Dim all points except those attributed to this (cl, sub, posIdx).
+  function applyPositionHighlight(cl, gid, posIdx) {
+    // Route through the composite filter so position drill-down
+    // intersects with (not overwrites) any active subreddit filter +
+    // search-paint state.
+    globe.setHighlight({ cl, gid, posIdx });
+  }
+
+  // Position-card lives in the same corner as the interview/detail card.
+  // Shows the LLM statement + three real attributed sample posts so the
+  // reader can judge whether the abstraction actually matches the data.
+  async function showPositionCard(cl, gid, posIdx) {
+    const doc = App.state.positionAnchors?.[String(gid)];
+    if (!doc) return;
+    const pos = doc.positions?.[posIdx];
+    if (!pos) return;
+    dc.classList.add('hidden');
+    if (ic) ic.classList.add('hidden');
+    if (voicesInline) voicesInline.classList.add('hidden');
+    // Position card stacks in the same top-right region as focus-card in
+    // the minimal layout, so hide focus-card when a position opens.
+    focusCard.classList.add('hidden');
+    const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
+    hideInspectorEmpty();
+    const color = sphereColor(cl);
+    const el = document.getElementById('position-card');
+    if (!el) return;
+
+    // Sample up to 3 attributed points for this position (approximates
+    // "show me the evidence").
+    const sampleIdxs = [];
+    if (App.state.positionAssignments) {
+      const assign = App.state.positionAssignments;
+      const st = App.state;
+      const sub = App.subGidMap.byGid[gid];
+      if (sub) {
+        let tries = 0;
+        // Collect up to 60 candidates then pick 3 at random for variety.
+        // Respect the active timeline filter — evidence should come from
+        // the period the user is looking at.
+        const monthAssign = st.monthAssignments;
+        const mr = globe._filter?.monthRange;
+        const hasMonthFilter = !!(mr && monthAssign);
+        const pool = [];
+        for (let i = 0; i < st.N && pool.length < 60 && tries < 300000; i++, tries++) {
+          if (assign[i] === posIdx && st.cluster[i] === sub.cl && st.subLocal[i] === sub.sub) {
+            if (hasMonthFilter) {
+              const m = monthAssign[i];
+              if (m < mr.lo || m > mr.hi) continue;
+            }
+            pool.push(i);
+          }
+        }
+        // Fallback: if the filter zeroed the pool, show unfiltered samples
+        // so the card isn't empty.
+        if (hasMonthFilter && pool.length === 0) {
+          for (let i = 0; i < st.N && pool.length < 60; i++) {
+            if (assign[i] === posIdx && st.cluster[i] === sub.cl && st.subLocal[i] === sub.sub) {
+              pool.push(i);
+            }
+          }
+        }
+        // Randomly pick up to 3
+        while (sampleIdxs.length < 3 && pool.length > 0) {
+          const r = Math.floor(Math.random() * pool.length);
+          sampleIdxs.push(pool[r]);
+          pool.splice(r, 1);
+        }
+      }
+    }
+
+    el.innerHTML = `
+      <button class="pc2-close" id="pc2-close" aria-label="Close">×</button>
+      <button class="pc2-copy-md" id="pc2-copy-md" aria-label="Copy as markdown" title="Copy stance summary as markdown (for notes / writeups)">📋</button>
+      <nav class="pc2-breadcrumbs">
+        <button class="pc2-up" data-level="all" aria-label="All clusters">All</button>
+        <span class="pc2-sep">›</span>
+        <button class="pc2-up" data-level="cluster" style="color:${color}">${escapeHtml(doc.cluster_name)}</button>
+        <span class="pc2-sep">›</span>
+        <button class="pc2-up" data-level="sub">${escapeHtml(doc.sub_name)}</button>
+      </nav>
+      <h3 class="pc2-title">${escapeHtml(pos.name)} ${renderTrendBadge(getPositionSeries(gid, posIdx))}</h3>
+      <p class="pc2-description">${escapeHtml(pos.description || '')}</p>
+      ${pos.keywords && pos.keywords.length ? `
+        <div class="pc2-kw-label">signal phrases</div>
+        <div class="pc2-kws">${pos.keywords.slice(0, 6).map(k => `<span class="pc2-kw">${escapeHtml(k)}</span>`).join('')}</div>
+      ` : ''}
+      <div class="pc2-samples" id="pc2-samples">
+        <div class="pc2-kw-label">evidence · attributed posts</div>
+        <div class="pc2-sample-list" id="pc2-sample-list"></div>
+      </div>
+      <div class="pc2-stats">
+        <span><b>${pos.count.toLocaleString()}</b> posts match</span>
+        <span class="pc2-sep">·</span>
+        <span>${Math.round(100 * pos.count / (doc.total_in_sub || 1))}% of <i>${doc.sub_name}</i></span>
+      </div>
+      ${renderPositionSparkline(gid, posIdx, color) || ''}
+      ${(() => {
+        // Sibling positions in the same sub — enables lateral exploration
+        // of alternative stances without going back out to the bar. Shown as
+        // small chips, colored like the sub. Each chip also surfaces its
+        // dominant subreddit — if that differs from the current stance's
+        // top community, a ⇋ marker flags it as a cross-community foil.
+        const siblings = (doc.positions || []).map((p, i) => ({ p, i })).filter(o => o.i !== posIdx && o.p.count > 0);
+        if (siblings.length === 0) return '';
+        siblings.sort((a, b) => (b.p.count || 0) - (a.p.count || 0));
+        const myDom = getPositionDominantSub(gid, posIdx);
+        const chips = siblings.slice(0, 6).map(o => {
+          const s = getPositionSeries(gid, o.i);
+          const dir = getTrendInfo(s).dir;
+          const arrow = dir === 'up' ? '<span class="pc2-sib-up" title="trending up">▲</span>'
+                      : dir === 'down' ? '<span class="pc2-sib-down" title="fading">▼</span>' : '';
+          const dom = getPositionDominantSub(gid, o.i);
+          const different = dom && myDom && dom.id !== myDom.id;
+          const voiceBadge = dom ? `
+            <span class="pc2-sib-voice${different ? ' pc2-sib-voice-diff' : ''}"
+                  title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — a different community from this stance's r/${myDom.name}` : `voiced mostly in r/${dom.name}`)}">
+              ${different ? '<span class="pc2-sib-voice-cross">⇋</span>' : ''}r/${escapeHtml(dom.name)}
+            </span>` : '';
+          // Include the full stance name in the tooltip so users see the
+          // tail of ellipsized names (pc2-sib-name clamps to 180px).
+          const titleTxt = o.p.description ? `${o.p.name} — ${o.p.description}` : o.p.name;
+          return `
+            <button class="pc2-sibling${different ? ' pc2-sibling-diff' : ''}" data-idx="${o.i}"
+                    title="${escapeHtml(titleTxt)}">
+              <span class="pc2-sib-name">${escapeHtml(o.p.name)}</span>
+              ${arrow}
+              ${voiceBadge}
+              <span class="pc2-sib-count">${(o.p.count || 0).toLocaleString()}</span>
+            </button>
+          `;
+        }).join('');
+        return `
+          <div class="pc2-sibling-label">other stances in this subtopic</div>
+          <div class="pc2-siblings">${chips}</div>
+        `;
+      })()}
+      ${renderPositionSubreddits(gid, posIdx, color) || ''}
+      ${(() => {
+        // Cross-sub resonance: positions in OTHER subs that share
+        // keyword/description tokens with this one. This surfaces lateral
+        // connections (e.g. "Desperate City Brain Drain" ↔ "Middle-Class
+        // Squeeze" in a different sub) for true serendipity. Each chip
+        // includes the other stance's dominant community so the reader can
+        // see whether a shared idea travels between communities or stays put.
+        const resonant = findResonantPositions(gid, posIdx, pos, 3);
+        if (!resonant.length) return '';
+        const myDom = getPositionDominantSub(gid, posIdx);
+        const chips = resonant.map(r => {
+          const col = sphereColor(r.cl);
+          const dir = getTrendInfo(getPositionSeries(r.gid, r.posIdx)).dir;
+          const arrow = dir === 'up' ? '<span class="pc2-sib-up" title="trending up">▲</span>'
+                      : dir === 'down' ? '<span class="pc2-sib-down" title="fading">▼</span>' : '';
+          const dom = getPositionDominantSub(r.gid, r.posIdx);
+          const different = dom && myDom && dom.id !== myDom.id;
+          const voice = dom ? `<span class="pc2-res-voice${different ? ' pc2-res-voice-diff' : ''}"
+            title="${escapeHtml(different ? `voiced in r/${dom.name} — different from this stance's r/${myDom.name}` : `voiced in r/${dom.name}`)}">${different ? '⇋ ' : ''}r/${escapeHtml(dom.name)}</span>` : '';
+          // Full name in tooltip since pc2-res-name clamps to 160px.
+          const titleTxt = r.description ? `${r.name} — ${r.description}` : r.name;
+          return `
+            <button class="pc2-resonant${different ? ' pc2-resonant-diff' : ''}" data-gid="${r.gid}" data-pos-idx="${r.posIdx}" data-cl="${r.cl}"
+                    style="--rc-color:${col}"
+                    title="${escapeHtml(titleTxt)}">
+              <span class="pc2-res-dot" style="background:${col}"></span>
+              <span class="pc2-res-name">${escapeHtml(r.name)}</span>
+              ${arrow}
+              ${voice}
+              <span class="pc2-res-sub">${escapeHtml(r.sub_name)}</span>
+            </button>
+          `;
+        }).join('');
+        return `
+          <div class="pc2-sibling-label">resonates in other subtopics</div>
+          <div class="pc2-siblings">${chips}</div>
+        `;
+      })()}
+    `;
+    el.classList.remove('hidden');
+    scrollCardIntoView(el);
+
+    // Wire sibling chips — each jumps to that position via focusPosition.
+    el.querySelectorAll('.pc2-sibling').forEach(btn => {
+      btn.onclick = () => {
+        const idx = +btn.dataset.idx;
+        focusPosition(cl, gid, idx);
+      };
+    });
+    // Subreddit chips: intersect the current position highlight with a
+    // subreddit filter so the user sees only posts from that community
+    // attributed to this stance.
+    el.querySelectorAll('.pc2-sr-lbl').forEach(btn => {
+      btn.onclick = () => {
+        const id = +btn.dataset.srId;
+        const name = btn.dataset.srName;
+        if (id >= 0 && name) toggleSubredditFilter(id, name, cl, gid);
+      };
+    });
+    // Resonant chips (cross-sub) — drill to the other sub first, then the
+    // position, so the breadcrumbs + globe rotate together.
+    el.querySelectorAll('.pc2-resonant').forEach(btn => {
+      btn.onclick = () => {
+        const targetGid = +btn.dataset.gid;
+        const targetCl = +btn.dataset.cl;
+        const targetPos = +btn.dataset.posIdx;
+        nav.focus({ cl: targetCl, gid: targetGid });
+        setTimeout(() => focusPosition(targetCl, targetGid, targetPos), 220);
+      };
+    });
+
+    const closeBtn = document.getElementById('pc2-close');
+    closeBtn.onclick = () => {
+      el.classList.add('hidden');
+      currentFocusedPosition = null;
+      posLabelEls.forEach(p => p.el.classList.remove('selected'));
+      if (nav.focusCl != null && nav.focusGid != null) {
+        globe.setHighlight({ cl: nav.focusCl, gid: nav.focusGid });
+      } else {
+        globe.setHighlight({});
+      }
+    };
+
+    // "Copy as markdown" — gives researchers a pasteable stance summary
+    // (cluster ▸ sub ▸ stance, description, subreddit mix, 3 evidence
+    // quotes, shareable link) so they can lift a finding straight into
+    // notes or a writeup without retyping.
+    const copyBtn = document.getElementById('pc2-copy-md');
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const subArr = getPositionSubredditCounts(gid, posIdx) || [];
+        const subTotal = subArr.reduce((s, e) => s + e.n, 0);
+        // Match the visible card's threshold — when attributed points < 5
+        // the subreddit signal is too thin to report honestly.
+        const mixLine = subTotal >= 5 ? subArr.slice(0, 3)
+          .map(s => `r/${s.name} ${Math.round(100 * s.n / subTotal)}%`)
+          .join(' · ') : '';
+        const t = getTrendInfo(getPositionSeries(gid, posIdx));
+        const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
+        const kwStr = (pos.keywords || []).slice(0, 6).join(', ');
+        // Sample items have class .pc2-sample; we want just their text,
+        // stripping any footer bylines we rendered inside.
+        const sampleEls = Array.from(document.querySelectorAll('#pc2-sample-list .pc2-sample'))
+          .slice(0, 3)
+          .map(e => {
+            const clone = e.cloneNode(true);
+            clone.querySelectorAll('.pc2-sample-meta, .pc2-sample-sub, [class*="byline"]').forEach(n => n.remove());
+            return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+          })
+          .filter(Boolean);
+        const sampleLines = sampleEls.map(s => `- ${s.length > 280 ? s.slice(0, 277) + '…' : s}`);
+        // Carry active filter state into the link so the recipient lands
+        // on the same view (matches focus-card copy-md behavior in v=146).
+        const linkParts = [`cl=${cl}`, `gid=${gid}`, `pos=${posIdx}`];
+        const mr = globe._filter?.monthRange;
+        if (mr) { linkParts.push(`from=${mr.lo}`); linkParts.push(`to=${mr.hi}`); }
+        if (_activeSubredditFilter) linkParts.push(`sr=${_activeSubredditFilter.id}`);
+        const qNow = document.getElementById('search-input')?.value?.trim();
+        if (qNow) linkParts.push(`q=${encodeURIComponent(qNow)}`);
+        const link = `${location.origin}${location.pathname}#${linkParts.join('&')}`;
+        const md = [
+          `## ${pos.name}${trendStr}`,
+          `*${doc.cluster_name} ▸ ${doc.sub_name}*`,
+          '',
+          (pos.description || '').trim(),
+          '',
+          mixLine ? `**Voiced by:** ${mixLine}` : '',
+          kwStr ? `**Signal phrases:** ${kwStr}` : '',
+          `**Volume:** ${pos.count.toLocaleString()} posts (${Math.round(100 * pos.count / (doc.total_in_sub || 1))}% of *${doc.sub_name}*)`,
+          sampleLines.length ? '\n**Evidence:**\n' + sampleLines.join('\n') : '',
+          `\n[View on globe](${link})`,
+        ].filter(Boolean).join('\n').trim();
+        let ok = false;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(md);
+            ok = true;
+          }
+        } catch (e) { /* fallback below */ }
+        if (!ok) {
+          const ta = document.createElement('textarea');
+          ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          try { ok = document.execCommand('copy'); } catch {}
+          ta.remove();
+        }
+        copyBtn.classList.toggle('copied', ok);
+        copyBtn.classList.toggle('copy-err', !ok);
+        copyBtn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
+        setTimeout(() => {
+          copyBtn.classList.remove('copied', 'copy-err');
+          copyBtn.removeAttribute('data-msg');
+        }, 1600);
+      };
+    }
+    // Inline breadcrumb buttons — direct jump up the hierarchy without
+    // having to reach for the small crumbs in the header.
+    el.querySelectorAll('.pc2-up').forEach(b => {
+      b.onclick = () => {
+        const lvl = b.dataset.level;
+        if (lvl === 'all') nav.focus({});
+        else if (lvl === 'cluster') nav.focus({ cl });
+        else if (lvl === 'sub') nav.focus({ cl, gid });
+        el.classList.add('hidden');
+        currentFocusedPosition = null;
+      };
+    });
+
+    // Populate evidence async
+    const sampleList = document.getElementById('pc2-sample-list');
+    if (sampleList) {
+      if (sampleIdxs.length === 0) {
+        sampleList.innerHTML = `<div class="pc2-sample-empty">No attributed posts — this position is largely inferred from the subtopic's top samples.</div>`;
+      } else {
+        for (const idx of sampleIdxs) {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'pc2-sample';
+          placeholder.textContent = '…';
+          sampleList.appendChild(placeholder);
+          (async () => {
+            try {
+              const d = await getPointDetails(App.state, idx);
+              const title = (d.title || '').trim();
+              const bodyRaw = (d.body || '').trim().replace(/\n+/g, ' ');
+              // Reddit bodies come in markdown with some HTML-entity-encoded
+              // quote markers — strip both so the preview reads like prose,
+              // then escape before injecting. Prevents both visible
+              // backslash-escaped chars and embedded HTML from affecting
+              // the card.
+              const body = bodyRaw
+                .replace(/&gt;/g, '>').replace(/&lt;/g, '<')
+                .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
+                .replace(/!\[[^\]]*\]\([^)]+\)/g, '')      // drop image refs
+                .replace(/`([^`]+)`/g, '$1')               // inline code
+                .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')   // bold/italic
+                .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')     // bold/italic (underscore)
+                .replace(/(^|\s)>\s?/g, '$1')              // quote markers
+                .replace(/\\([_*`\[\]()#.+!-])/g, '$1')    // escaped chars
+                .replace(/\s+/g, ' ')
+                .trim();
+              const bodyClip = body.slice(0, 220) + (body.length > 220 ? '…' : '');
+              placeholder.innerHTML = `
+                ${title ? `<div class="pc2-sample-title">${escapeHtml(title)}</div>` : ''}
+                <div class="pc2-sample-body">${escapeHtml(bodyClip)}</div>
+                <div class="pc2-sample-meta">r/${escapeHtml(d.subreddit)} · ${escapeHtml(d.month)}</div>
+              `;
+              placeholder.onclick = () => showDetailCard(d);
+              placeholder.style.cursor = 'pointer';
+            } catch (e) {}
+          })();
+        }
+      }
+    }
+  }
+  window.App.focusPosition = focusPosition;
+
+  // ─── URL hash persistence: #cl=N&gid=G&pos=P ──────────────────────
+  // Enables bookmarking, sharing, and browser back/forward for drill paths.
+  let _suppressHashWrite = false;
+  let _pendingHashWrite = false;
+  function writeHash() {
+    // Don't re-persist while applyHash is mid-flight (prevents feedback
+    // loop where hashchange→applyHash→focus→writeHash→hashchange…), but
+    // remember that a write was requested so we can replay it once the
+    // suppress window ends. Without this, a user action fired during the
+    // 250ms suppress would silently fail to update the hash.
+    if (_suppressHashWrite) { _pendingHashWrite = true; return; }
+    const parts = [];
+    if (nav.focusCl != null) parts.push(`cl=${nav.focusCl}`);
+    if (nav.focusGid != null) parts.push(`gid=${nav.focusGid}`);
+    if (currentFocusedPosition && currentFocusedPosition.gid === nav.focusGid)
+      parts.push(`pos=${currentFocusedPosition.posIdx}`);
+    const mr = globe._filter?.monthRange;
+    if (mr && (mr.lo !== 0 || mr.hi !== (App.state.monthLabels?.length - 1))) {
+      parts.push(`from=${mr.lo}`);
+      parts.push(`to=${mr.hi}`);
+    }
+    const sr = _activeSubredditFilter;
+    if (sr) parts.push(`sr=${sr.id}`);
+    // Persist the current search query so a shared link reproduces the
+    // active search (including text:/regex operators). Automatic paint is
+    // NOT restored — user hits Shift+Enter to redraw, matching the normal
+    // flow so URL-shared views never surprise-mutate the globe.
+    const si = document.getElementById('search-input');
+    const q = si?.value?.trim();
+    if (q) parts.push(`q=${encodeURIComponent(q)}`);
+    const h = parts.length ? '#' + parts.join('&') : '';
+    if (location.hash === h) return;
+    // Push a history entry when the drill path changes (cl/gid/pos) so the
+    // browser back button unwinds navigation within the app. Filter-only
+    // changes (from/to/sr/q) replace in place so toggling a timeline range
+    // or search query doesn't flood history with intermediate states.
+    const prev = parseHash();
+    const drillChanged =
+      (prev.cl ?? null) !== (nav.focusCl ?? null) ||
+      (prev.gid ?? null) !== (nav.focusGid ?? null) ||
+      (prev.pos ?? null) !== (currentFocusedPosition?.posIdx ?? null);
+    const url = location.pathname + location.search + h;
+    if (drillChanged) history.pushState(null, '', url);
+    else history.replaceState(null, '', url);
+  }
+  function parseHash() {
+    const h = location.hash.replace(/^#/, '');
+    if (!h) return {};
+    const out = {};
+    for (const kv of h.split('&')) {
+      const [k, v] = kv.split('=');
+      if (!v) continue;
+      if (k === 'q') {
+        try { out.q = decodeURIComponent(v); } catch { out.q = v; }
+        continue;
+      }
+      const n = +v;
+      if (Number.isFinite(n)) out[k] = n;
+    }
+    return out;
+  }
+  function applyHash() {
+    const parsed = parseHash();
+    let { cl, gid, pos, from, to, sr, q } = parsed;
+    // Validate ids against the loaded dataset so stale/garbage hashes don't
+    // produce empty "Cluster 999" cards with a fully-dim globe. Invalid cl
+    // or gid → treat as if that level wasn't specified; pos is cleared if
+    // its anchor has no positions at the given index.
+    if (cl != null && !App.state.clusterMeta?.[String(cl)]) cl = gid = pos = null;
+    if (gid != null && !App.subGidMap?.byGid?.[gid]) gid = pos = null;
+    if (pos != null && gid != null) {
+      const posList = App.state.positionAnchors?.[String(gid)]?.positions || [];
+      if (pos < 0 || pos >= posList.length) pos = null;
+    }
+    _suppressHashWrite = true;
+    try {
+      if (cl == null) { nav.focus({}); }
+      else if (gid == null) { nav.focus({ cl }); }
+      else { nav.focus({ cl, gid }); }
+      if (pos != null && gid != null) {
+        setTimeout(() => focusPosition(cl, gid, pos), 200);
+      }
+      if (from != null && to != null) {
+        // Replay the timeline scrubber state. `window._tlApplyHashRange` is
+        // exposed by the scrubber IIFE so hash restore can drive it without
+        // duplicating the bar-rendering logic.
+        if (window._tlApplyHashRange) window._tlApplyHashRange(from, to);
+        else globe.setMonthRange({ lo: from, hi: to });
+      } else {
+        globe.setMonthRange(null);
+      }
+      if (sr != null) {
+        const name = App.state.subredditNames?.find(n => n.id === sr)?.name;
+        if (name) toggleSubredditFilter(sr, name, cl, gid);
+      }
+      // Restore a shared search query — populate input AND re-run the
+      // suggestion render so the first focus shows matches (otherwise
+      // the user sees the query text but an empty dropdown, a silent
+      // dead-end for anyone landing on a shared link).
+      if (q) {
+        const si = document.getElementById('search-input');
+        if (si && si.value !== q) {
+          si.value = q;
+          si.dispatchEvent(new Event('input', { bubbles: true }));
+          const sugg = document.getElementById('search-suggestions');
+          if (sugg) sugg.classList.add('hidden');
+        }
+      }
+    } finally {
+      setTimeout(() => {
+        _suppressHashWrite = false;
+        // If a real user action fired during the suppress window, replay
+        // the write so hash stays in sync with current state.
+        if (_pendingHashWrite) {
+          _pendingHashWrite = false;
+          writeHash();
+        }
+      }, 250);
+    }
+  }
+  nav.addEventListener('focus', () => writeHash());
+  // In the minimal layout, clicking an L3 position bar emits a nav 'focus'
+  // with posIdx set but nothing else wires that to showPositionCard. Route
+  // it here so the card actually appears. Guarded on posIdx change to
+  // avoid re-calling for the same position on every filter tweak.
+  let _lastFocusPosKey = null;
+  nav.addEventListener('focus', (ev) => {
+    const { cl, gid, posIdx } = ev.detail || {};
+    if (cl == null || gid == null || posIdx == null) { _lastFocusPosKey = null; return; }
+    const key = `${cl}:${gid}:${posIdx}`;
+    if (key === _lastFocusPosKey) return;
+    _lastFocusPosKey = key;
+    focusPosition(cl, gid, posIdx);
+  });
+  // focusPosition itself calls writeHash() on completion, so internal + external callers both persist.
+  // Expose so decoupled modules (nav search input blur) can trigger persistence.
+  App.writeHash = writeHash;
+  window.addEventListener('hashchange', applyHash);
+  // Initial restore if someone landed on a deep-link
+  if (location.hash) setTimeout(applyHash, 300);
+
+  // Projection + per-frame label placement with greedy non-overlap.
+  const proj = new THREE.Vector3();
+  function approxTextSize(text, fontSize) {
+    return { w: (text?.length || 0) * fontSize * 0.55, h: fontSize * 1.1 };
+  }
+  // Position flag screen-projection (each frame).
+  function updatePositionFlags() {
+    if (!posLabelEls.length) return;
+    const w = globe.canvas.clientWidth, h = globe.canvas.clientHeight;
+    const camPos = globe.camera.position;
+    const v = new THREE.Vector3();
+    for (const info of posLabelEls) {
+      const wp = globe.worldPositionOf(info.lat, info.lon, 1.012);
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      if (facing <= 0) { info.el.style.opacity = '0'; info.el.style.pointerEvents = 'none'; continue; }
+      v.copy(wp).project(globe.camera);
+      if (v.z > 1) { info.el.style.opacity = '0'; continue; }
+      const sx = (v.x * 0.5 + 0.5) * w;
+      const sy = (-v.y * 0.5 + 0.5) * h;
+      info.el.style.transform = `translate(${sx}px, ${sy}px)`;
+      info.el.style.opacity = String(Math.min(1, 0.6 + 0.4 * Math.min(1, facing)));
+      info.el.style.pointerEvents = 'auto';
     }
   }
 
-  // Each frame: project labels to screen, hide on back-of-sphere, drop overlapping ones.
-  const proj = new THREE.Vector3();
-  function approxTextSize(text, fontSize) {
-    return { w: text.length * fontSize * 0.55, h: fontSize * 1.1 };
+  // Off-screen focus compass: arrow at the globe's edge pointing toward the
+  // focused target when it's hidden on the far side of the sphere.
+  const compassEl = document.getElementById('focus-compass');
+  if (compassEl) {
+    compassEl.addEventListener('click', () => {
+      const t = currentFocusTarget();
+      if (!t) return;
+      globe.rotateTo(t.lat, t.lon, Math.min(globe.distanceTarget, t.distance || globe.distanceTarget));
+      pulseAt(t.lat, t.lon, t.color);
+    });
   }
+  function currentFocusTarget() {
+    if (currentFocusedPosition) {
+      const { cl, gid, posIdx } = currentFocusedPosition;
+      const doc = App.state.positionAnchors?.[String(gid)];
+      const p = doc?.positions?.[posIdx];
+      if (p?.lat != null) return { lat: p.lat, lon: p.lon, distance: 1.35, color: sphereColor(cl) };
+    }
+    if (nav.focusGid != null) {
+      const g = App.subGidMap.byGid[nav.focusGid];
+      if (g) {
+        const a = subAnchor(App.state, g.cl, g.sub);
+        if (a) return { lat: a.lat, lon: a.lon, distance: 1.55, color: sphereColor(g.cl) };
+      }
+    }
+    if (nav.focusCl != null) {
+      const a = clusterAnchor(App.state, nav.focusCl);
+      if (a) return { lat: a.lat, lon: a.lon, distance: 1.9, color: sphereColor(nav.focusCl) };
+    }
+    return null;
+  }
+  function updateFocusCompass() {
+    if (!compassEl) return;
+    const t = currentFocusTarget();
+    if (!t) { compassEl.classList.remove('show'); return; }
+    const wp = globe.worldPositionOf(t.lat, t.lon, 1.0);
+    const camPos = globe.camera.position;
+    const facing = wp.x*(camPos.x - wp.x) + wp.y*(camPos.y - wp.y) + wp.z*(camPos.z - wp.z);
+    // Hide when target is facing the camera (front-of-globe, already visible).
+    if (facing > 0.05) { compassEl.classList.remove('show'); return; }
+    // Project onto screen; for far-side points the projection flips through
+    // infinity, so instead compute a 2-D direction from the globe center.
+    const w = globe.canvas.clientWidth, h = globe.canvas.clientHeight;
+    const center = new THREE.Vector3(0, 0, 0).project(globe.camera);
+    const cx = (center.x * 0.5 + 0.5) * w;
+    const cy = (-center.y * 0.5 + 0.5) * h;
+    // For back-facing points, negate to flip to the "behind" direction on-screen.
+    const v = wp.clone().project(globe.camera);
+    let dx = v.x * 0.5 * w, dy = -v.y * 0.5 * h;
+    // If behind camera (v.z > 1), the projected x,y are mirrored — reverse.
+    const flipped = (v.z > 1) || (facing < 0);
+    if (flipped) { dx = -dx; dy = -dy; }
+    const mag = Math.hypot(dx, dy) || 1;
+    // Sit at 78% of the smaller half-dimension from the globe center.
+    const edge = 0.42 * Math.min(w, h);
+    const px = cx + (dx / mag) * edge;
+    const py = cy + (dy / mag) * edge;
+    compassEl.style.left = `${px}px`;
+    compassEl.style.top = `${py}px`;
+    compassEl.style.borderColor = t.color;
+    compassEl.style.color = t.color;
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI + 90;   // ▲ points up by default
+    const arrow = compassEl.querySelector('.fc-arrow');
+    if (arrow) arrow.style.transform = `rotate(${angleDeg}deg)`;
+    compassEl.classList.add('show');
+  }
+
   globe._onFrame = () => {
-    if (!labelsEnabled) return;
+    // Drive pins + captions + position flags every frame.
+    globe._updatePinScreenPositions?.();
+    updateZoomCaptions?.();
+    updatePositionFlags?.();
+    updateFocusCompass?.();
+    updateHoverHalo?.();
+    updateSprouts?.();
+    if (!labelsEnabled) {
+      for (const info of clusterLabelEls.values()) info.el.style.opacity = '0';
+      for (const info of subLabelEls.values()) info.el.style.opacity = '0';
+      return;
+    }
     const w = globe.canvas.clientWidth;
     const h = globe.canvas.clientHeight;
     const camPos = globe.camera.position;
-    const showSubs = nav.focusCl != null;
-    // Build candidate list with sx, sy, priority
+    const dist = globe.distance;
+    const zoomNorm = Math.max(0, Math.min(1, (dist - 1.18) / (3.0 - 1.18)));   // 0 close, 1 far
+    const showSubs = nav.focusCl != null || dist < 1.85;
     const placed = [];
-    function tryPlace(info, fontSize, priority) {
+
+    function project(info, fontSize, strongPri = false) {
       const wp = globe.worldPositionOf(info.lat, info.lon, 1.0);
       const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
-      if (facing <= 0) return false;
+      if (facing <= 0) return null;
       proj.copy(wp).project(globe.camera);
-      if (proj.z > 1) return false;
+      if (proj.z > 1) return null;
       const sx = (proj.x * 0.5 + 0.5) * w;
       const sy = (-proj.y * 0.5 + 0.5) * h;
       const sz = approxTextSize(info.el.textContent || '', fontSize);
-      const box = { x0: sx - sz.w/2, x1: sx + sz.w/2, y0: sy - sz.h/2, y1: sy + sz.h/2 };
+      const pad = strongPri ? 2 : 6;
+      const box = { x0: sx - sz.w/2 - pad, x1: sx + sz.w/2 + pad, y0: sy - sz.h/2 - pad, y1: sy + sz.h/2 + pad };
+      return { sx, sy, box, facing };
+    }
+    function tryPlace(info, fontSize, opacityScale, strong = false) {
+      const r = project(info, fontSize, strong);
+      if (!r) return false;
       for (const p of placed) {
-        if (box.x1 < p.x0 || box.x0 > p.x1) continue;
-        if (box.y1 < p.y0 || box.y0 > p.y1) continue;
-        return false;  // overlap
+        if (r.box.x1 < p.x0 || r.box.x0 > p.x1) continue;
+        if (r.box.y1 < p.y0 || r.box.y0 > p.y1) continue;
+        return false;
       }
-      placed.push(box);
-      info.el.setAttribute('x', sx);
-      info.el.setAttribute('y', sy);
-      info.el.style.opacity = String(0.6 + 0.4 * Math.min(1, facing / 1.0));
+      placed.push(r.box);
+      info.el.setAttribute('x', r.sx);
+      info.el.setAttribute('y', r.sy);
+      info.el.style.fontSize = `${fontSize}px`;
+      info.el.style.opacity = String(Math.min(1, (0.5 + 0.5 * r.facing) * opacityScale));
+      info.el.style.display = '';
       return true;
     }
-    // Pass 1: focused cluster + subclusters first (highest priority).
+
+    // Spherical-distance helper for distance-weighted fade (gestalt hierarchy:
+    // nearby siblings stay legible, distant ones dissolve into the globe).
+    function angDistTo(info, axyz) {
+      if (!axyz || info.lat == null) return Math.PI;
+      const [x,y,z] = latLonToXYZ(info.lat, info.lon, 1.0);
+      const d = x*axyz[0] + y*axyz[1] + z*axyz[2];
+      return Math.acos(Math.max(-1, Math.min(1, d)));
+    }
+    // Anchor xyz for the currently focused cluster / sub (if any).
+    let focusClXYZ = null, focusSubXYZ = null;
     if (nav.focusCl != null) {
-      const cl = nav.focusCl;
-      const focusInfo = clusterLabelEls.get(cl);
-      if (focusInfo) tryPlace(focusInfo, 11.5, 0) || (focusInfo.el.style.opacity = '0');
-      for (const [, info] of subLabelEls) {
-        if (!tryPlace(info, 10.5, 1)) info.el.style.opacity = '0';
+      const a = clusterAnchor(App.state, nav.focusCl);
+      if (a) focusClXYZ = latLonToXYZ(a.lat, a.lon, 1.0);
+    }
+    if (nav.focusGid != null) {
+      const g = App.subGidMap.byGid[nav.focusGid];
+      if (g) { const a = subAnchor(App.state, g.cl, g.sub); if (a) focusSubXYZ = latLonToXYZ(a.lat, a.lon, 1.0); }
+    }
+
+    // Pass 1: focused cluster + its subs get top priority. When a sub is
+    // focused and positions are showing, dim unrelated sub labels so the
+    // focus sub's position flags can breathe.
+    if (nav.focusCl != null) {
+      const focusInfo = clusterLabelEls.get(nav.focusCl);
+      if (focusInfo) {
+        if (!tryPlace(focusInfo, 14, 1, true)) focusInfo.el.style.opacity = '0';
+      }
+      const focusGid = nav.focusGid;
+      const focusKey = focusGid != null ? (() => {
+        const g = App.subGidMap.byGid[focusGid];
+        return g ? `${g.cl}_${g.sub}` : null;
+      })() : null;
+      for (const [key, info] of subLabelEls) {
+        const size = 11 + (1 - zoomNorm) * 1.5;
+        let op;
+        if (focusKey == null) {
+          op = 0.95;
+        } else if (key === focusKey) {
+          op = 1;
+        } else {
+          // Fade sub labels by angular distance to the focused sub.
+          // ~0 rad → 0.72, 0.3 rad → 0.38, 0.7+ rad → 0.18.
+          const ang = angDistTo(info, focusSubXYZ);
+          op = Math.max(0.18, 0.72 - ang * 0.75);
+        }
+        if (!tryPlace(info, size, op)) info.el.style.opacity = '0';
       }
     }
-    // Pass 2: all other cluster labels (lower priority — drop on overlap).
-    for (const [cl, info] of clusterLabelEls.entries()) {
-      if (showSubs && cl === nav.focusCl) continue;
-      if (showSubs) { info.el.style.opacity = '0'; continue; }
-      if (!tryPlace(info, 11.5, 2)) info.el.style.opacity = '0';
+
+    // Pass 2: cluster labels. When drilled into a single cluster, we hide
+    // every OTHER cluster's label — only the focused cluster's label
+    // stays (rendered in the "focused" big style by Pass 1, so we just
+    // clear the rest). This keeps the globe readable at subtopic level.
+    if (nav.focusCl != null) {
+      for (const [, info] of clusterLabelEls) {
+        if (info.cl !== nav.focusCl) info.el.style.opacity = '0';
+      }
+    } else {
+      const primaries = [];
+      const secondaries = [];
+      for (const [, info] of clusterLabelEls) {
+        (info.secondary ? secondaries : primaries).push(info);
+      }
+      // Order by importance: large + dense first so they claim space.
+      primaries.sort((a, b) => (b.count * b.density) - (a.count * a.density));
+      // Cluster labels shrink slightly at far zoom so many can coexist.
+      // Size also scales with the log(count) so giant clusters read first.
+      const baseSize = 10.5 + (1 - zoomNorm) * 2.2;
+      // Count range for the live label set (used to normalize sizing).
+      let maxCount = 0;
+      for (const info of primaries) if (info.count > maxCount) maxCount = info.count;
+      for (const info of primaries) {
+        const w = maxCount > 0 ? Math.log(1 + info.count) / Math.log(1 + maxCount) : 0.5;
+        const size = baseSize + 2.5 * w;   // range ~10.5..15
+        if (!tryPlace(info, size, 1.0)) info.el.style.opacity = '0';
+      }
+      for (const info of secondaries) {
+        if (!tryPlace(info, baseSize * 0.82, 0.75)) info.el.style.opacity = '0';
+      }
+    }
+
+    // Pass 3: at close zoom without focus, fade in all subcluster labels
+    // so the user can see the finer-grained topics as they zoom in.
+    if (nav.focusCl == null) {
+      // Fade schedule: dist 1.85 → 0 (invisible), dist 1.30 → 1 (full).
+      // Same thresholds that previously gated the auto-popping captions.
+      const t = Math.max(0, Math.min(1, (1.85 - dist) / (1.85 - 1.30)));
+      if (t > 0.02) {
+        const size = 10.5 + (1 - zoomNorm) * 1.2;
+        for (const [, info] of subLabelEls) {
+          if (!tryPlace(info, size, t * 0.85)) info.el.style.opacity = '0';
+        }
+      } else {
+        for (const [, info] of subLabelEls) info.el.style.opacity = '0';
+      }
     }
   };
 
+  // Rebuild sub labels + position labels when focus changes.
+  nav.addEventListener('focus', (ev) => {
+    rebuildSubLabels(ev.detail.cl);
+    rebuildPositionLabels(ev.detail.cl, ev.detail.gid);
+    // Only clear prior position focus when the NEW focus has no posIdx.
+    // Otherwise, drilling into L3 (cl+gid+posIdx) ends up re-hiding the
+    // card that the L3 click flow just opened.
+    if (ev.detail.posIdx == null) {
+      currentFocusedPosition = null;
+      const pc2 = document.getElementById('position-card');
+      if (pc2) pc2.classList.add('hidden');
+    }
+  });
+
+  // ─── Interview pins ───────────────────────────────────────────
+  globe.setInterviewPins(App.state.interviewPins?.placements || [], App.state.interviews);
+
+  // Build voices list: 18 interviews grouped by cluster, each with a
+  // quote excerpt so the user can scan for what interests them.
+  const voicesInline = document.getElementById('voices-list-inline');
+  (() => {
+    const placements = App.state.interviewPins?.placements || [];
+    if (!voicesInline || !placements.length) return;
+    const ivMap = new Map((App.state.interviews?.interviews || []).map(iv => [iv.id, iv]));
+    // Group by cluster (name → array of placements).
+    const byCluster = new Map();
+    for (const p of placements) {
+      const name = App.state.clusterMeta?.[String(p.cluster)]?.name || `Cluster ${p.cluster}`;
+      if (!byCluster.has(p.cluster)) byCluster.set(p.cluster, { name, items: [] });
+      byCluster.get(p.cluster).items.push(p);
+    }
+    // Order by cluster count desc (larger clusters first = more familiar).
+    const groups = [...byCluster.entries()]
+      .sort((a, b) => b[1].items.length - a[1].items.length);
+    for (const g of groups) g[1].items.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+
+    voicesInline.innerHTML = `<div class="vli-head"><span>Street interviews</span><span>${placements.length}</span></div>`;
+    for (const [cl, g] of groups) {
+      const col = sphereColor(cl);
+      const groupEl = document.createElement('div');
+      groupEl.className = 'voices-group';
+      groupEl.innerHTML = `
+        <div class="voices-group-head" style="--g-color:${col}">
+          <span class="vg-dot" style="background:${col}"></span>
+          <span class="vg-name">${escapeHtml(g.name)}</span>
+          <span class="vg-count">${g.items.length}</span>
+        </div>
+      `;
+      for (const p of g.items) {
+        const iv = ivMap.get(p.id);
+        const el = document.createElement('div');
+        el.className = 'voice-item';
+        el.dataset.id = p.id;
+        const quote = (iv?.quote || '').trim();
+        const role = (iv?.role || 'Interview').trim();
+        const themes = (iv?.themes || []).slice(0, 4);
+        const themeHtml = themes.length
+          ? `<div class="v-themes">${themes.map(t => `<button type="button" class="v-theme" data-theme="${escapeHtml(t)}" title="Search clusters + posts for: ${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>`
+          : '';
+        el.innerHTML = `
+          <div class="v-head">
+            <span class="v-id">${escapeHtml(p.id)}</span>
+            <span class="v-role">${escapeHtml(role)}</span>
+          </div>
+          ${quote ? `<div class="v-quote">"${escapeHtml(quote)}"</div>` : ''}
+          ${themeHtml}
+        `;
+        el.onclick = (evt) => {
+          // Theme chip click: don't open the interview — run a search.
+          const chip = evt.target.closest?.('.v-theme');
+          if (chip) {
+            evt.stopPropagation();
+            const theme = chip.dataset.theme || '';
+            const input = document.getElementById('search-input');
+            if (input) {
+              input.value = theme;
+              input.focus();
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return;
+          }
+          globe.rotateTo(p.lat, p.lon, Math.min(globe.distanceTarget, 1.8));
+          const data = {
+            ...p,
+            role: iv?.role, lives: iv?.lives, would_live: iv?.would_live,
+            cluster_name: App.state.clusterMeta?.[String(p.cluster)]?.name,
+          };
+          voicesInline.classList.add('hidden');
+          document.getElementById('btn-voices').classList.remove('on');
+          showInterviewCard(data);
+          document.querySelectorAll('.voice-item').forEach(x => x.classList.toggle('selected', x.dataset.id === p.id));
+          document.querySelectorAll('.pin').forEach(x => x.classList.toggle('selected', x.dataset.id === p.id));
+        };
+        groupEl.appendChild(el);
+      }
+      voicesInline.appendChild(groupEl);
+    }
+  })();
+
+  // Toolbar: voices toggle shows the list inside the inspector body.
+  const btnVoices = document.getElementById('btn-voices');
+  if (btnVoices) btnVoices.onclick = () => {
+    const showing = voicesInline.classList.toggle('hidden');
+    btnVoices.classList.toggle('on', !showing);
+    if (!showing) {
+      // Showing voices → hide other cards
+      focusCard.classList.add('hidden');
+      document.getElementById('detail-card').classList.add('hidden');
+      document.getElementById('interview-card').classList.add('hidden');
+      document.getElementById('position-card').classList.add('hidden');
+      hideInspectorEmpty();
+    } else {
+      showInspectorEmpty();
+    }
+  };
+
+  // Pin tooltip — uses the same floating card as globe-point hovers, so
+  // street-interview pins feel like full "comments" rather than tiny
+  // hover chips. The P# avatar is shown as a meta eyebrow.
+  function showPinTooltip({ pin, clientX, clientY }) {
+    const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id) || {};
+    const cl = pin.cluster;
+    const clColor = sphereColor(cl);
+    const clName = pin.cluster_name || (App.state.clusterMeta?.[String(cl)]?.name) || `Cluster ${cl}`;
+    const fields = [
+      ['Lives', iv.lives],
+      ['Would live', iv.would_live],
+      ['Work', iv.work],
+      ['Commute', iv.commute],
+      ['Would change', iv.change],
+    ].filter(([, v]) => v);
+    const title = iv.role ? escapeHtml(iv.role) : `Interview ${escapeHtml(pin.id)}`;
+    const body = [
+      iv.quote ? `“${iv.quote}”` : '',
+      iv.notes || '',
+      fields.map(([k, v]) => `${k}: ${v}`).join('\n'),
+    ].filter(Boolean).join('\n\n');
+    pointTooltip.innerHTML = `
+      <div class="hv-cluster" style="color:${clColor}">${escapeHtml(pin.id)} · ${escapeHtml(clName)}</div>
+      <div class="hv-meta">Street interview${iv.interviewed_at ? ` · ${escapeHtml(iv.interviewed_at)}` : ''}</div>
+      <div class="hv-title">${title}</div>
+      ${body ? `<div class="hv-body">${escapeHtml(body)}</div>` : ''}
+    `;
+    pointTooltip.classList.remove('hidden');
+    pointTooltip.classList.add('visible');
+    if (clientX != null) positionTooltip(clientX, clientY);
+  }
+  function hidePinTooltip() {
+    pointTooltip.classList.remove('visible');
+    pointTooltip.classList.add('hidden');
+  }
+
+  // Interview + position cards. In the current minimal layout, #insp-body
+  // is CSS-hidden via display:none !important, which nukes the whole
+  // subtree — so clicking an interview pin or an L3 position bar
+  // populated the card but rendered nothing. Moving them out on boot
+  // lets those interactions actually show the card at top-right.
+  const ic = document.getElementById('interview-card');
+  if (ic && ic.parentElement?.id === 'insp-body') {
+    document.body.appendChild(ic);
+  }
+  const pc2 = document.getElementById('position-card');
+  if (pc2 && pc2.parentElement?.id === 'insp-body') {
+    document.body.appendChild(pc2);
+  }
+  const dcEl = document.getElementById('detail-card');
+  if (dcEl && dcEl.parentElement?.id === 'insp-body') {
+    document.body.appendChild(dcEl);
+  }
+  const fcEl = document.getElementById('focus-card');
+  if (fcEl && fcEl.parentElement?.id === 'insp-body') {
+    document.body.appendChild(fcEl);
+  }
+  // Keep <body class="has-floating-card"> in sync so CSS can fade the
+  // keyboard hints when a card covers that top-right region. Uses a
+  // single MutationObserver watching each card's class attribute.
+  (() => {
+    const cards = [ic, pc2, dcEl, fcEl].filter(Boolean);
+    if (cards.length === 0) return;
+    const refresh = () => {
+      const anyVisible = cards.some(c => !c.classList.contains('hidden'));
+      document.body.classList.toggle('has-floating-card', anyVisible);
+    };
+    const obs = new MutationObserver(refresh);
+    for (const c of cards) obs.observe(c, { attributes: true, attributeFilter: ['class'] });
+    refresh();
+  })();
+  const icClose = document.getElementById('ic-close');
+  if (icClose) icClose.onclick = () => hideInterviewCard();
+  function hideInterviewCard() {
+    if (ic) ic.classList.add('hidden');
+    document.querySelectorAll('.pin.selected').forEach(el => el.classList.remove('selected'));
+  }
+  async function showInterviewCard(pin) {
+    if (!ic) return;
+    dc.classList.add('hidden');
+    focusCard.classList.add('hidden');
+    document.getElementById('position-card').classList.add('hidden');
+    if (voicesInline) voicesInline.classList.add('hidden');
+    const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
+    hideInspectorEmpty();
+    const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id);
+    if (!iv) return;
+    const fields = [
+      ['Role', iv.role],
+      ['Interviewed', iv.interviewed_at],
+      ['Lives', iv.lives],
+      ['Would live', iv.would_live],
+      ['Work', iv.work],
+      ['Commute', iv.commute],
+      ['Would change', iv.change],
+    ].filter(([, v]) => v);
+    const color = sphereColor(pin.cluster);
+    ic.innerHTML = `
+      <button class="ic-close" id="ic-close-btn" aria-label="Close">×</button>
+      <div class="ic-head">
+        <div class="ic-avatar" style="background:${color}">${escapeHtml(pin.id)}</div>
+        <div class="ic-head-text">
+          <div class="ic-eyebrow">Street interview · pinned near ${escapeHtml(pin.cluster_name || 'the data')}</div>
+          <div class="ic-role">${escapeHtml(iv.role || '')}</div>
+        </div>
+      </div>
+      ${iv.quote ? `<blockquote class="ic-quote" style="border-left-color:${color}">“${escapeHtml(iv.quote)}”</blockquote>` : ''}
+      <dl class="ic-fields">
+        ${fields.map(([k, v]) => `<div class="ic-field"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
+      </dl>
+      ${iv.notes ? `<div class="ic-notes">${escapeHtml(iv.notes)}</div>` : ''}
+      <div class="ic-reddit-row">
+        <div class="ic-reddit-label">Nearest Reddit voice</div>
+        <button class="ic-reddit-btn" id="ic-reddit-btn">open the pinned thread →</button>
+      </div>
+      ${(() => {
+        // Surface 3 top Reddit stances from the same sub this interview
+        // is pinned to — turns the card into a launchpad into the data.
+        const gid = App.subGidMap.byLocal[pin.cluster]?.[pin.sub];
+        if (gid == null) return '';
+        const doc = App.state.positionAnchors?.[String(gid)];
+        if (!doc || !doc.positions) return '';
+        const picks = doc.positions
+          .map((p, i) => ({ p, i }))
+          .filter(o => o.p.count && o.p.count > 0)
+          .sort((a, b) => (b.p.count || 0) - (a.p.count || 0))
+          .slice(0, 3);
+        if (picks.length === 0) return '';
+        const chips = picks.map(o => `
+          <button class="ic-nearby-stance" data-gid="${gid}" data-pos="${o.i}" data-cl="${pin.cluster}"
+                  style="--rc-color:${color}" title="${escapeHtml(o.p.description || '')}">
+            <span class="ic-ns-dot" style="background:${color}"></span>
+            <span class="ic-ns-name">${escapeHtml(o.p.name)}</span>
+            <span class="ic-ns-count">${(o.p.count || 0).toLocaleString()}</span>
+          </button>
+        `).join('');
+        return `
+          <div class="ic-nearby-label">Stances in "${escapeHtml(doc.sub_name || '')}"</div>
+          <div class="ic-nearby-list">${chips}</div>
+        `;
+      })()}
+    `;
+    ic.classList.remove('hidden');
+    scrollCardIntoView(ic);
+    document.getElementById('ic-close-btn').onclick = hideInterviewCard;
+    document.getElementById('ic-reddit-btn').onclick = async () => {
+      const d = await getPointDetails(App.state, pin.idx);
+      showDetailCard(d);
+    };
+    // Nearby-stance chips → drill to that position.
+    ic.querySelectorAll('.ic-nearby-stance').forEach(btn => {
+      btn.onclick = () => {
+        const gid = +btn.dataset.gid;
+        const pos = +btn.dataset.pos;
+        const clb = +btn.dataset.cl;
+        nav.focus({ cl: clb, gid });
+        setTimeout(() => focusPosition(clb, gid, pos), 220);
+      };
+    });
+    // Rotate the globe so the pin faces the camera, then drop the pulse +
+    // auto-load serendipitous nearby voices (zoom <1.65 triggers captions).
+    const targetDist = Math.min(globe.distanceTarget, 1.5);
+    globe.rotateTo(pin.lat, pin.lon, targetDist);
+    pulseAt(pin.lat, pin.lon, sphereColor(pin.cluster));
+    setTimeout(() => { try { refreshCaptions(); } catch(e){} }, 560);
+  }
+
+  // ─── Landing-pulse: fires once when we rotate to a target, giving the
+  //     eye a place to land as the globe spins (gestalt continuity).
+  const overlayEl = document.getElementById('globe-overlay');
+  function pulseAt(lat, lon, color = null) {
+    if (!overlayEl) return;
+    // Wait a tick so rotateTo's quaternion target has been applied to the
+    // world group; we project against the *current* quaternion in rAF.
+    const el = document.createElement('div');
+    el.className = 'landing-pulse';
+    if (color) el.style.borderColor = color;
+    overlayEl.appendChild(el);
+    let frames = 0;
+    const tick = () => {
+      if (frames > 54 || !el.isConnected) { el.remove(); return; }
+      const wp = globe.worldPositionOf(lat, lon, 1.005);
+      const camPos = globe.camera.position;
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      if (facing > 0) {
+        const p = wp.clone().project(globe.camera);
+        const sx = (p.x * 0.5 + 0.5) * globe.canvas.clientWidth;
+        const sy = (-p.y * 0.5 + 0.5) * globe.canvas.clientHeight;
+        el.style.left = `${sx}px`;
+        el.style.top = `${sy}px`;
+        el.style.opacity = '';
+      } else {
+        el.style.opacity = '0';
+      }
+      frames++;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    setTimeout(() => el.remove(), 1100);
+  }
+
+  // ─── Serendipitous zoom-in captions ────────────────────────────
+  let captionEpoch = 0;
+  const captionLayer = (() => {
+    let el = document.getElementById('zoom-captions');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'zoom-captions';
+      el.className = 'zoom-captions';
+      document.getElementById('globe-overlay').appendChild(el);
+    }
+    return el;
+  })();
+  // SVG overlay for leader lines connecting each caption box to its point.
+  let captionLines = document.getElementById('caption-lines');
+  if (!captionLines) {
+    captionLines = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    captionLines.setAttribute('id', 'caption-lines');
+    captionLines.setAttribute('class', 'caption-lines');
+    captionLines.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:5;';
+    document.getElementById('globe-overlay').appendChild(captionLines);
+  }
+
+  let activeCaptions = [];   // { idx, el, line, lat, lon, cluster, subLocal, offX, offY }
+  let captionTimer = null;
+  // How many captions should be visible at a given zoom distance?
+  //   dist 1.8+  → 0 (far-away zoom: clean view)
+  //   dist 1.6   → 5
+  //   dist 1.35  → 10
+  //   dist 1.18  → 20
+  // Auto-popping post captions were removed per user request. The cursor
+  // tooltip is the only surface for post content now.
+  function captionBudget() { return 0; }
+  async function refreshCaptions() {
+    const budget = captionBudget();
+    if (budget === 0) {
+      for (const c of activeCaptions) { c.el.classList.remove('show'); c.line?.setAttribute('stroke-opacity', '0'); }
+      setTimeout(() => {
+        for (const c of activeCaptions) { c.el.remove(); c.line?.remove(); }
+        activeCaptions = [];
+      }, 320);
+      return;
+    }
+    const myEpoch = ++captionEpoch;
+    const targetV = globe.lookTargetWorld();
+    const st = App.state;
+    const camPos = globe.camera.position;
+    // If the user has drilled, respect the focus — only sample points that
+    // belong to that cluster (or sub). Makes the captions show "what's
+    // actually in this region" rather than random noise.
+    // Filter by CLUSTER only — a sub-level filter left too few candidates
+    // to fill the budget at close zoom. Cluster gives the useful framing:
+    // "what's around me in this topic".
+    const focusCl = nav.focusCl;
+    // Respect the active timeline filter + subreddit filter so captions
+    // don't surface 2015 posts when the user is looking at a 2024 window,
+    // or r/boston posts when they've filtered to r/mbta.
+    const monthAssign = st.monthAssignments;
+    const mr = globe._filter?.monthRange;
+    const hasMonthFilter = !!(mr && monthAssign);
+    const srFilter = globe._filter?.subredditIds;
+    const srAssign = st.subredditAssignments;
+    const hasSRFilter = !!(srFilter && srFilter.size > 0 && srAssign);
+
+    const acceptDist = Math.min(0.9, 0.35 + (globe.distanceTarget - 1.18) * 0.6);
+    const tries = 30000;
+    const cands = [];
+    for (let i = 0; i < tries && cands.length < 600; i++) {
+      const ri = Math.floor(Math.random() * st.N);
+      if (focusCl != null && st.cluster[ri] !== focusCl) continue;
+      if (hasMonthFilter) {
+        const m = monthAssign[ri];
+        if (m < mr.lo || m > mr.hi) continue;
+      }
+      if (hasSRFilter && !srFilter.has(srAssign[ri])) continue;
+      const lat = st.coords[2*ri], lon = st.coords[2*ri+1];
+      const wp = globe.worldPositionOf(lat, lon, 1.012);
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      if (facing <= 0.15) continue;
+      const d = wp.distanceTo(targetV);
+      if (d > acceptDist) continue;
+      cands.push({ idx: ri, dist: d, lat, lon, cluster: st.cluster[ri] });
+    }
+    cands.sort((a, b) => a.dist - b.dist);
+
+    // Greedy pack with min screen-space separation so boxes don't overlap.
+    const W = globe.canvas.clientWidth, H = globe.canvas.clientHeight;
+    const MIN_SEP = 150;   // uniform box spacing; boxes are ~180px wide
+    const chosen = [];
+    for (const c of cands) {
+      if (chosen.length >= budget) break;
+      const wp = globe.worldPositionOf(c.lat, c.lon, 1.012);
+      const p = wp.clone().project(globe.camera);
+      const sx = (p.x * 0.5 + 0.5) * W;
+      const sy = (-p.y * 0.5 + 0.5) * H;
+      // Reject points near other pinned ones on screen.
+      if (chosen.some(ch => Math.hypot(ch.sx - sx, ch.sy - sy) < MIN_SEP)) continue;
+      // Push the box away from the point in the direction away from screen
+      // center, so leader lines don't cross through the sphere's silhouette.
+      const dx = sx - W * 0.5, dy = sy - H * 0.5;
+      const mag = Math.hypot(dx, dy) || 1;
+      const offX = (dx / mag) * 70;
+      const offY = (dy / mag) * 50 - 20;
+      chosen.push({ ...c, sx, sy, offX, offY });
+    }
+
+    // Diff existing vs. chosen; keep stable ones, transition the rest.
+    const existingIdx = new Set(activeCaptions.map(a => a.idx));
+    const nextIdx = new Set(chosen.map(c => c.idx));
+    for (const a of activeCaptions) {
+      if (!nextIdx.has(a.idx)) {
+        a.el.classList.remove('show');
+        a.line?.setAttribute('stroke-opacity', '0');
+        setTimeout(() => { a.el.remove(); a.line?.remove(); }, 320);
+      }
+    }
+    activeCaptions = activeCaptions.filter(a => nextIdx.has(a.idx));
+    for (const c of chosen) {
+      if (existingIdx.has(c.idx)) {
+        // Update offX/offY in case zoom changed.
+        const existing = activeCaptions.find(a => a.idx === c.idx);
+        if (existing) { existing.offX = c.offX; existing.offY = c.offY; }
+        continue;
+      }
+      const el = document.createElement('div');
+      el.className = 'zcap';
+      el.innerHTML = '<div class="zcap-meta"></div><div class="zcap-text">…</div>';
+      captionLayer.appendChild(el);
+      // SVG leader line.
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-opacity', '0');
+      captionLines.appendChild(line);
+      const entry = { idx: c.idx, lat: c.lat, lon: c.lon, cluster: c.cluster,
+                      subLocal: st.subLocal[c.idx], el, line,
+                      offX: c.offX, offY: c.offY };
+      activeCaptions.push(entry);
+      (async () => {
+        try {
+          const d = await getPointDetails(App.state, c.idx);
+          if (myEpoch !== captionEpoch && !activeCaptions.find(a => a.idx === c.idx)) return;
+          const title = (d.title || '').trim();
+          const body = (d.body || '').trim().replace(/\s+/g, ' ');
+          const text = title && body
+            ? `${title} — ${body}`.slice(0, 220)
+            : (title || body).slice(0, 220);
+          const meta = `r/${d.subreddit} · ${d.month}`;
+          el.querySelector('.zcap-meta').textContent = meta;
+          el.querySelector('.zcap-text').textContent = text || '…';
+          el.dataset.cluster = d.cluster;
+          const col = sphereColor(d.cluster);
+          el.style.setProperty('--cap-color', col);
+          line.setAttribute('stroke', col);
+          el.onclick = () => showDetailCard(d);
+          setTimeout(() => {
+            el.classList.add('show');
+            line.setAttribute('stroke-opacity', '0.55');
+          }, 20);
+        } catch (e) {}
+      })();
+    }
+  }
+  function updateZoomCaptions() {
+    // Every-frame projection so boxes and leader lines track globe rotation.
+    const W = globe.canvas.clientWidth, H = globe.canvas.clientHeight;
+    captionLines.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    captionLines.setAttribute('width', W);
+    captionLines.setAttribute('height', H);
+    for (const c of activeCaptions) {
+      const wp = globe.worldPositionOf(c.lat, c.lon, 1.012);
+      const camPos = globe.camera.position;
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      const p = wp.clone().project(globe.camera);
+      const sx = (p.x * 0.5 + 0.5) * W;
+      const sy = (-p.y * 0.5 + 0.5) * H;
+      if (facing <= 0 || p.z > 1) {
+        c.el.style.opacity = '0';
+        c.line?.setAttribute('stroke-opacity', '0');
+        continue;
+      }
+      const bx = sx + c.offX, by = sy + c.offY;
+      c.el.style.left = `${bx}px`;
+      c.el.style.top = `${by}px`;
+      c.el.style.opacity = '';
+      if (c.line) {
+        c.line.setAttribute('x1', sx);
+        c.line.setAttribute('y1', sy);
+        c.line.setAttribute('x2', bx);
+        c.line.setAttribute('y2', by);
+        c.line.setAttribute('stroke-opacity', '0.55');
+      }
+    }
+  }
+  function maybeScheduleCaptions() {
+    if (captionTimer) clearTimeout(captionTimer);
+    captionTimer = setTimeout(refreshCaptions, 320);
+  }
+  // Refresh the set only after ZOOM has SETTLED (distance == distanceTarget
+  // and hasn't changed for 500ms). Firing during a smooth zoom causes
+  // flicker — captions fade in/out mid-animation every time the distance
+  // crosses a caption-budget threshold.
+  let lastDistTarget = globe.distanceTarget;
+  let lastDistActual = globe.distance;
+  let stableSince = performance.now();
+  let lastRefreshDist = globe.distanceTarget;
+  setInterval(() => {
+    const now = performance.now();
+    const targetChanged = Math.abs(globe.distanceTarget - lastDistTarget) > 0.01;
+    const stillAnimating = Math.abs(globe.distance - globe.distanceTarget) > 0.01;
+    if (targetChanged || stillAnimating) {
+      lastDistTarget = globe.distanceTarget;
+      lastDistActual = globe.distance;
+      stableSince = now;
+      return;
+    }
+    // Target unchanged AND actual close to target — we've been steady for
+    // at least (now - stableSince)ms.
+    if (now - stableSince >= 500 && Math.abs(globe.distanceTarget - lastRefreshDist) > 0.05) {
+      lastRefreshDist = globe.distanceTarget;
+      refreshCaptions();
+    }
+  }, 160);
+  nav.addEventListener('focus', () => { setTimeout(refreshCaptions, 650); });
+  refreshCaptions();
+  // Expose for debugging from the console.
+  window.App.refreshCaptions = refreshCaptions;
+
   // ─── Hover arcs (per-point thread connections) ────────────────
-  let lastFocusFilter = null;
   let hoverEpoch = 0;
+  // ─── Shift-to-show-relations ──────────────────────────────────
+  // Lazy build: on first shift-down, iterate every chunk and bucket points
+  // by postId (extracted from permalink). Cached forever.
+  let _threadMap = null;
+  async function ensureThreadMap() {
+    if (_threadMap) return _threadMap;
+    const st = App.state;
+    const byPost = new Map();
+    for (let ci = 0; ci < st.manifest.files.length; ci++) {
+      let p = st.chunkCache.get(ci);
+      if (!p) {
+        p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
+        st.chunkCache.set(ci, p);
+      }
+      const c = await p;
+      const off = c.offset;
+      const perms = c.permalink || [];
+      for (let j = 0; j < c.n; j++) {
+        const pm = perms[j] || '';
+        const m = pm.match(/\/comments\/([a-z0-9]+)\//);
+        if (!m) continue;
+        const id = m[1];
+        let arr = byPost.get(id);
+        if (!arr) { arr = []; byPost.set(id, arr); }
+        arr.push(off + j);
+      }
+    }
+    _threadMap = byPost;
+    return byPost;
+  }
+
+  let _shiftActive = false;
+  let _shiftEpoch = 0;
+  let _priorThreadsEnabled = false;
+  let _priorHighlightState = null;
+  async function shiftShowRelations() {
+    if (_shiftActive) return;
+    _shiftActive = true;
+    const epoch = ++_shiftEpoch;
+    _priorThreadsEnabled = globe.threadArcsEnabled;
+    const map = await ensureThreadMap();
+    if (epoch !== _shiftEpoch || !_shiftActive) return;
+    // Build pairs: pick up to 60 threads whose anchor point is currently
+    // "colored" (dim > 0.5), prefer threads with more members.
+    const dimArr = globe.pointGeom?.attributes?.dim?.array;
+    const candidates = [];
+    for (const [id, idxs] of map) {
+      if (idxs.length < 2) continue;
+      // Does at least one point pass the filter?
+      let visible = false;
+      for (const pi of idxs) {
+        if (!dimArr || dimArr[pi] > 0.5) { visible = true; break; }
+      }
+      if (!visible) continue;
+      candidates.push({ id, idxs, n: idxs.length });
+    }
+    if (candidates.length === 0) { _shiftActive = false; return; }
+    candidates.sort(() => Math.random() - 0.5);
+    const picks = candidates.slice(0, 60);
+    // Build a post-index so we can pick the POST itself as each thread's
+    // anchor — makes the arcs radiate from the submission outward.
+    const postIndex = await buildPostIndex();
+    const pairs = [];
+    for (const c of picks) {
+      const anchorIdx = postIndex.get(c.id);
+      const anchor = anchorIdx != null && c.idxs.includes(anchorIdx) ? anchorIdx : c.idxs[0];
+      for (const m of c.idxs) {
+        if (m === anchor) continue;
+        pairs.push([anchor, m]);
+        if (pairs.length >= 1500) break;
+      }
+      if (pairs.length >= 1500) break;
+    }
+    if (epoch !== _shiftEpoch || !_shiftActive) return;
+    await globe.loadThreadArcs(pairs, { thin: true, opacity: 0.55 });
+    if (epoch !== _shiftEpoch || !_shiftActive) return;
+    globe.threadArcsEnabled = true;
+    if (globe.threadArcs) globe.threadArcs.visible = true;
+  }
+  function shiftHideRelations() {
+    if (!_shiftActive) return;
+    _shiftActive = false;
+    _shiftEpoch++;
+    globe.threadArcsEnabled = _priorThreadsEnabled;
+    if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
+    if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Shift' || e.repeat) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    shiftShowRelations();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key !== 'Shift') return;
+    shiftHideRelations();
+  });
+  // Release on blur so a shift-tab-away doesn't leave the overlay stuck.
+  window.addEventListener('blur', shiftHideRelations);
+
   async function buildHoverArcs(idx, details) {
     const myEpoch = ++hoverEpoch;
     const st = App.state;
@@ -277,11 +3472,7 @@ async function boot() {
     if (!postId) { restoreFocusThreads(); return; }
     const postIdx = await buildPostIndex();
     if (myEpoch !== hoverEpoch) return;
-    const pIdx = postIdx.get(postId);   // may be undefined (post filtered out)
-
-    // Collect all sibling members of this thread (comments + post if present),
-    // then draw arcs FROM the hovered point to each sibling. This works even
-    // when the original post isn't in the dataset.
+    const pIdx = postIdx.get(postId);
     const siblings = await siblingsForThread(postId);
     if (myEpoch !== hoverEpoch) return;
     const pairs = [];
@@ -296,7 +3487,6 @@ async function boot() {
     globe._hoverArcsActive = true;
   }
 
-  // Cache: postId → [point indices] (any point whose permalink references that post)
   const siblingsCache = new Map();
   async function siblingsForThread(postId) {
     if (siblingsCache.has(postId)) return siblingsCache.get(postId);
@@ -319,33 +3509,12 @@ async function boot() {
     return out;
   }
   function restoreFocusThreads() {
-    hoverEpoch++;             // cancel any pending arc build
+    hoverEpoch++;
     globe._hoverArcsActive = false;
     globe.loadThreadArcs([]);
   }
-  // Cache per-post comment list
-  const commentsCache = new Map();
-  async function commentsForPost(postId, pIdx) {
-    if (commentsCache.has(postId)) return commentsCache.get(postId);
-    const st = App.state;
-    const out = [];
-    // Brute-force: scan loaded chunks for matching post id.
-    for (let ci = 0; ci < st.manifest.files.length; ci++) {
-      let p = st.chunkCache.get(ci);
-      if (!p) continue; // skip non-loaded chunks for hover speed
-      const c = await p;
-      const off = c.offset;
-      for (let j = 0; j < c.n; j++) {
-        if (c.type[j] === 'submission' || c.type[j] === 'post') continue;
-        const m = (c.permalink[j] || '').match(/\/comments\/([a-z0-9]+)\//);
-        if (m && m[1] === postId) out.push([pIdx, off + j]);
-      }
-    }
-    commentsCache.set(postId, out);
-    return out;
-  }
 
-  // ─── Detail card ───────────────────────────────────────────────
+  // ─── Detail card (Reddit post/comment) ─────────────────────
   const dc = document.getElementById('detail-card');
   const dcMeta = document.getElementById('dc-meta');
   const dcTitle = document.getElementById('dc-title');
@@ -353,28 +3522,34 @@ async function boot() {
   const dcLink = document.getElementById('dc-link');
   document.getElementById('dc-close').onclick = () => dc.classList.add('hidden');
   function showDetailCard(d) {
+    if (ic) ic.classList.add('hidden');
+    focusCard.classList.add('hidden');
+    document.getElementById('position-card').classList.add('hidden');
+    if (voicesInline) voicesInline.classList.add('hidden');
+    const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
+    hideInspectorEmpty();
     dcMeta.textContent = `r/${d.subreddit} · ${d.type} · ${d.month} · score ${d.score}`;
     dcTitle.textContent = d.title || (d.type === 'comment' ? '(comment)' : '(submission)');
     dcBody.textContent = (d.body || '').slice(0, 1600);
     if (d.permalink) { dcLink.href = d.permalink; dcLink.style.display = ''; }
     else dcLink.style.display = 'none';
     dc.classList.remove('hidden');
+    scrollCardIntoView(dc);
   }
 
-  // Re-render sub labels when focus changes.
-  nav.addEventListener('focus', (ev) => rebuildSubLabels(ev.detail.cl));
-
-  // ─────────────────────────────────────────────────────────────────
-  // Thread arc building: for a focused cluster or subtopic, pair each
-  // comment with its parent post (by permalink base path).
-  async function loadThreads(filter) {
-    lastFocusFilter = filter;
-    if (!filter) { globe.loadThreadArcs([]); return; }
-    const pairs = await buildThreadPairs(filter);
-    globe.loadThreadArcs(pairs.slice(0, 2500));
+  // When multiple cards stack in #insp-body, scroll the newly-activated one
+  // into view so it isn't hidden below the fold (proximity + continuity).
+  function scrollCardIntoView(el) {
+    if (!el) return;
+    const body = document.getElementById('insp-body');
+    if (!body) return;
+    requestAnimationFrame(() => {
+      const top = el.offsetTop - body.offsetTop;
+      body.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
+    });
   }
 
-  // Load pre-baked post-id → point-index map. Falls back to scanning chunks if missing.
+  // ─── Thread arcs for focused cluster/sub ────────────────────
   let postIndexPromise = null;
   async function buildPostIndex() {
     if (postIndexPromise) return postIndexPromise;
@@ -407,59 +3582,496 @@ async function boot() {
     })();
     return postIndexPromise;
   }
+}
 
-  const threadCache = new Map();
-  async function buildThreadPairs(filter) {
-    const key = filter.sub != null ? `${filter.cl}_${filter.sub}` : `${filter.cl}`;
-    if (threadCache.has(key)) return threadCache.get(key);
-    const st = App.state;
-    const postIdx = await buildPostIndex();
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
 
-    const members = [];
-    for (let i = 0; i < st.N; i++) {
-      if (st.cluster[i] !== filter.cl) continue;
-      if (filter.sub != null && st.subLocal[i] !== filter.sub) continue;
-      members.push(i);
+// ─── Cross-position keyword resonance ──────────────────────────
+//
+// For a given position, find the top-K positions in OTHER subs whose
+// keywords + name + description tokens overlap the most. Caches the
+// tokenization per (gid, posIdx) so repeated lookups are cheap.
+const STOPWORDS = new Set('the and a an in of to for with on at is are as by from this that it its be have has can do not but or if more than about over under into'.split(' '));
+const _resonanceCache = new Map();
+function _tokenizePosition(p) {
+  const text = [
+    (p.name || ''),
+    (p.description || ''),
+    ((p.keywords || []).join(' ')),
+  ].join(' ').toLowerCase();
+  const toks = text.match(/[a-z][a-z'-]{2,}/g) || [];
+  const set = new Set();
+  for (const t of toks) if (!STOPWORDS.has(t) && t.length > 2) set.add(t);
+  return set;
+}
+function _positionTokens(gid, idx, pos) {
+  const key = `${gid}:${idx}`;
+  let s = _resonanceCache.get(key);
+  if (!s) { s = _tokenizePosition(pos); _resonanceCache.set(key, s); }
+  return s;
+}
+function findResonantPositions(gid, posIdx, pos, limit = 3) {
+  const anchors = window.App?.state?.positionAnchors;
+  if (!anchors) return [];
+  const base = _positionTokens(gid, posIdx, pos);
+  if (base.size < 2) return [];
+  const results = [];
+  for (const [otherGidStr, otherDoc] of Object.entries(anchors)) {
+    const otherGid = +otherGidStr;
+    if (otherGid === gid) continue;   // skip same sub — siblings cover that
+    const positions = otherDoc.positions || [];
+    for (let i = 0; i < positions.length; i++) {
+      const op = positions[i];
+      if (!op.count || op.count < 20) continue;
+      const otherSet = _positionTokens(otherGid, i, op);
+      // Jaccard-like overlap with a boost for absolute shared count.
+      let shared = 0;
+      for (const t of otherSet) if (base.has(t)) shared++;
+      if (shared < 2) continue;
+      const score = shared * shared / (base.size + otherSet.size);
+      results.push({
+        gid: otherGid, posIdx: i, cl: otherDoc.cl,
+        name: op.name, description: op.description,
+        sub_name: otherDoc.sub_name, cluster_name: otherDoc.cluster_name,
+        score, shared,
+      });
     }
-    // Group by chunk to minimize re-fetches; chunk cache is populated.
-    const cs = st.manifest.chunkSize;
-    const byChunk = new Map();
-    for (const idx of members) {
-      const ci = Math.floor(idx / cs);
-      if (!byChunk.has(ci)) byChunk.set(ci, []);
-      byChunk.get(ci).push(idx);
-    }
-    const pairs = [];
-    const seen = new Set();
-    for (const [ci, idxs] of byChunk) {
-      let chunkPromise = st.chunkCache.get(ci);
-      if (!chunkPromise) {
-        chunkPromise = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
-        st.chunkCache.set(ci, chunkPromise);
-      }
-      const chunk = await chunkPromise;
-      const off = chunk.offset;
-      for (const idx of idxs) {
-        const j = idx - off;
-        const perm = chunk.permalink[j] || '';
-        const type = chunk.type[j];
-        const m = perm.match(/\/comments\/([a-z0-9]+)\//);
-        if (!m) continue;
-        const pid = m[1];
-        if (type === 'submission' || type === 'post') continue; // only draw post→comment lines
-        const postI = postIdx.get(pid);
-        if (postI == null || postI === idx) continue;
-        const k = `${postI}-${idx}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        pairs.push([postI, idx]);
-        if (pairs.length >= 3000) break;
-      }
-      if (pairs.length >= 3000) break;
-    }
-    threadCache.set(key, pairs);
-    return pairs;
   }
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit);
+}
+
+// Compact SVG sparkline from a pre-baked monthly series. Used in both the
+// position card and the cluster/sub focus card.
+// Paint a translucent band on every mini-sparkline indicating the
+// globally-active month range filter. Called whenever the timeline
+// scrubber changes, and also on each sparkline mount (via a small
+// post-render hook below).
+function updateSparklineBands(lo, hi, maxIdx) {
+  const active = !(lo === 0 && hi === maxIdx);
+  for (const spark of document.querySelectorAll('.pc2-spark')) {
+    const band = spark.querySelector('.pc2-spark-filter-band');
+    if (!band) continue;
+    if (!active) { band.setAttribute('opacity', '0'); continue; }
+    const i0 = +spark.dataset.i0;
+    const i1 = +spark.dataset.i1;
+    const W = +spark.dataset.w;
+    const pad = +spark.dataset.pad;
+    // Clip the filter to this sparkline's visible range [i0, i1].
+    const fLo = Math.max(lo, i0);
+    const fHi = Math.min(hi, i1);
+    if (fLo > fHi) { band.setAttribute('opacity', '0'); continue; }
+    const span = Math.max(1, i1 - i0);
+    const stepX = (W - pad * 2) / span;
+    const x = pad + (fLo - i0) * stepX;
+    const w = (fHi - fLo + 1) * stepX;
+    band.setAttribute('x', x.toFixed(1));
+    band.setAttribute('width', Math.max(1, w).toFixed(1));
+    band.setAttribute('opacity', '0.18');
+  }
+}
+function renderSparklineBySeries(series, labels, color, totalLabel = 'total') {
+  if (!series || series.length === 0) return '';
+  const T = series.length;
+  const max = series.reduce((m, v) => v > m ? v : m, 1);
+  const sum = series.reduce((s, v) => s + v, 0);
+  let i0 = 0, i1 = T - 1;
+  while (i0 < i1 && series[i0] === 0) i0++;
+  while (i1 > i0 && series[i1] === 0) i1--;
+  const from = labels[i0] || '', to = labels[i1] || '';
+  let peakIdx = i0;
+  for (let i = i0; i <= i1; i++) if (series[i] > series[peakIdx]) peakIdx = i;
+  const peakLabel = labels[peakIdx] || '';
+  const W = 260, H = 36, pad = 2;
+  const span = Math.max(1, i1 - i0);
+  const stepX = (W - pad * 2) / span;
+  const innerH = H - pad * 2;
+  const pts = [];
+  for (let i = i0; i <= i1; i++) {
+    const x = pad + (i - i0) * stepX;
+    const y = pad + innerH - (series[i] / max) * innerH;
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  const areaPts = `${pad},${H - pad} ${pts.join(' ')} ${(pad + span * stepX).toFixed(1)},${H - pad}`;
+  const peakX = pad + (peakIdx - i0) * stepX;
+  const peakY = pad + innerH - (series[peakIdx] / max) * innerH;
+  // Encode series+labels via data-attrs so one delegated mousemove handler
+  // can decode and show a per-month readout. Keeps DOM flat (one SVG, no
+  // per-point circles or rects).
+  const seriesStr = series.slice(i0, i1 + 1).join(',');
+  const labelsStr = labels.slice(i0, i1 + 1).join('|');
+  return `
+    <div class="pc2-spark" data-i0="${i0}" data-i1="${i1}" data-w="${W}" data-h="${H}" data-pad="${pad}" data-max="${max}" data-series="${seriesStr}" data-labels="${escapeHtml(labelsStr)}" data-color="${color}">
+      <div class="pc2-spark-head">
+        <span class="pc2-spark-eyebrow">monthly volume</span>
+        <span class="pc2-spark-range pc2-spark-range-default">${escapeHtml(from)} → ${escapeHtml(to)}</span>
+      </div>
+      <svg class="pc2-spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <rect class="pc2-spark-filter-band" x="0" y="${pad}" width="0" height="${innerH}" fill="${color}" opacity="0" pointer-events="none"/>
+        <polygon points="${areaPts}" fill="${color}" opacity="0.18"/>
+        <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.3"/>
+        <circle cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="2.4" fill="${color}"/>
+        <line class="pc2-spark-cursor" x1="0" y1="${pad}" x2="0" y2="${H - pad}" stroke="${color}" stroke-width="1" stroke-opacity="0" stroke-dasharray="2 2"/>
+        <circle class="pc2-spark-dot" cx="0" cy="0" r="3" fill="${color}" opacity="0"/>
+      </svg>
+      <div class="pc2-spark-foot">
+        <span class="pc2-spark-default">Peak <button class="pc2-spark-peak-btn" data-peak="${peakIdx}" title="Zoom timeline to a window around this peak">${escapeHtml(peakLabel)}</button> · ${sum.toLocaleString()} ${escapeHtml(totalLabel)}</span>
+        <span class="pc2-spark-live"></span>
+      </div>
+    </div>
+  `;
+}
+
+// Delegated hover: move across any .pc2-spark-svg shows the exact
+// month/count at the cursor position. Attached once at boot.
+function _initSparklineHover() {
+  document.body.addEventListener('mousemove', (e) => {
+    const svg = e.target.closest('.pc2-spark-svg');
+    if (!svg) return;
+    const spark = svg.closest('.pc2-spark');
+    if (!spark) return;
+    const rect = svg.getBoundingClientRect();
+    const frac = (e.clientX - rect.left) / Math.max(1, rect.width);
+    const series = (spark.dataset.series || '').split(',').map(Number);
+    const labels = (spark.dataset.labels || '').split('|');
+    const W = +spark.dataset.w, pad = +spark.dataset.pad, maxV = +spark.dataset.max;
+    const H = +spark.dataset.h;
+    const innerH = H - pad * 2;
+    const n = series.length;
+    const idx = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+    const span = Math.max(1, n - 1);
+    const stepX = (W - pad * 2) / span;
+    const xVB = pad + idx * stepX;
+    const yVB = pad + innerH - (series[idx] / maxV) * innerH;
+    const cursor = svg.querySelector('.pc2-spark-cursor');
+    const dot = svg.querySelector('.pc2-spark-dot');
+    if (cursor) { cursor.setAttribute('x1', xVB); cursor.setAttribute('x2', xVB); cursor.setAttribute('stroke-opacity', '0.55'); }
+    if (dot) { dot.setAttribute('cx', xVB); dot.setAttribute('cy', yVB); dot.setAttribute('opacity', '0.95'); }
+    const live = spark.querySelector('.pc2-spark-live');
+    const def = spark.querySelector('.pc2-spark-default');
+    const rng = spark.querySelector('.pc2-spark-range-default');
+    if (live) live.innerHTML = `<b>${escapeHtml(labels[idx])}</b> · ${series[idx].toLocaleString()} posts`;
+    if (def) def.style.display = 'none';
+    if (rng) rng.style.opacity = '0.35';
+  });
+  document.body.addEventListener('mouseout', (e) => {
+    const svg = e.target.closest ? e.target.closest('.pc2-spark-svg') : null;
+    if (!svg) return;
+    const spark = svg.closest('.pc2-spark');
+    if (!spark) return;
+    const cursor = svg.querySelector('.pc2-spark-cursor');
+    const dot = svg.querySelector('.pc2-spark-dot');
+    if (cursor) cursor.setAttribute('stroke-opacity', '0');
+    if (dot) dot.setAttribute('opacity', '0');
+    const live = spark.querySelector('.pc2-spark-live');
+    const def = spark.querySelector('.pc2-spark-default');
+    const rng = spark.querySelector('.pc2-spark-range-default');
+    if (live) live.innerHTML = '';
+    if (def) def.style.display = '';
+    if (rng) rng.style.opacity = '';
+  });
+}
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initSparklineHover);
+  } else {
+    _initSparklineHover();
+  }
+
+  // Delegated click on sparkline elements: the "Peak MMMM" button + any
+  // point on the sparkline itself both snap the timeline to a 12-month
+  // window centered on the clicked month. Serendipity → era-zoom.
+  const _applyPeakZoom = (fullIdx) => {
+    const totalMonths = window.App?.state?.monthLabels?.length;
+    if (!totalMonths || !Number.isFinite(fullIdx)) return;
+    const lo = Math.max(0, fullIdx - 6);
+    const hi = Math.min(totalMonths - 1, fullIdx + 5);
+    const scrubber = document.getElementById('timeline-scrubber');
+    if (scrubber && scrubber.classList.contains('hidden')) {
+      document.getElementById('tl-toggle')?.click();
+    }
+    if (window._tlApplyHashRange) window._tlApplyHashRange(lo, hi);
+    else if (window.App?.globe?.setMonthRange) window.App.globe.setMonthRange({ lo, hi });
+  };
+  document.body.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('.pc2-spark-peak-btn');
+    if (btn) {
+      _applyPeakZoom(+btn.dataset.peak);
+      e.stopPropagation();
+      return;
+    }
+    // Click anywhere on the sparkline SVG → zoom to that month. Reuses
+    // the same x→idx math as the hover readout for consistency.
+    const svg = e.target.closest?.('.pc2-spark-svg');
+    if (svg) {
+      const spark = svg.closest('.pc2-spark');
+      if (!spark) return;
+      const rect = svg.getBoundingClientRect();
+      const frac = (e.clientX - rect.left) / Math.max(1, rect.width);
+      const seriesArr = (spark.dataset.series || '').split(',');
+      const n = seriesArr.length;
+      const idxInSlice = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+      const i0 = +spark.dataset.i0 || 0;
+      _applyPeakZoom(i0 + idxInSlice);
+      e.stopPropagation();
+    }
+  });
+}
+function renderSubSparkline(gid, color) {
+  const hist = window.App?.state?.timeHist;
+  const html = renderSparklineBySeries(hist?.by_sub_gid?.[String(gid)], hist?.labels || [], color, 'in sub');
+  // Re-apply any active timeline range after this re-renders.
+  _scheduleBandUpdate();
+  return html;
+}
+// Position-level sparkline — shows the stance's own temporal curve
+// rather than its parent sub's. Falls back to sub sparkline if the
+// per-position bake hasn't been run.
+function renderPositionSparkline(gid, posIdx, color) {
+  const ph = window.App?.state?.positionTimeHist;
+  const key = `${gid}:${posIdx}`;
+  const series = ph?.by_position?.[key];
+  if (!series || !series.length) return renderSubSparkline(gid, color);
+  const html = renderSparklineBySeries(series, ph.labels || [], color, 'in stance');
+  _scheduleBandUpdate();
+  return html;
+}
+function renderClusterSparkline(cl, color) {
+  const hist = window.App?.state?.timeHist;
+  const html = renderSparklineBySeries(hist?.by_cluster?.[String(cl)], hist?.labels || [], color, 'in cluster');
+  _scheduleBandUpdate();
+  return html;
+}
+function _scheduleBandUpdate() {
+  // Ask the timeline scrubber for its current lo/hi (or full range) —
+  // stored globally on window so decoupled modules can reach it.
+  if (typeof window._tlApplyBands === 'function') {
+    requestAnimationFrame(() => window._tlApplyBands());
+  }
+}
+
+// Trend score: ratio of recent-window mean to all-time mean, normalized
+// by corpus growth so "trending" means "growing faster than the overall
+// conversation," not "happens to have more recent data." Small baseline
+// floor prevents tiny historical counts from blowing up the ratio.
+function computeTrend(series, windowMonths = 6) {
+  if (!series || series.length < windowMonths * 2) return null;
+  const n = series.length;
+  const recentSum = series.slice(n - windowMonths).reduce((s, v) => s + v, 0);
+  const historicalSum = series.slice(0, n - windowMonths).reduce((s, v) => s + v, 0);
+  const recent = recentSum / windowMonths;
+  const baseline = historicalSum / (n - windowMonths);
+  const ratio = recent / Math.max(0.8, baseline);
+  const rel = ratio / (window.App?._corpusRatio || 1);
+  return { ratio, rel, recent, baseline };
+}
+function renderTrendBadge(series) {
+  const t = computeTrend(series);
+  if (!t) return '';
+  const corpus = (window.App?._corpusRatio || 1).toFixed(2);
+  const fmt = (n) => n.toFixed(n < 10 ? 1 : 0);
+  if (t.rel >= 1.80) return `<span class="trend-badge surging" title="${fmt(t.ratio)}× historical avg — ${t.rel.toFixed(1)}× the corpus's own ${corpus}× growth">▲ surging</span>`;
+  if (t.rel >= 1.35) return `<span class="trend-badge trending" title="${fmt(t.ratio)}× historical avg — ${t.rel.toFixed(1)}× the corpus's own ${corpus}× growth">▲ trending</span>`;
+  if (t.rel <= 0.65) return `<span class="trend-badge fading" title="${fmt(t.ratio)}× historical avg — ${t.rel.toFixed(1)}× the corpus's own ${corpus}× growth">▼ fading</span>`;
+  return '';
+}
+function getSubSeries(gid) {
+  return window.App?.state?.timeHist?.by_sub_gid?.[String(gid)];
+}
+function getClusterSeries(cl) {
+  return window.App?.state?.timeHist?.by_cluster?.[String(cl)];
+}
+function getPositionSeries(gid, posIdx) {
+  return window.App?.state?.positionTimeHist?.by_position?.[`${gid}:${posIdx}`];
+}
+
+// Relative trend — ratio of recent/base normalized by corpus growth.
+// Returns { ratio, rel, dir } where dir is 'up' | 'down' | ''.
+// Every callsite should use this; raw ratios drift with corpus growth.
+function getTrendInfo(series) {
+  if (!series || series.length < 12) return { ratio: 1, rel: 1, dir: '' };
+  const n = series.length;
+  const rc = series.slice(n - 6).reduce((a, v) => a + v, 0) / 6;
+  const bs = series.slice(0, n - 6).reduce((a, v) => a + v, 0) / (n - 6);
+  const ratio = rc / Math.max(0.8, bs);
+  const rel = ratio / (window.App?._corpusRatio || 1);
+  const dir = rel >= 1.35 ? 'up' : rel <= 0.65 ? 'down' : '';
+  return { ratio, rel, dir };
+}
+
+// Per-position subreddit breakdown. Answers "who voiced THIS specific stance?"
+// which the focus-card's sub-level bar can't — a single sub often mixes voices
+// from several subreddits with different ideological leans. Backed by the
+// pre-baked App._posSubTable so sibling/resonant chips can all hit it cheaply.
+const _posSubCache = new Map();
+function getPositionSubredditCounts(gid, posIdx) {
+  const key = `${gid}:${posIdx}`;
+  if (_posSubCache.has(key)) return _posSubCache.get(key);
+  const st = window.App?.state;
+  const table = window.App?._posSubTable;
+  if (!table) { _posSubCache.set(key, null); return null; }
+  const m = table.get((gid << 8) | posIdx);
+  if (!m) { _posSubCache.set(key, null); return null; }
+  const names = st?.subredditNames || [];
+  const byId = new Map(names.map(r => [r.id, r.name]));
+  const arr = [...m.entries()].map(([id, n]) => ({ id, name: byId.get(id) || `id${id}`, n }));
+  arr.sort((a, b) => b.n - a.n);
+  _posSubCache.set(key, arr);
+  return arr;
+}
+
+// Shorthand: the top subreddit for a stance (or null if too few attributed
+// points). Used on sibling/resonant chips to flag cross-community divides.
+function getPositionDominantSub(gid, posIdx) {
+  const arr = getPositionSubredditCounts(gid, posIdx);
+  if (!arr || arr.length === 0) return null;
+  const total = arr.reduce((s, e) => s + e.n, 0);
+  if (total < 5) return null;
+  return { ...arr[0], pct: arr[0].n / total, total };
+}
+
+// Inverse lookup: for a given subreddit, which positions represent THAT
+// community's loudest voices? Answers "what do they actually talk about?"
+//
+// Ranks by specialization, not just raw share: a position is a 90% r/X
+// voice *in a sub that's only 50% r/X overall* is more of an "agenda"
+// signal than a position that's 90% r/X in a sub that's already 90% r/X
+// (the latter says nothing about the stance — the whole topic is just
+// r/X-only). We skip monolithic subs entirely (sub_top_share > 0.95)
+// and bonus-score positions whose share *exceeds* their parent sub's
+// baseline share of this subreddit.
+// Range-aware variant of getTopStancesForSubreddit. Scans the 422k-point
+// space once with a month filter, bucketing (gid, posIdx) → {sr count,
+// total}. Heavier than the cached all-time version (~10ms) but only runs
+// on filter/range changes.
+function getTopStancesForSubredditInRange(srId, range, limit = 8) {
+  const st = window.App?.state;
+  const byLocal = window.App?.subGidMap?.byLocal;
+  const anchors = st?.positionAnchors;
+  if (!st?.cluster || !st.subLocal || !st.positionAssignments || !st.subredditAssignments
+      || !st.monthAssignments || !byLocal || !anchors) return [];
+  const cluster = st.cluster, subLocal = st.subLocal;
+  const pa = st.positionAssignments, sa = st.subredditAssignments, ma = st.monthAssignments;
+  const N = cluster.length;
+  const hereByKey = new Map();     // sr-matching count
+  const totalByKey = new Map();    // total in-range count (all subs)
+  const lo = range.lo, hi = range.hi;
+  for (let i = 0; i < N; i++) {
+    const m = ma[i];
+    if (m < lo || m > hi) continue;
+    const p = pa[i]; if (p === 255) continue;
+    const row = byLocal[cluster[i]]; if (!row) continue;
+    const gid = row[subLocal[i]]; if (gid == null) continue;
+    const key = (gid << 8) | p;
+    totalByKey.set(key, (totalByKey.get(key) || 0) + 1);
+    if (sa[i] === srId) hereByKey.set(key, (hereByKey.get(key) || 0) + 1);
+  }
+  const out = [];
+  for (const [key, nHere] of hereByKey.entries()) {
+    if (nHere < 3) continue;
+    const total = totalByKey.get(key) || 1;
+    if (total < 10) continue;
+    const share = nHere / total;
+    if (share < 0.2) continue;
+    const gid = key >> 8;
+    const posIdx = key & 0xff;
+    const doc = anchors[String(gid)];
+    if (!doc) continue;
+    const pos = doc.positions?.[posIdx];
+    if (!pos) continue;
+    const score = share * Math.log(1 + nHere);
+    out.push({ gid, posIdx, cl: doc.cl, sub_name: doc.sub_name,
+               pos_name: pos.name, description: pos.description || '',
+               count: nHere, total, share, score });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit);
+}
+
+function getTopStancesForSubreddit(srId, limit = 8) {
+  const table = window.App?._posSubTable;
+  const anchors = window.App?.state?.positionAnchors;
+  const subData = window.App?.state?.subredditBreakdown?.by_sub_gid;
+  if (!table || !anchors) return [];
+  const nameMap = new Map((window.App?.state?.subredditNames || []).map(r => [r.id, r.name]));
+  const targetName = nameMap.get(srId);
+  const out = [];
+  for (const [key, m] of table.entries()) {
+    const nHere = m.get(srId);
+    if (!nHere || nHere < 5) continue;
+    let total = 0;
+    for (const [, n] of m.entries()) total += n;
+    if (total < 20) continue;
+    const share = nHere / total;
+    if (share < 0.2) continue;
+    const gid = key >> 8;
+    const posIdx = key & 0xff;
+    const doc = anchors[String(gid)];
+    if (!doc) continue;
+    const pos = doc.positions?.[posIdx];
+    if (!pos) continue;
+    // Sub-level baseline for this subreddit, to detect monolithic subs
+    // and to compute specialization (how much this position over/under
+    // indexes vs. the sub average).
+    const subBreakdown = subData?.[String(gid)] || [];
+    const subTotal = subBreakdown.reduce((s, e) => s + e.n, 0) || 0;
+    const subTop = subTotal ? (subBreakdown[0]?.n || 0) / subTotal : 0;
+    if (subTop > 0.95) continue;   // sub is effectively r/X-only, no signal
+    const subEntry = subBreakdown.find(e => e.r === targetName);
+    const subBaseShare = subEntry && subTotal ? subEntry.n / subTotal : 0;
+    const specialization = subBaseShare > 0.01 ? share / subBaseShare : share / 0.05;
+    // Require either dominant voice OR meaningful specialization.
+    if (share < 0.5 && specialization < 1.25) continue;
+    // Composite: share × log(count) × specialization bonus. The specialization
+    // term gently prefers positions that stand out from their sub baseline.
+    const score = share * Math.log(1 + nHere) * (0.6 + 0.4 * Math.min(2, specialization));
+    out.push({ gid, posIdx, cl: doc.cl, sub_name: doc.sub_name,
+               pos_name: pos.name, description: pos.description || '',
+               count: nHere, total, share, specialization, score });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit);
+}
+
+function renderPositionSubreddits(gid, posIdx, color) {
+  const arr = getPositionSubredditCounts(gid, posIdx);
+  if (!arr || arr.length === 0) return '';
+  const total = arr.reduce((s, e) => s + e.n, 0);
+  if (total < 5) return '';
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // Stacked segmented bar — same color, stepped opacity by rank. Keeps the
+  // visual tied to the position's identity while still showing dominance.
+  const top5 = arr.slice(0, 5);
+  const otherN = arr.slice(5).reduce((s, e) => s + e.n, 0);
+  const segs = top5.map((e, i) => {
+    const op = 1 - i * 0.13;
+    const pct = (100 * e.n / total).toFixed(1);
+    return `<span class="pc2-sr-seg" title="r/${esc(e.name)} — ${e.n.toLocaleString()} (${pct}%)"
+             style="flex:${e.n}; background:${color}; opacity:${op}"></span>`;
+  }).join('');
+  const otherSeg = otherN > 0
+    ? `<span class="pc2-sr-seg pc2-sr-other"
+         title="${arr.length - 5} other subreddits — ${otherN.toLocaleString()} (${(100*otherN/total).toFixed(1)}%)"
+         style="flex:${otherN}"></span>`
+    : '';
+  // Labels for top 3 only — the bar carries the rest visually.
+  const labels = top5.slice(0, 3).map(e => `
+    <button class="pc2-sr-lbl" data-sr-id="${e.id}" data-sr-name="${esc(e.name)}"
+            title="${e.n.toLocaleString()} posts · click to filter globe to r/${esc(e.name)}">
+      <span class="pc2-sr-name">r/${esc(e.name)}</span>
+      <span class="pc2-sr-pct">${Math.round(100 * e.n / total)}%</span>
+    </button>
+  `).join('');
+  const subCount = arr.length > 5 ? ` <span class="pc2-sr-more">+${arr.length - 5} more</span>` : '';
+  return `
+    <div class="pc2-sr-section">
+      <div class="pc2-kw-label">who voiced this stance${subCount}</div>
+      <div class="pc2-sr-bar">${segs}${otherSeg}</div>
+      <div class="pc2-sr-labels">${labels}</div>
+    </div>
+  `;
 }
 
 function positionCard(card, cx, cy) {

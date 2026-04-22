@@ -1,17 +1,11 @@
 // Data loading + shared state.
 // Exposes window.App = { coords, labels, clusters, subclusters, centroids, manifest, ... }
 
-// Pastel palette for the nav stacked bars (easier on the eye, doesn't fight
-// the dark background).
-export const CLUSTER_PALETTE = [
-  "#a8c5f3","#b6e4cf","#f5b3a4","#ffd998","#d2b3f0",
-  "#f6c098","#a4dcc0","#f0b3cf","#a3d3e8","#f4d57e",
-  "#c1adea","#a8dba8","#efa9a9","#9bd9cc","#f1bccd",
-  "#c5e0a4","#e3b1e6","#abc7eb","#f0d09b","#bdc1ec",
-  "#b6e8bd","#f0c1c1","#bdd6ee","#dac1ea","#b3e2c4",
-];
-// Saturated palette for the sphere points / labels — these need to pop
-// against the dark sphere.
+// Single source of truth for cluster identity. The SAME hue is used on the
+// globe (saturated, to pop against the dark sphere) and in the nav (dimmed
+// toward the panel background, so 50 stripes don't fight the eye). Cluster N
+// gets the same *identity* in both places — the only thing that varies is
+// intensity.
 export const SPHERE_PALETTE = [
   "#5b9cff","#3fe9b8","#ff5a4a","#ffc233","#b16dff",
   "#ff7e1a","#1ed28e","#f25aaf","#1aa6ee","#ffbe1a",
@@ -19,6 +13,11 @@ export const SPHERE_PALETTE = [
   "#9be21e","#e34cff","#3a8aff","#ffae1a","#5b6dff",
   "#5fd97a","#ff7878","#5a9eff","#c98aff","#33e6a8",
 ];
+
+// Nav uses the SAME saturated sphere palette — cluster N is one colour
+// whether you see it on the globe or in the sidebar stripes. No pastel
+// dilution; the bars pop against the dark panel background.
+export const CLUSTER_PALETTE = SPHERE_PALETTE.slice();
 
 export function clusterColor(c) {
   const i = ((c % CLUSTER_PALETTE.length) + CLUSTER_PALETTE.length) % CLUSTER_PALETTE.length;
@@ -156,6 +155,71 @@ export async function loadData(onProgress) {
   try { centroids = await fetchJSON('tsne_chunks/sphere_centroids.json'); }
   catch (e) { centroids = computeCentroids(sphere.coords, labels); }
 
+  // Density-peak anchors (see scripts/compute_label_anchors.py). Used for label
+  // positioning since spherical centroids can drift into empty space when a
+  // cluster sprawls across the globe.
+  let anchors = null;
+  try { anchors = await fetchJSON('tsne_chunks/label_anchors.json'); }
+  catch (e) { /* fall back to centroids */ }
+
+  // Position-level anchors (sub-sub-clusters): one per LLM-extracted position.
+  // Each position has a density-peak location computed from the points actually
+  // attributed to it (scripts/attribute_positions.py).
+  let positionAnchors = null;
+  let positionAssignments = null;
+  try {
+    positionAnchors = await fetchJSON('tsne_chunks/position_anchors.json');
+    const buf = await fetchBinary('tsne_chunks/position_assignments.bin');
+    positionAssignments = buf;   // uint8 per point
+  } catch (e) { /* positions layer is optional */ }
+
+  // Per-cluster / per-sub monthly histograms, pre-baked for O(1) sparklines.
+  let timeHist = null;
+  try { timeHist = await fetchJSON('tsne_chunks/time_histograms.json'); }
+  catch (e) { /* temporal layer is optional */ }
+
+  // Top-5 subreddits per cluster + per sub.
+  let subredditBreakdown = null;
+  try { subredditBreakdown = await fetchJSON('tsne_chunks/subreddit_breakdown.json'); }
+  catch (e) { /* optional */ }
+
+  // Per-point subreddit index (uint8) + id→name map. Enables live globe
+  // filtering by subreddit: click a legend label → dim every other point.
+  let subredditAssignments = null;
+  let subredditNames = null;
+  try {
+    const buf = await fetchBinary('tsne_chunks/subreddit_assignments.bin');
+    subredditAssignments = new Uint8Array(buf);
+    subredditNames = await fetchJSON('tsne_chunks/subreddit_names.json');
+  } catch (e) { /* optional */ }
+
+  // Per-point month index for timeline filtering. 422 KB, complements
+  // the by-sub monthly histograms (pre-baked aggregates) with per-point
+  // detail so the globe can be sliced to a month range on hover.
+  let monthAssignments = null;
+  let monthLabels = null;
+  try {
+    const buf = await fetchBinary('tsne_chunks/month_assignments.bin');
+    monthAssignments = new Uint8Array(buf);
+    monthLabels = await fetchJSON('tsne_chunks/month_labels.json');
+  } catch (e) { /* optional */ }
+
+  // Per-position monthly histograms (pre-baked). Lets the position card
+  // show *that stance's* temporal arc rather than its parent sub's.
+  let positionTimeHist = null;
+  try { positionTimeHist = await fetchJSON('tsne_chunks/time_histograms_positions.json'); }
+  catch (e) { /* optional */ }
+
+  // Street interview pin placements (optional; only present if the pipeline
+  // has been run).
+  let interviews = null, interviewPins = null;
+  try {
+    [interviews, interviewPins] = await Promise.all([
+      fetchJSON('interviews/interviews.json'),
+      fetchJSON('interviews/pin_placements.json'),
+    ]);
+  } catch (e) { /* pins are a bonus layer */ }
+
   App.loadingMsg('Loading chunk manifest…');
   const manifest = await fetchJSON('tsne_chunks/manifest.json');
 
@@ -168,11 +232,42 @@ export async function loadData(onProgress) {
     clusterMeta: clusters.embedding || clusters,  // { "0": { name, ... } }
     subMeta: subclusters,      // { "0": [{sub, name, ...}] }
     centroids,
+    anchors,                   // { clusters: {cl: {lat,lon,density,...}}, subclusters: {...} }
+    positionAnchors,           // { gid: { positions: [{name, lat, lon, count, ...}] } }
+    positionAssignments,       // Uint8Array of length N (255 = unassigned)
+    interviews,                // { interviews: [{id, role, lives, ...}] }
+    interviewPins,             // { placements: [{id, lat, lon, idx, cluster, sub, ...}] }
+    timeHist,                  // { labels: [], total: [], by_cluster: {}, by_sub_gid: {} }
+    subredditBreakdown,        // { by_cluster: {cl: [{r, n}]}, by_sub_gid: {...} }
+    subredditAssignments,      // Uint8Array of length N, subreddit id per point
+    subredditNames,            // [{id, name, count}, ...]
+    monthAssignments,          // Uint8Array of length N, month idx per point
+    monthLabels,               // [label, label, ...]
+    positionTimeHist,          // { labels: [], by_position: { "<gid>:<pos>": [counts] } }
     manifest,
     // lazy-loaded per-chunk payload cache, keyed by chunk index → promise
     chunkCache: new Map(),
   };
   return state;
+}
+
+// Convenience: the best lat/lon anchor for a cluster label, preferring the
+// density-peak over the spherical centroid.
+export function clusterAnchor(state, cl) {
+  const a = state.anchors?.clusters?.[String(cl)];
+  if (a) return { lat: a.lat, lon: a.lon, count: a.count, density: a.density ?? 1, peaks: a.peaks };
+  const c = state.centroids?.clusters?.[String(cl)];
+  if (c) return { lat: c.lat, lon: c.lon, count: c.count, density: 1, peaks: null };
+  return null;
+}
+
+export function subAnchor(state, cl, sub) {
+  const key = `${cl}_${sub}`;
+  const a = state.anchors?.subclusters?.[key];
+  if (a) return { lat: a.lat, lon: a.lon, count: a.count, density: a.density ?? 1 };
+  const c = state.centroids?.subclusters?.[key];
+  if (c) return { lat: c.lat, lon: c.lon, count: c.count, density: 1 };
+  return null;
 }
 
 function computeCentroids(coords, labels) {

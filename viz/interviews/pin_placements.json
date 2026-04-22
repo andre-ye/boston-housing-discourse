@@ -1,0 +1,796 @@
+{
+  "placements": [
+    {
+      "id": "P1",
+      "role": "High school students (2)",
+      "idx": 260609,
+      "lat": -0.3250649571418762,
+      "lon": -2.686474084854126,
+      "cluster": 26,
+      "sub": 1,
+      "target_cluster": 26,
+      "target_sub": 1,
+      "score": 21.84,
+      "alternates": [
+        {
+          "idx": 260609,
+          "score": 21.84,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 214731,
+          "score": 21.84,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 139513,
+          "score": 20.92,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 56068,
+          "score": 20.88,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 364187,
+          "score": 20.84,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "role": "Legal assistant, retiring next week",
+      "idx": 264890,
+      "lat": -1.2380937337875366,
+      "lon": -2.1112711429595947,
+      "cluster": 28,
+      "sub": 0,
+      "target_cluster": 28,
+      "target_sub": 0,
+      "score": 56.67,
+      "alternates": [
+        {
+          "idx": 264890,
+          "score": 56.67,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 65704,
+          "score": 47.1,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 374296,
+          "score": 45.67,
+          "title": "",
+          "subreddit": "cambridgema"
+        },
+        {
+          "idx": 284401,
+          "score": 42.67,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 62980,
+          "score": 41.29,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "role": "Kids crossing guard; retired homemaker",
+      "idx": 344643,
+      "lat": 0.7724594473838806,
+      "lon": -0.47225064039230347,
+      "cluster": 38,
+      "sub": 2,
+      "target_cluster": 38,
+      "target_sub": null,
+      "score": 53.32,
+      "alternates": [
+        {
+          "idx": 344643,
+          "score": 53.32,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 364500,
+          "score": 52.75,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 21284,
+          "score": 52.32,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 366343,
+          "score": 49.75,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 339925,
+          "score": 37.76,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "role": "Transit Ambassador for the MBTA",
+      "idx": 36670,
+      "lat": -0.9249500036239624,
+      "lon": 1.0505053997039795,
+      "cluster": 15,
+      "sub": 3,
+      "target_cluster": 15,
+      "target_sub": 3,
+      "score": 43.63,
+      "alternates": [
+        {
+          "idx": 36670,
+          "score": 43.63,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 386841,
+          "score": 36.85,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 281999,
+          "score": 36.61,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 79181,
+          "score": 35.62,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 243223,
+          "score": 35.6,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "role": "Electrician",
+      "idx": 64793,
+      "lat": 0.4483092427253723,
+      "lon": -1.5299056768417358,
+      "cluster": 45,
+      "sub": 0,
+      "target_cluster": 45,
+      "target_sub": 0,
+      "score": 50.5,
+      "alternates": [
+        {
+          "idx": 64793,
+          "score": 50.5,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 49614,
+          "score": 49.12,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 196312,
+          "score": 46.75,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 60794,
+          "score": 43.31,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 24910,
+          "score": 42.3,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "role": "Construction worker",
+      "idx": 208128,
+      "lat": 0.2768334746360779,
+      "lon": -1.1555230617523193,
+      "cluster": 45,
+      "sub": 3,
+      "target_cluster": 45,
+      "target_sub": 3,
+      "score": 44.12,
+      "alternates": [
+        {
+          "idx": 208128,
+          "score": 44.12,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 297924,
+          "score": 41.67,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 169472,
+          "score": 40.26,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 333176,
+          "score": 39.7,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 371940,
+          "score": 39.31,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "role": "Pastry chef",
+      "idx": 316379,
+      "lat": -0.061466820538043976,
+      "lon": -0.7393220067024231,
+      "cluster": 15,
+      "sub": 0,
+      "target_cluster": 15,
+      "target_sub": 0,
+      "score": 44.91,
+      "alternates": [
+        {
+          "idx": 316379,
+          "score": 44.91,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 251997,
+          "score": 38.98,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 293413,
+          "score": 38.97,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 355636,
+          "score": 38.96,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 137526,
+          "score": 37.52,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "role": "High school students",
+      "idx": 10496,
+      "lat": -0.30377891659736633,
+      "lon": -0.5541395545005798,
+      "cluster": 38,
+      "sub": 3,
+      "target_cluster": 38,
+      "target_sub": 3,
+      "score": 40.3,
+      "alternates": [
+        {
+          "idx": 10496,
+          "score": 40.3,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 388778,
+          "score": 40.25,
+          "title": "",
+          "subreddit": "worcesterma"
+        },
+        {
+          "idx": 84096,
+          "score": 33.89,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 87656,
+          "score": 33.87,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 14138,
+          "score": 33.25,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "role": "Practice assistant at Brigham & Women's Hospital",
+      "idx": 262468,
+      "lat": -0.5415447354316711,
+      "lon": -0.380049467086792,
+      "cluster": 15,
+      "sub": 1,
+      "target_cluster": 15,
+      "target_sub": 1,
+      "score": 39.24,
+      "alternates": [
+        {
+          "idx": 262468,
+          "score": 39.24,
+          "title": "SERVICE DISRUPTION | No Orange Line service between Back Bay and Forest Hills un",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 399692,
+          "score": 37.25,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 191261,
+          "score": 29.66,
+          "title": "E green line trains stopping after east somerville to let D line trains go first",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 257451,
+          "score": 28.82,
+          "title": "MBTA BREAKING NEWS | Red Line service to be suspended on Ashmont Branch (JFK/UMa",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 262730,
+          "score": 26.87,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "role": "Student at UMass",
+      "idx": 222613,
+      "lat": -0.4538562595844269,
+      "lon": -0.4186926782131195,
+      "cluster": 15,
+      "sub": 3,
+      "target_cluster": 15,
+      "target_sub": 3,
+      "score": 80.5,
+      "alternates": [
+        {
+          "idx": 222613,
+          "score": 80.5,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 100309,
+          "score": 76.45,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 326925,
+          "score": 73.52,
+          "title": "",
+          "subreddit": "southshore"
+        },
+        {
+          "idx": 368778,
+          "score": 72.14,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 386841,
+          "score": 69.05,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "role": "Deliverer of medical equipment / preparer of medical information for Boston Scientific",
+      "idx": 330956,
+      "lat": -0.8483948111534119,
+      "lon": -0.22302550077438354,
+      "cluster": 15,
+      "sub": 2,
+      "target_cluster": 15,
+      "target_sub": 2,
+      "score": 42.09,
+      "alternates": [
+        {
+          "idx": 330956,
+          "score": 42.09,
+          "title": "MGM Music Hall - Drive or Train?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 531,
+          "score": 41.08,
+          "title": "Question: Is Amtrak as much of a mess as the Commuter Rail?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 364539,
+          "score": 40.49,
+          "title": "Help Understanding Boston Public Transit and Housing Options",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 368798,
+          "score": 40.14,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 240013,
+          "score": 39.14,
+          "title": "Question for Weymouth Folks",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "role": "Teacher at Boston Public High Schools",
+      "idx": 137280,
+      "lat": 0.18283239006996155,
+      "lon": -1.2644914388656616,
+      "cluster": 45,
+      "sub": 0,
+      "target_cluster": 45,
+      "target_sub": 0,
+      "score": 52.68,
+      "alternates": [
+        {
+          "idx": 137280,
+          "score": 52.68,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 140191,
+          "score": 51.76,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 73142,
+          "score": 48.75,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 141023,
+          "score": 48.67,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 36587,
+          "score": 43.7,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P13",
+      "role": "Technician in the medical field",
+      "idx": 288990,
+      "lat": -0.7243451476097107,
+      "lon": -0.40151166915893555,
+      "cluster": 15,
+      "sub": 4,
+      "target_cluster": 15,
+      "target_sub": 4,
+      "score": 27.52,
+      "alternates": [
+        {
+          "idx": 288990,
+          "score": 27.52,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 40604,
+          "score": 26.12,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 328540,
+          "score": 26.1,
+          "title": "",
+          "subreddit": "worcesterma"
+        },
+        {
+          "idx": 74168,
+          "score": 26.08,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 230051,
+          "score": 25.19,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "role": "Student at UMass Amherst",
+      "idx": 263087,
+      "lat": -0.8339250683784485,
+      "lon": 0.25392597913742065,
+      "cluster": 48,
+      "sub": 1,
+      "target_cluster": 48,
+      "target_sub": null,
+      "score": 22.88,
+      "alternates": [
+        {
+          "idx": 263087,
+          "score": 22.88,
+          "title": "What to do for a whole night in boston?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 347611,
+          "score": 7.88,
+          "title": "Massbay or Roxbury CC?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 14549,
+          "score": 6.94,
+          "title": "What's the best lunch sandwich in Boston that doesn't break the bank?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 216697,
+          "score": 6.94,
+          "title": "",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 396245,
+          "score": 6.91,
+          "title": "",
+          "subreddit": "massachusetts"
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "role": "CTO at a startup (also a data scientist colleague)",
+      "idx": 140243,
+      "lat": -0.9227397441864014,
+      "lon": -0.9143702983856201,
+      "cluster": 49,
+      "sub": 1,
+      "target_cluster": 49,
+      "target_sub": 1,
+      "score": 20.31,
+      "alternates": [
+        {
+          "idx": 140243,
+          "score": 20.31,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 111426,
+          "score": 15.91,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 38370,
+          "score": 15.83,
+          "title": "Did something change about bus transfers?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 244807,
+          "score": 14.88,
+          "title": "New to Boston, confused about Charlicard transfers",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 195550,
+          "score": 14.87,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P16",
+      "role": "Works from home (10+ years)",
+      "idx": 229056,
+      "lat": -0.26989033818244934,
+      "lon": -0.6246914863586426,
+      "cluster": 1,
+      "sub": 1,
+      "target_cluster": 1,
+      "target_sub": 1,
+      "score": 28.84,
+      "alternates": [
+        {
+          "idx": 229056,
+          "score": 28.84,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 333512,
+          "score": 22.73,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 323200,
+          "score": 21.69,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 416142,
+          "score": 20.78,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 224697,
+          "score": 20.34,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P17",
+      "role": "Industrial pump rentals \u2014 contracts & logistics (desk job)",
+      "idx": 130703,
+      "lat": 0.4423508644104004,
+      "lon": -0.912104606628418,
+      "cluster": 38,
+      "sub": 1,
+      "target_cluster": 38,
+      "target_sub": 1,
+      "score": 34.46,
+      "alternates": [
+        {
+          "idx": 130703,
+          "score": 34.46,
+          "title": "",
+          "subreddit": "cambridgema"
+        },
+        {
+          "idx": 203879,
+          "score": 34.12,
+          "title": "State senators look to spend more on regional mass transit as report identifies ",
+          "subreddit": "massachusetts"
+        },
+        {
+          "idx": 27744,
+          "score": 33.31,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 63276,
+          "score": 31.46,
+          "title": "",
+          "subreddit": "quincyma"
+        },
+        {
+          "idx": 282092,
+          "score": 31.03,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
+    },
+    {
+      "id": "P18",
+      "role": "Post-doc at MIT",
+      "idx": 222983,
+      "lat": 0.9646859169006348,
+      "lon": 1.029832124710083,
+      "cluster": 5,
+      "sub": 2,
+      "target_cluster": 5,
+      "target_sub": 2,
+      "score": 53.64,
+      "alternates": [
+        {
+          "idx": 222983,
+          "score": 53.64,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 207310,
+          "score": 49.07,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 121440,
+          "score": 46.63,
+          "title": "To the guy who yelled \"Use the bike lane, f****t\" at me the other night...",
+          "subreddit": "somerville"
+        },
+        {
+          "idx": 114963,
+          "score": 42.75,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 143116,
+          "score": 41.75,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    }
+  ]
+}
