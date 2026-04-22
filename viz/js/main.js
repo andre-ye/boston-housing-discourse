@@ -2094,6 +2094,10 @@ async function boot() {
   // Shows the LLM statement + three real attributed sample posts so the
   // reader can judge whether the abstraction actually matches the data.
   async function showPositionCard(cl, gid, posIdx) {
+    // Position card disabled — clicking a position still highlights points
+    // in the globe but no longer pops a detail panel.
+    document.getElementById('position-card')?.classList.add('hidden');
+    return;
     const doc = App.state.positionAnchors?.[String(gid)];
     if (!doc) return;
     const pos = doc.positions?.[posIdx];
