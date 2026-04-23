@@ -92,6 +92,29 @@ async function boot() {
     window.App.nav = nav;
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
+  // Guided tour — Atlantic-style opener + three cluster beats. Launcher
+  // button is always visible; on a first visit with no hash, auto-open.
+  try {
+    const { createTour } = await import('./tour.js?v=252');
+    const tour = createTour({ globe, App, nav });
+    window.App.tour = tour;
+    document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
+    const visited = localStorage.getItem('tour-seen');
+    if (!visited && !location.hash) {
+      setTimeout(() => tour.start(), 800);
+      localStorage.setItem('tour-seen', '1');
+    }
+  } catch (e) { console.warn('tour init failed:', e); }
+
+  // Empty-state + intro live here (not inside #insp-body, which is display:none
+  // in the minimal layout).
+  const navMount = document.getElementById('nav');
+  const navBarsMount = document.getElementById('nav-bars');
+  const inspEmptyMount = document.getElementById('insp-empty-main');
+  if (inspEmptyMount && navBarsMount && navMount && inspEmptyMount.parentElement !== navMount) {
+    navBarsMount.insertAdjacentElement('afterend', inspEmptyMount);
+  }
+
   // Dismiss the loader after the globe has actually rendered its first
   // frame — observable via renderer.info.render.calls incrementing. Polls
   // at rAF cadence with a hard cap so we always clear the splash.
@@ -155,161 +178,12 @@ async function boot() {
     requestAnimationFrame(tick);
   })();
 
-  // Cluster-level surgers + sub-level hot spikes in the empty state.
-  // Re-rendered when the timeline range changes so the reader sees the
-  // period-specific top instead of stale all-time entries.
   function _rangeSum(series, lo, hi) {
     let s = 0;
     const end = Math.min(hi, series.length - 1);
     for (let i = Math.max(0, lo); i <= end; i++) s += series[i] || 0;
     return s;
   }
-  function refreshSurgeNow(range) {
-    const grid = document.getElementById('surge-now-chips');
-    const byCl = App.state.timeHist?.by_cluster;
-    const section = document.getElementById('surge-now');
-    const labelEl = section?.querySelector('.surge-now-label');
-    if (!grid || !byCl || !section) return;
-    const entries = [];
-    if (range) {
-      // In-range mode: rank by post count within the active period.
-      for (const [clStr, series] of Object.entries(byCl)) {
-        const n = _rangeSum(series, range.lo, range.hi);
-        if (n < 20) continue;
-        const cl = +clStr;
-        const meta = App.state.clusterMeta?.[String(cl)];
-        if (!meta) continue;
-        entries.push({ cl, name: meta.name, count: n });
-      }
-      entries.sort((a, b) => b.count - a.count);
-      if (labelEl) labelEl.textContent = 'Top continents — this period';
-    } else {
-      for (const [clStr, series] of Object.entries(byCl)) {
-        const t = getTrendInfo(series);
-        if (t.dir !== 'up') continue;
-        const cl = +clStr;
-        const meta = App.state.clusterMeta?.[String(cl)];
-        if (!meta) continue;
-        entries.push({ cl, name: meta.name, rel: t.rel, ratio: t.ratio });
-      }
-      entries.sort((a, b) => b.rel - a.rel);
-      if (labelEl) labelEl.textContent = 'Surging continents';
-    }
-    if (entries.length === 0) { section.style.display = 'none'; return; }
-    section.style.display = '';
-    grid.innerHTML = '';
-    for (const e of entries.slice(0, 5)) {
-      const chip = document.createElement('button');
-      chip.className = 'surge-now-chip';
-      const col = sphereColor(e.cl);
-      chip.style.setProperty('--surge-color', col);
-      const measure = range
-        ? `<span class="sn-rel" title="${e.count.toLocaleString()} posts in the selected months">${e.count >= 1000 ? Math.round(e.count/1000) + 'k' : e.count}</span>`
-        : `<span class="sn-rel" title="${e.ratio.toFixed(1)}× historical avg — ${e.rel.toFixed(1)}× the corpus's own growth">${e.rel.toFixed(1)}×</span>`;
-      chip.innerHTML = `
-        <span class="sn-swatch" style="background:${col}; color:${col}"></span>
-        <span class="sn-name">${escapeHtml(e.name)}</span>
-        ${measure}
-      `;
-      chip.onclick = () => nav.focus({ cl: e.cl });
-      grid.appendChild(chip);
-    }
-  }
-  function refreshHotNow(range) {
-    const hist = App.state.timeHist;
-    const grid = document.getElementById('hot-now-chips');
-    const section = document.getElementById('hot-now');
-    const labelEl = section?.querySelector('.hot-now-label');
-    if (!hist || !grid) return;
-    const entries = [];
-    const corpus = App._corpusRatio || 1;
-    if (range) {
-      for (const [gidStr, series] of Object.entries(hist.by_sub_gid || {})) {
-        const n = _rangeSum(series, range.lo, range.hi);
-        if (n < 8) continue;
-        const gid = +gidStr;
-        const sub = App.subGidMap.byGid[gid];
-        if (!sub) continue;
-        entries.push({ gid, cl: sub.cl, name: sub.name, count: n });
-      }
-      entries.sort((a, b) => b.count - a.count);
-      if (labelEl) labelEl.textContent = 'Top regions — this period';
-    } else {
-      for (const [gidStr, series] of Object.entries(hist.by_sub_gid || {})) {
-        const n = series.length;
-        if (n < 12) continue;
-        const recent = series.slice(n - 6).reduce((a, v) => a + v, 0) / 6;
-        const base = series.slice(0, n - 6).reduce((a, v) => a + v, 0) / (n - 6);
-        if (recent < 8 || base < 2) continue;
-        const ratio = recent / Math.max(0.8, base);
-        const rel = ratio / corpus;
-        if (rel < 1.3) continue;
-        const gid = +gidStr;
-        const sub = App.subGidMap.byGid[gid];
-        if (!sub) continue;
-        entries.push({ gid, cl: sub.cl, name: sub.name, ratio, rel });
-      }
-      entries.sort((a, b) => b.rel - a.rel);
-      if (labelEl) labelEl.textContent = 'Hot this quarter';
-    }
-    grid.innerHTML = '';
-    for (const e of entries.slice(0, 5)) {
-      const chip = document.createElement('button');
-      chip.className = 'hot-now-chip';
-      const col = sphereColor(e.cl);
-      const bd = App.state.subredditBreakdown?.by_sub_gid?.[String(e.gid)];
-      const topSub = bd?.[0]?.r || null;
-      const voiceTag = topSub
-        ? `<span class="hot-now-voice" title="voiced mostly in r/${escapeHtml(topSub)}">r/${escapeHtml(topSub)}</span>`
-        : '';
-      const measure = range
-        ? `<span class="hot-now-ratio" title="${e.count.toLocaleString()} posts in the selected months">${e.count >= 1000 ? Math.round(e.count/1000) + 'k' : e.count}</span>`
-        : `<span class="hot-now-ratio" title="Recent-6mo mean is ${e.ratio.toFixed(1)}× the historical mean — ${e.rel.toFixed(1)}× the corpus's own ${corpus.toFixed(2)}× growth">${e.ratio.toFixed(1)}×</span>`;
-      chip.innerHTML = `
-        <span class="hot-now-swatch" style="background:${col}; color:${col}"></span>
-        <span class="hot-now-name">${escapeHtml(e.name)}</span>
-        ${voiceTag}
-        ${measure}
-      `;
-      chip.onclick = () => nav.focus({ cl: e.cl, gid: e.gid });
-      grid.appendChild(chip);
-    }
-  }
-  refreshSurgeNow(null);
-  refreshHotNow(null);
-  // Expose so the timeline scrubber can re-render when the range changes.
-  App._refreshEmptyStateForRange = (range) => {
-    refreshSurgeNow(range);
-    refreshHotNow(range);
-  };
-
-  // "Explore by community" chipset — mirrors hot-now but indexes the
-  // other axis: which subreddit's voice do you want to listen to? Clicking
-  // a chip applies the sub filter, which surfaces the agenda panel built
-  // in v=193. Keeps top-down navigation possible when the user has no
-  // specific topic in mind.
-  (() => {
-    const grid = document.getElementById('browse-voices-chips');
-    const names = App.state.subredditNames;
-    if (!grid || !names) return;
-    // Rank by total post count; cap so the chipset stays visually compact.
-    const picks = names
-      .filter(s => s.count >= 2000)
-      .slice()
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 12);
-    grid.innerHTML = '';
-    for (const s of picks) {
-      const chip = document.createElement('button');
-      chip.className = 'browse-voices-chip';
-      chip.innerHTML = `
-        <span class="bv-name">r/${escapeHtml(s.name)}</span>
-        <span class="bv-count">${s.count >= 10000 ? `${Math.round(s.count/1000)}k` : s.count.toLocaleString()}</span>
-      `;
-      chip.onclick = () => toggleSubredditFilter(s.id, s.name);
-      grid.appendChild(chip);
-    }
-  })();
 
   // ─── Focus → globe rotate + highlight + focus card ───────────────
   const focusCard = document.getElementById('focus-card');
@@ -883,8 +757,7 @@ async function boot() {
 
   // Shared helpers for inspector state management.
   // Returning users who've already drilled in get a compact empty state
-  // (no intro paragraph) so the three chip sections all fit in the fold
-  // without scrolling. Tracked in localStorage.
+  // (intro copy hidden). Tracked in localStorage.
   function _markEmptyCompactIfSeen() {
     try {
       if (localStorage.getItem('vizIntroSeen') === '1') {
@@ -893,7 +766,29 @@ async function boot() {
     } catch {}
   }
   _markEmptyCompactIfSeen();
+
+  const INTRO_CLUSTER_IDS = [37, 8, 43];
+  let _introMultiHighlightActive = false;
+  function clearIntroGlobeHighlightIfActive() {
+    if (!_introMultiHighlightActive) return;
+    globe.setMultiHighlight({});
+    _introMultiHighlightActive = false;
+  }
+  function syncIntroGlobeHighlight() {
+    if (!inspEmpty || inspEmpty.classList.contains('hidden') || inspEmpty.classList.contains('compact')) {
+      clearIntroGlobeHighlightIfActive();
+      return;
+    }
+    if (nav.focusCl != null || nav.focusGid != null) {
+      clearIntroGlobeHighlightIfActive();
+      return;
+    }
+    globe.setMultiHighlight({ clusters: new Set(INTRO_CLUSTER_IDS) });
+    _introMultiHighlightActive = true;
+  }
+
   function hideInspectorEmpty() {
+    clearIntroGlobeHighlightIfActive();
     if (inspEmpty) {
       inspEmpty.classList.add('hidden');
       // First real navigation marks the intro as seen so future empty-state
@@ -910,6 +805,7 @@ async function boot() {
       !document.getElementById('position-card').classList.contains('hidden') ||
       !document.getElementById('voices-list-inline').classList.contains('hidden');
     if (!anyOpen && inspEmpty) inspEmpty.classList.remove('hidden');
+    syncIntroGlobeHighlight();
   }
 
   nav.addEventListener('focus', (ev) => {
@@ -966,6 +862,17 @@ async function boot() {
     }
     globe.loadThreadArcs([]);
   });
+
+  document.querySelectorAll('.intro-cluster-chip').forEach((btn) => {
+    const cl = +btn.dataset.cl;
+    if (Number.isNaN(cl)) return;
+    btn.style.setProperty('--intro-chip-color', sphereColor(cl));
+    btn.addEventListener('click', () => {
+      nav.focus({ cl });
+    });
+  });
+
+  queueMicrotask(() => showInspectorEmpty());
 
   // Hoisted here so the hover handlers below can check it; actual
   // keydown/keyup listeners live farther down in the sprout block.
@@ -1372,8 +1279,10 @@ async function boot() {
   // _spaceDown was hoisted above; don't redeclare.
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || e.repeat) return;
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const ae = document.activeElement;
+    const tag = ae?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return;
+    if (ae?.isContentEditable) return;
     if (_spaceDown) return;
     _spaceDown = true;
     e.preventDefault();
@@ -1468,7 +1377,7 @@ async function boot() {
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   };
 
-  // ─── Share: copy the current URL (incl. drill hash) to clipboard.
+  // ─── Share: copy the current page URL to clipboard.
   //   Button flashes "Copied!" for ~1.6s. Falls back to textarea/execCommand
   //   if navigator.clipboard is unavailable (e.g. insecure http).
   const btnShare = document.getElementById('btn-share');
@@ -1608,11 +1517,6 @@ async function boot() {
       // Paint the active range as a band on every mini-sparkline so
       // the user sees the filter reflected wherever they look.
       updateSparklineBands(lo, hi, N - 1);
-      // Re-rank the empty-state chips so the "hot" and "surging" lists
-      // reflect the active period rather than stale all-time numbers.
-      if (typeof App._refreshEmptyStateForRange === 'function') {
-        App._refreshEmptyStateForRange(range);
-      }
       // If a cluster focus card is open, re-render its "loudest stances"
       // list so in-range counts replace the all-time numbers.
       if (nav.focusCl != null && nav.focusGid == null) {
@@ -1871,7 +1775,8 @@ async function boot() {
           if (pc.querySelector('.pc2-next-hint')) return;
           const hint = document.createElement('button');
           hint.className = 'pc2-next-hint';
-          hint.innerHTML = '✦ next surprise  <kbd>Space</kbd>';
+          hint.innerHTML = '✦ next surprise';
+          hint.type = 'button';
           hint.onclick = () => pickSurprise();
           pc.appendChild(hint);
         }, 60);
@@ -1881,17 +1786,6 @@ async function boot() {
     }
     btnSurprise.onclick = pickSurprise;
 
-    // Space key advances the surprise loop (only when a surprise card is
-    // currently focused — never hijacks Space anywhere else).
-    window.addEventListener('keydown', (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (e.key !== ' ' && e.code !== 'Space') return;
-      const pc = document.getElementById('position-card');
-      if (!_inSurpriseMode || !pc || pc.classList.contains('hidden')) return;
-      e.preventDefault();
-      pickSurprise();
-    });
     // Any drill-down exit leaves surprise mode.
     nav.addEventListener('focus', (ev) => {
       // If the user navigated manually (not via pickSurprise), the currentFocusedPosition
@@ -1905,7 +1799,7 @@ async function boot() {
     });
   }
 
-  // Wire the clickable "s for a surprise" hint (top-right of globe) to
+  // Wire the clickable surprise hint (top-right of globe) to
   // synthesize the same keydown the nav controller listens for. Works in
   // both the minimal layout (nav.js fallback picks a random cluster) and
   // the original (calls btn-surprise).
@@ -2441,50 +2335,15 @@ async function boot() {
   }
   window.App.focusPosition = focusPosition;
 
-  // ─── URL hash persistence: #cl=N&gid=G&pos=P ──────────────────────
-  // Enables bookmarking, sharing, and browser back/forward for drill paths.
+  // ─── URL hash (read-only) ─────────────────────────────────────────
+  // Hash persistence / history.pushState on drill were disabled so
+  // exploration never mutates the address bar. `applyHash` still runs on
+  // load / hashchange so an explicitly pasted #cl=… link can hydrate once.
   let _suppressHashWrite = false;
   let _pendingHashWrite = false;
   function writeHash() {
-    // Don't re-persist while applyHash is mid-flight (prevents feedback
-    // loop where hashchange→applyHash→focus→writeHash→hashchange…), but
-    // remember that a write was requested so we can replay it once the
-    // suppress window ends. Without this, a user action fired during the
-    // 250ms suppress would silently fail to update the hash.
     if (_suppressHashWrite) { _pendingHashWrite = true; return; }
-    const parts = [];
-    if (nav.focusCl != null) parts.push(`cl=${nav.focusCl}`);
-    if (nav.focusGid != null) parts.push(`gid=${nav.focusGid}`);
-    if (currentFocusedPosition && currentFocusedPosition.gid === nav.focusGid)
-      parts.push(`pos=${currentFocusedPosition.posIdx}`);
-    const mr = globe._filter?.monthRange;
-    if (mr && (mr.lo !== 0 || mr.hi !== (App.state.monthLabels?.length - 1))) {
-      parts.push(`from=${mr.lo}`);
-      parts.push(`to=${mr.hi}`);
-    }
-    const sr = _activeSubredditFilter;
-    if (sr) parts.push(`sr=${sr.id}`);
-    // Persist the current search query so a shared link reproduces the
-    // active search (including text:/regex operators). Automatic paint is
-    // NOT restored — user hits Shift+Enter to redraw, matching the normal
-    // flow so URL-shared views never surprise-mutate the globe.
-    const si = document.getElementById('search-input');
-    const q = si?.value?.trim();
-    if (q) parts.push(`q=${encodeURIComponent(q)}`);
-    const h = parts.length ? '#' + parts.join('&') : '';
-    if (location.hash === h) return;
-    // Push a history entry when the drill path changes (cl/gid/pos) so the
-    // browser back button unwinds navigation within the app. Filter-only
-    // changes (from/to/sr/q) replace in place so toggling a timeline range
-    // or search query doesn't flood history with intermediate states.
-    const prev = parseHash();
-    const drillChanged =
-      (prev.cl ?? null) !== (nav.focusCl ?? null) ||
-      (prev.gid ?? null) !== (nav.focusGid ?? null) ||
-      (prev.pos ?? null) !== (currentFocusedPosition?.posIdx ?? null);
-    const url = location.pathname + location.search + h;
-    if (drillChanged) history.pushState(null, '', url);
-    else history.replaceState(null, '', url);
+    // no-op: do not push/replace history or set location.hash from UI state
   }
   function parseHash() {
     const h = location.hash.replace(/^#/, '');
@@ -2552,8 +2411,6 @@ async function boot() {
     } finally {
       setTimeout(() => {
         _suppressHashWrite = false;
-        // If a real user action fired during the suppress window, replay
-        // the write so hash stays in sync with current state.
         if (_pendingHashWrite) {
           _pendingHashWrite = false;
           writeHash();
@@ -2561,7 +2418,6 @@ async function boot() {
       }, 250);
     }
   }
-  nav.addEventListener('focus', () => writeHash());
   // In the minimal layout, clicking an L3 position bar emits a nav 'focus'
   // with posIdx set but nothing else wires that to showPositionCard. Route
   // it here so the card actually appears. Guarded on posIdx change to
@@ -2575,8 +2431,7 @@ async function boot() {
     _lastFocusPosKey = key;
     focusPosition(cl, gid, posIdx);
   });
-  // focusPosition itself calls writeHash() on completion, so internal + external callers both persist.
-  // Expose so decoupled modules (nav search input blur) can trigger persistence.
+  // Exposed for nav search blur etc.; persistence is a no-op (URL not updated).
   App.writeHash = writeHash;
   window.addEventListener('hashchange', applyHash);
   // Initial restore if someone landed on a deep-link
