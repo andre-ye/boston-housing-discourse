@@ -30,7 +30,17 @@ const BEATS = [
     kind: 'hero',
   },
 
-  // ── Steps 1–3: Gentrification & Rent Control (cl=32) ─────────────────
+  // ── Step 1: interstitial — how to read the sphere ────────────────────
+  {
+    kind: 'interstitial',
+    eyebrow: 'How to read it',
+    title: 'A sphere of voices',
+    prose:
+      'Each point is a Reddit post. Points near each other argue about similar things. ' +
+      'Rotate to move the conversation into view; you\u2019ll notice clusters rather than a gradient.',
+  },
+
+  // ── Steps 2–4: Gentrification & Rent Control (cl=32) ─────────────────
   {
     kind: 'cluster',
     cl: 32,
