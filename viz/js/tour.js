@@ -315,8 +315,71 @@ export function createTour({ globe, App, nav }) {
   function renderHero() {
     showOnly('hero');
     document.body.classList.add('tour-at-hero');
+    document.body.classList.add('tour-chrome-off');
     globe.rotateTo(15, -25, 3.0);
     startHeroSpin();
+    // Play the cinematic morph once per session — dot on the 'i' in
+    // 'living' grows into the globe. If the user re-enters the tour
+    // we skip straight to the visible globe.
+    if (!window.__tourMorphPlayed) {
+      playHeroMorph();
+      window.__tourMorphPlayed = true;
+    }
+  }
+
+  function playHeroMorph() {
+    const dot = document.getElementById('hero-morph-dot');
+    const target = document.getElementById('hero-i-target');
+    if (!dot || !target) return;
+
+    document.body.classList.add('tour-morphing');
+
+    // Wait a tick for layout, then measure the 'i' dot position and the
+    // target globe center. Kick off the animation.
+    requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      // The dot of a lowercase i sits roughly 0.15em above the x-height.
+      // We approximate: x = center of span, y = rect.top + ~6px.
+      const startX = rect.left + rect.width / 2;
+      const startY = rect.top + 3;
+
+      // Target: center of the right 50% of the viewport (matches where
+      // the shifted #globe-root renders its sphere).
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const endX = vw * 0.75;
+      const endY = vh * 0.5;
+
+      // Initial: small dot at i's position.
+      dot.style.transition = 'none';
+      dot.style.transform = `translate(${startX}px, ${startY}px) translate(-50%, -50%) scale(1)`;
+      dot.classList.add('morph-visible');
+
+      // Force reflow so the next transition kicks in.
+      void dot.offsetWidth;
+
+      // Animate: grow + travel to the globe center.
+      const scale = Math.min(vw, vh) * 0.28 / 6; // target sphere visual diameter ~ 56% of min-dim
+      dot.style.transition = 'transform 1.4s cubic-bezier(0.22, 0.65, 0.2, 1), opacity 0.5s ease 1.0s';
+      dot.style.transform = `translate(${endX}px, ${endY}px) translate(-50%, -50%) scale(${scale})`;
+
+      // Just before the dot reaches its target, fade in the real globe.
+      setTimeout(() => {
+        document.body.classList.remove('tour-morphing');
+      }, 1050);
+
+      // After the transition completes, hide the dot.
+      setTimeout(() => {
+        dot.style.transition = 'opacity 0.35s ease';
+        dot.style.opacity = '0';
+        setTimeout(() => {
+          dot.classList.remove('morph-visible');
+          dot.style.opacity = '';
+          dot.style.transform = '';
+          dot.style.transition = '';
+        }, 420);
+      }, 1420);
+    });
   }
 
   function renderCard(beat) {
@@ -415,6 +478,14 @@ export function createTour({ globe, App, nav }) {
     const beat = BEATS[idx];
     if (!beat) return;
 
+    // Chrome visibility: hide sidebar / focus cards / timeline on
+    // non-drill beats (hero, interstitial, pin spotlight, outro).
+    const chromeOff = (beat.kind === 'hero'
+      || beat.kind === 'interstitial'
+      || beat.kind === 'pin'
+      || beat.kind === 'outro');
+    document.body.classList.toggle('tour-chrome-off', chromeOff);
+
     if (beat.kind === 'hero') {
       renderHero();
     } else if (beat.kind === 'outro') {
@@ -446,6 +517,8 @@ export function createTour({ globe, App, nav }) {
     stopHeroSpin();
     overlay.classList.add('hidden');
     document.body.classList.remove('tour-at-hero');
+    document.body.classList.remove('tour-chrome-off');
+    document.body.classList.remove('tour-morphing');
     document.body.classList.remove('tour-active');
     try {
       nav.focus({});
