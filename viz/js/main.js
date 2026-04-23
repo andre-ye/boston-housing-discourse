@@ -93,16 +93,15 @@ async function boot() {
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
   // Guided tour — Atlantic-style opener + three cluster beats. Launcher
-  // button is always visible; on a first visit with no hash, auto-open.
+  // button is always visible; auto-open on every visit unless the URL
+  // carries a non-empty hash (so deep-links still land where expected).
   try {
     const { createTour } = await import('./tour.js?v=252');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
-    const visited = localStorage.getItem('tour-seen');
-    if (!visited && !location.hash) {
+    if (!location.hash) {
       setTimeout(() => tour.start(), 800);
-      localStorage.setItem('tour-seen', '1');
     }
   } catch (e) { console.warn('tour init failed:', e); }
 

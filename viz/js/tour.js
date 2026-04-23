@@ -7,8 +7,14 @@ const BEATS = [
   {
     kind: 'intro',
     eyebrow: 'An atlas of Boston discourse',
-    headline: 'What do people say about what it\u2019s like to live and commute in Boston?',
-    lede: '422,114 Reddit posts from 2015 to 2025, arranged so that neighbors are voices that argue about the same thing. Each point is somebody typing at two in the morning about rent, the T, a landlord, a bike lane. Three stops on the way in.',
+    headline: 'Why a sphere.',
+    lede: 'The posts live on a sphere rather than a flat layout. A flat map has to pick a center \u2014 some cluster that sits in the middle of the view, some others pushed to the margin \u2014 and for a corpus this heterogeneous no center felt defensible. A sphere doesn\u2019t make the choice. You can rotate in any direction for as long as you want; nothing ends, and nothing is in the corner.',
+  },
+  {
+    kind: 'interstitial',
+    eyebrow: 'How to read it',
+    title: 'A sphere of voices',
+    prose: 'Each point is a Reddit post. Points near each other argue about similar things. Rotate to move the conversation into view; you\u2019ll notice clusters rather than a gradient.',
   },
   {
     kind: 'cluster',
@@ -83,8 +89,7 @@ export function createTour({ globe, App, nav }) {
   }
 
   function renderCard(beat) {
-    const total = BEATS.filter(b => b.kind === 'cluster').length;
-    cardEl.querySelector('.tour-step').textContent = beat.label;
+    cardEl.querySelector('.tour-step').textContent = beat.label || '';
     cardEl.querySelector('.tour-eyebrow').textContent = beat.eyebrow;
     cardEl.querySelector('.tour-title').textContent = beat.title;
     cardEl.querySelector('.tour-prose').textContent = beat.prose;
@@ -117,6 +122,10 @@ export function createTour({ globe, App, nav }) {
     const beat = BEATS[idx];
     if (beat.kind === 'intro') {
       renderHero(beat);
+    } else if (beat.kind === 'interstitial') {
+      // Transitional narration: globe is already filling the viewport; no pan.
+      clearHighlight();
+      renderCard(beat);
     } else {
       // Start the pan a beat before the card shows, so the globe is
       // already settling when the reader starts reading.
