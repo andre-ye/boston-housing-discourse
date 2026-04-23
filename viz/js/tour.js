@@ -30,14 +30,27 @@ const BEATS = [
     kind: 'hero',
   },
 
-  // ── Step 1: interstitial — how to read the sphere ────────────────────
+  // ── Step 1: interstitial — why a sphere ──────────────────────────────
+  {
+    kind: 'interstitial',
+    eyebrow: 'Why a sphere',
+    title: 'No center, no edges',
+    prose:
+      'A flat map would have to pick a cluster to put in the middle, and for a ' +
+      'corpus this varied no center was defensible. A sphere refuses the choice. ' +
+      'Rotate in any direction for as long as you want \u2014 nothing ends, nothing is ' +
+      'in a corner.',
+  },
+
+  // ── Step 2: interstitial — how to read the sphere + pins ─────────────
   {
     kind: 'interstitial',
     eyebrow: 'How to read it',
     title: 'A sphere of voices',
     prose:
       'Each point is a Reddit post. Points near each other argue about similar things. ' +
-      'Rotate to move the conversation into view; you\u2019ll notice clusters rather than a gradient.',
+      'A handful of posts are also pinned \u2014 look for P1, P2, P3\u2026 Those are real ' +
+      'Bostonians we interviewed on the street. More on one of them at the end.',
   },
 
   // ── Steps 2–4: Gentrification & Rent Control (cl=32) ─────────────────
@@ -200,7 +213,24 @@ const BEATS = [
     ],
   },
 
-  // ── Step 10: outro ─────────────────────────────────────────────────────
+  // ── Step 10: pin spotlight — P2, legal assistant on the Quincy ferry ─
+  {
+    kind: 'pin',
+    pinId: 'P2',
+    eyebrow: 'One of the interviews',
+    title: 'Half an hour of pure delight.',
+    prose:
+      'P2 is a legal assistant retiring next week. She lives in Squantum, ' +
+      'takes the ferry from Quincy into downtown, and calls that commute ' +
+      'half an hour of pure delight. We pinned her and seventeen other ' +
+      'real Bostonians we interviewed on the street next to the posts that ' +
+      'sound most like them. Click any P-pin to read the rest of what they said.',
+    pullquotes: [
+      'Ferry to downtown \u2014 half an hour of pure delight.',
+    ],
+  },
+
+  // ── Step 11: outro ─────────────────────────────────────────────────────
   {
     kind: 'outro',
     eyebrow: 'Now it\'s yours',
@@ -364,6 +394,16 @@ export function createTour({ globe, App, nav }) {
             window.App.focusPosition(beat.cl, beat.gid, beat.posIdx);
           }
         }, 150);
+      } else if (beat.kind === 'pin') {
+        // Pan the globe to the interview pin and pulse it.
+        const pin = (App.state?.interviewPins?.placements || []).find(p => p.id === beat.pinId);
+        if (pin) {
+          nav.focus({ cl: pin.cluster });
+          setTimeout(() => {
+            try { globe.rotateTo(pin.lat, pin.lon, 1.4); } catch {}
+            pulseElement(`.pin-label[data-id="${beat.pinId}"]`);
+          }, 220);
+        }
       }
     } catch (e) {
       console.warn('tour: performBeat failed', e);

@@ -96,7 +96,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=255');
+    const { createTour } = await import('./tour.js?v=256');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
