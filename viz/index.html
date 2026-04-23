@@ -2442,65 +2442,93 @@
     pointer-events: none;
   }
   .tour-overlay.hidden { display: none; }
-  .tour-overlay::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: radial-gradient(ellipse at 55% 50%, rgba(5,6,11,0.05) 0%, rgba(5,6,11,0.55) 70%, rgba(5,6,11,0.80) 100%);
-    pointer-events: none;
-    transition: opacity 0.4s;
-  }
+
+  /* ── Hero: split layout — left text / right live globe ─────────── */
   .tour-overlay .tour-hero {
     position: absolute;
     inset: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6vh 24px;
-    background: rgba(5,6,11,0.86);
-    backdrop-filter: blur(10px);
+    align-items: stretch;
     pointer-events: auto;
-    animation: tour-hero-in 0.6s ease;
+    animation: tour-hero-in 0.55s ease;
   }
   .tour-overlay .tour-hero.hidden { display: none; }
   @keyframes tour-hero-in {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+
+  /* Left half — narrative text on dark frosted pane */
+  .tour-hero-left {
+    flex: 0 0 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7vh 48px 7vh 56px;
+    background: rgba(5,6,11,0.91);
+    backdrop-filter: blur(14px);
+    border-right: 1px solid rgba(244,237,225,0.07);
+  }
+
+  /* Right half — transparent so the globe canvas shows through, with a
+     very faint edge gradient to frame it */
+  .tour-hero-right {
+    flex: 0 0 50%;
+    position: relative;
+    background: linear-gradient(
+      to left,
+      rgba(5,6,11,0.08) 0%,
+      rgba(5,6,11,0.0) 60%
+    );
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 32px;
+    pointer-events: none;
+  }
+  .tour-hero-globe-label {
+    font: 400 11px/1 'Source Sans Pro', sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(244,237,225,0.28);
+    pointer-events: none;
+  }
+
   .tour-hero-inner {
-    max-width: 760px;
-    text-align: center;
+    max-width: 480px;
     color: #f4ede1;
   }
   .tour-hero .tour-eyebrow {
     font: 400 11px/1.2 'Source Sans Pro', sans-serif;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: rgba(244,237,225,0.55);
-    margin-bottom: 22px;
+    color: rgba(244,237,225,0.5);
+    margin-bottom: 20px;
   }
   .tour-hero .tour-headline {
-    font: 400 46px/1.18 'Source Serif Pro', Georgia, serif;
+    font: 400 38px/1.22 'Source Serif Pro', Georgia, serif;
     color: #fff;
-    margin: 0 0 28px;
-    letter-spacing: -0.5px;
+    margin: 0 0 24px;
+    letter-spacing: -0.4px;
   }
   .tour-hero .tour-lede {
-    font: 400 16px/1.6 'Source Serif Pro', Georgia, serif;
-    color: rgba(244,237,225,0.78);
-    max-width: 580px;
-    margin: 0 auto 36px;
+    font: 400 15px/1.65 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.75);
+    margin: 0 0 36px;
   }
   .tour-hero .tour-hero-actions {
     display: flex;
-    gap: 18px;
-    justify-content: center;
+    gap: 16px;
     align-items: center;
+    flex-wrap: wrap;
   }
+
+  /* ── Shared tour buttons ────────────────────────────────────────── */
   .tour-btn {
-    font: 500 13px/1 'Source Sans Pro', sans-serif;
+    font: 500 12px/1 'Source Sans Pro', sans-serif;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    padding: 14px 22px;
+    padding: 13px 20px;
     border-radius: 2px;
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -2519,84 +2547,135 @@
   .tour-btn-ghost:hover { color: #fff; border-color: rgba(244,237,225,0.6); }
   .tour-btn.hidden { display: none; }
 
+  /* ── Narration card (floats over globe during beats 1–9) ────────── */
   .tour-card {
     position: absolute;
     top: 50%;
     right: 40px;
     transform: translateY(-50%);
-    width: 420px;
+    width: 400px;
     max-width: calc(100vw - 80px);
-    padding: 28px 30px 24px;
-    background: linear-gradient(155deg, rgba(18,16,14,0.96), rgba(10,9,8,0.96));
-    border: 1px solid rgba(244,237,225,0.12);
+    padding: 26px 28px 22px;
+    background: linear-gradient(155deg, rgba(14,13,12,0.97), rgba(8,8,7,0.97));
+    border: 1px solid rgba(244,237,225,0.13);
     border-radius: 4px;
     color: #f4ede1;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.4);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 2px 4px rgba(0,0,0,0.4);
     pointer-events: auto;
   }
   .tour-card.hidden { display: none; }
-  .tour-card.tour-in { animation: tour-card-in 0.55s ease; }
+  .tour-card.tour-in { animation: tour-card-in 0.5s ease; }
   @keyframes tour-card-in {
-    from { opacity: 0; transform: translate(16px, -50%); }
+    from { opacity: 0; transform: translate(14px, -50%); }
     to   { opacity: 1; transform: translate(0,   -50%); }
   }
   .tour-card .tour-step {
-    font: 500 10px/1 'Source Sans Pro', sans-serif;
-    letter-spacing: 3px;
+    font: 600 10px/1 'Source Sans Pro', sans-serif;
+    letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: rgba(244,237,225,0.45);
+    color: rgba(244,237,225,0.38);
     margin-bottom: 14px;
   }
   .tour-card .tour-eyebrow {
     font: 400 12px/1.2 'Source Serif Pro', Georgia, serif;
     font-style: italic;
-    color: rgba(244,237,225,0.6);
-    margin-bottom: 6px;
+    color: rgba(244,237,225,0.55);
+    margin-bottom: 5px;
   }
   .tour-card .tour-title {
-    font: 400 26px/1.22 'Source Serif Pro', Georgia, serif;
+    font: 400 24px/1.24 'Source Serif Pro', Georgia, serif;
     color: #fff;
-    margin: 0 0 14px;
+    margin: 0 0 13px;
     letter-spacing: -0.2px;
   }
   .tour-card .tour-prose {
-    font: 400 14px/1.6 'Source Serif Pro', Georgia, serif;
-    color: rgba(244,237,225,0.82);
-    margin: 0 0 16px;
+    font: 400 13.5px/1.62 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.8);
+    margin: 0 0 14px;
   }
   .tour-card .tour-quotes {
-    margin: 0 0 20px;
-    padding: 14px 0 6px;
+    margin: 0 0 18px;
+    padding: 12px 0 4px;
     border-top: 1px solid rgba(244,237,225,0.1);
   }
   .tour-card .tour-quote {
-    font: 400 13px/1.45 'Source Serif Pro', Georgia, serif;
+    font: 400 12.5px/1.5 'Source Serif Pro', Georgia, serif;
     font-style: italic;
-    color: rgba(244,237,225,0.72);
+    color: rgba(244,237,225,0.68);
     margin: 0 0 8px;
-    padding-left: 12px;
-    border-left: 2px solid rgba(244,237,225,0.22);
+    padding-left: 11px;
+    border-left: 2px solid rgba(244,237,225,0.2);
   }
   .tour-card .tour-actions {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 6px;
   }
   .tour-card-skip {
-    font: 400 11px/1 'Source Sans Pro', sans-serif;
+    font: 400 10px/1 'Source Sans Pro', sans-serif;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     background: none;
     border: none;
-    color: rgba(244,237,225,0.45);
+    color: rgba(244,237,225,0.38);
     cursor: pointer;
     padding: 6px 4px;
   }
-  .tour-card-skip:hover { color: rgba(244,237,225,0.75); }
+  .tour-card-skip:hover { color: rgba(244,237,225,0.7); }
 
-  /* When tour is active, tuck away the usual chrome so the globe reads cleanly. */
+  /* ── Outro card (centred, full-pane) ─────────────────────────────── */
+  .tour-outro {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5,6,11,0.82);
+    backdrop-filter: blur(12px);
+    pointer-events: auto;
+    animation: tour-hero-in 0.5s ease;
+  }
+  .tour-outro.hidden { display: none; }
+  .tour-outro-inner {
+    max-width: 560px;
+    text-align: center;
+    color: #f4ede1;
+  }
+  .tour-outro .tour-eyebrow {
+    font: 400 11px/1.2 'Source Sans Pro', sans-serif;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(244,237,225,0.5);
+    margin-bottom: 18px;
+  }
+  .tour-outro .tour-title {
+    font: 400 48px/1.12 'Source Serif Pro', Georgia, serif;
+    color: #fff;
+    margin: 0 0 22px;
+    letter-spacing: -0.5px;
+  }
+  .tour-outro .tour-prose {
+    font: 400 15px/1.65 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.75);
+    margin: 0 0 32px;
+  }
+
+  /* ── "Virtual click" pulse ring on sidebar segments ──────────────── */
+  @keyframes tour-pulse-ring {
+    0%   { outline: 2px solid rgba(244,237,225,0.0); outline-offset: 0px; }
+    30%  { outline: 2px solid rgba(244,237,225,0.9); outline-offset: 3px; }
+    100% { outline: 2px solid rgba(244,237,225,0.0); outline-offset: 6px; }
+  }
+  .tour-pulse {
+    animation: tour-pulse-ring 0.9s ease forwards !important;
+  }
+
+  /* ── When tour is active: chrome stays visible but is inert ─────── */
+  /* The tour drives the sidebar/focus-card through programmatic nav.focus()
+     calls, so they should remain visible. Only pointer-events are disabled
+     so the user can read the UI but not accidentally click away. */
   body.tour-active #sidebar,
   body.tour-active .focus-card,
   body.tour-active .interview-card,
@@ -2604,12 +2683,21 @@
   body.tour-active #point-tooltip,
   body.tour-active .timeline,
   body.tour-active .ui-topbar {
-    opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity 0.3s;
   }
+  /* During the hero screen, fade chrome to zero — nothing to show yet */
+  body.tour-active.tour-at-hero #sidebar,
+  body.tour-active.tour-at-hero .focus-card,
+  body.tour-active.tour-at-hero .interview-card,
+  body.tour-active.tour-at-hero .detail-card,
+  body.tour-active.tour-at-hero #point-tooltip,
+  body.tour-active.tour-at-hero .timeline,
+  body.tour-active.tour-at-hero .ui-topbar {
+    opacity: 0 !important;
+  }
 
-  /* Tour launcher button (lives in the top corner) */
+  /* Tour launcher button (bottom-right corner) */
   .tour-launcher {
     position: fixed;
     bottom: 14px; right: 14px;
@@ -3521,17 +3609,27 @@
   </section>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
   <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-label="Guided tour">
+
+    <!-- Step 0: Split hero — left text, right live globe -->
     <div class="tour-hero">
-      <div class="tour-hero-inner">
-        <div class="tour-eyebrow"></div>
-        <h1 class="tour-headline"></h1>
-        <p class="tour-lede"></p>
-        <div class="tour-hero-actions">
-          <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
-          <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Skip &amp; explore</button>
+      <div class="tour-hero-left">
+        <div class="tour-hero-inner">
+          <div class="tour-eyebrow">An atlas of Boston discourse</div>
+          <h1 class="tour-headline">What do people say about what it&rsquo;s like to live and commute in Boston?</h1>
+          <p class="tour-lede">422,114 Reddit posts from 2015 to 2025, arranged so that neighbors are voices that argue about the same thing. Each point is somebody typing at two in the morning about rent, the T, a landlord, a bike lane. Three stops on the way in.</p>
+          <div class="tour-hero-actions">
+            <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
+            <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Skip &amp; explore</button>
+          </div>
         </div>
       </div>
+      <!-- Right half is transparent so the globe canvas shows through -->
+      <div class="tour-hero-right" aria-hidden="true">
+        <div class="tour-hero-globe-label">Drag to spin &middot; scroll to zoom</div>
+      </div>
     </div>
+
+    <!-- Steps 1–9: Narration card (floats over the globe) -->
     <div class="tour-card hidden">
       <div class="tour-step"></div>
       <div class="tour-eyebrow"></div>
@@ -3541,11 +3639,22 @@
       <div class="tour-actions">
         <button id="tour-skip" class="tour-card-skip">Skip tour</button>
         <div style="display:flex; gap:8px;">
-          <button id="tour-prev" class="tour-btn tour-btn-ghost hidden">← Back</button>
-          <button id="tour-next" class="tour-btn tour-btn-primary">Next →</button>
+          <button id="tour-prev" class="tour-btn tour-btn-ghost hidden">&larr; Back</button>
+          <button id="tour-next" class="tour-btn tour-btn-primary">Next &rarr;</button>
         </div>
       </div>
     </div>
+
+    <!-- Step 10: Outro card -->
+    <div class="tour-outro hidden">
+      <div class="tour-outro-inner">
+        <div class="tour-eyebrow"></div>
+        <h2 class="tour-title"></h2>
+        <p class="tour-prose"></p>
+        <button id="tour-explore" class="tour-btn tour-btn-primary" style="margin-top:8px;">Explore the sphere &rarr;</button>
+      </div>
+    </div>
+
   </div>
   <div id="help-overlay" class="help-overlay hidden">
     <div class="help-panel" role="dialog" aria-label="Keyboard shortcuts">
@@ -3657,6 +3766,6 @@
   <div id="point-tooltip" class="point-tooltip hidden"></div>
 </div>
 
-<script type="module" src="./js/main.js?v=253"></script>
+<script type="module" src="./js/main.js?v=254"></script>
 </body>
 </html>

@@ -698,9 +698,7 @@ export class NavController extends EventTarget {
     });
     input.addEventListener('blur', () => {
       setTimeout(() => suggestions.classList.add('hidden'), 120);
-      // Persist the current query to the URL hash so shareable links can
-      // reproduce it. Doesn't fire on every keystroke — only when the
-      // user leaves the field, matching how other filters persist.
+      // writeHash is a no-op (URL not updated); kept so callers stay in sync.
       if (window.App?.writeHash) window.App.writeHash();
     });
     input.addEventListener('keydown', (e) => {
@@ -1507,7 +1505,7 @@ export class NavController extends EventTarget {
         seg.setAttribute('role', 'button');
         seg.setAttribute('tabindex', '0');
         seg.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === 'Enter') {
             e.preventDefault();
             seg.click();
           }

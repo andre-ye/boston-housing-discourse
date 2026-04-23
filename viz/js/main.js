@@ -96,7 +96,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=252');
+    const { createTour } = await import('./tour.js?v=254');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -171,7 +171,8 @@ async function boot() {
     nav?.addEventListener?.('focus', stop);
     const tick = () => {
       if (!spinning) return;
-      globe.nudge?.(DX, DY);
+      // Pause idle drift while the guided tour is driving the camera.
+      if (!window.App?.tour?.isActive()) globe.nudge?.(DX, DY);
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
