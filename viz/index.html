@@ -2465,21 +2465,24 @@
     align-items: center;
     justify-content: center;
     padding: 7vh 48px 7vh 56px;
-    background: rgba(5,6,11,0.91);
-    backdrop-filter: blur(14px);
-    border-right: 1px solid rgba(244,237,225,0.07);
+    background: transparent;
+    /* Soft readability gradient behind the text — fades in from the left
+       edge and dissolves toward the vertical midpoint so the globe side
+       stays unobstructed. */
+    background-image: linear-gradient(
+      to right,
+      rgba(5,6,11,0.62) 0%,
+      rgba(5,6,11,0.42) 40%,
+      rgba(5,6,11,0.0) 100%
+    );
+    border-right: none;
   }
 
-  /* Right half — transparent so the globe canvas shows through, with a
-     very faint edge gradient to frame it */
+  /* Right half — transparent so the globe renders cleanly. */
   .tour-hero-right {
     flex: 0 0 50%;
     position: relative;
-    background: linear-gradient(
-      to left,
-      rgba(5,6,11,0.08) 0%,
-      rgba(5,6,11,0.0) 60%
-    );
+    background: transparent;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -2696,18 +2699,13 @@
   body.tour-active.tour-at-hero .ui-topbar {
     opacity: 0 !important;
   }
-  /* During hero: slide the globe canvas right so the full sphere fits in
-     the right 50% and the left text panel doesn't truncate it. */
-  #canvas,
-  canvas#globe,
-  canvas.globe,
-  #globe-canvas {
+  /* During hero: shift the whole globe stack right — canvas, label SVG,
+     and pin layer — so the sphere fits cleanly in the right half and
+     labels + interview pins stay aligned with the points they annotate. */
+  #globe-root {
     transition: transform 0.55s cubic-bezier(0.22, 0.65, 0.2, 1);
   }
-  body.tour-active.tour-at-hero #canvas,
-  body.tour-active.tour-at-hero canvas#globe,
-  body.tour-active.tour-at-hero canvas.globe,
-  body.tour-active.tour-at-hero #globe-canvas {
+  body.tour-active.tour-at-hero #globe-root {
     transform: translateX(25%);
   }
 
@@ -3780,6 +3778,6 @@
   <div id="point-tooltip" class="point-tooltip hidden"></div>
 </div>
 
-<script type="module" src="./js/main.js?v=256"></script>
+<script type="module" src="./js/main.js?v=257"></script>
 </body>
 </html>
