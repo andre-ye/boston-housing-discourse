@@ -2679,7 +2679,7 @@
   /* The tour drives the sidebar/focus-card through programmatic nav.focus()
      calls, so they should remain visible. Only pointer-events are disabled
      so the user can read the UI but not accidentally click away. */
-  body.tour-active #sidebar,
+  body.tour-active #nav,
   body.tour-active .focus-card,
   body.tour-active .interview-card,
   body.tour-active .detail-card,
@@ -2690,7 +2690,7 @@
     transition: opacity 0.3s;
   }
   /* During the hero screen, fade chrome to zero — nothing to show yet */
-  body.tour-active.tour-at-hero #sidebar,
+  body.tour-active.tour-at-hero #nav,
   body.tour-active.tour-at-hero .focus-card,
   body.tour-active.tour-at-hero .interview-card,
   body.tour-active.tour-at-hero .detail-card,
@@ -2712,7 +2712,7 @@
 
   /* Non-drill beats (hero, interstitial, pin spotlight, outro) hide the
      sidebar and other chrome entirely — the narration card is enough. */
-  body.tour-active.tour-chrome-off #sidebar,
+  body.tour-active.tour-chrome-off #nav,
   body.tour-active.tour-chrome-off .focus-card,
   body.tour-active.tour-chrome-off .interview-card,
   body.tour-active.tour-chrome-off .detail-card,
@@ -2722,47 +2722,6 @@
     opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity 0.3s;
-  }
-
-  /* Cinematic morph: small bright orb (styled like the sphere) that
-     starts positioned over the dot of the 'i' in the hero headline,
-     then scales up and translates to where the real globe will land. */
-  #hero-morph-dot {
-    position: fixed;
-    left: 0; top: 0;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%,
-      #fff4d8 0%,
-      #f0dfa8 24%,
-      #b89045 62%,
-      #6a4a22 100%);
-    box-shadow: 0 0 12px rgba(240, 223, 168, 0.9),
-                0 0 36px rgba(240, 223, 168, 0.3);
-    transform-origin: center;
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
-    pointer-events: none;
-    z-index: 120;
-    transition: transform 1.4s cubic-bezier(0.22, 0.65, 0.2, 1),
-                opacity 0.4s ease;
-  }
-  #hero-morph-dot.morph-visible { opacity: 1; }
-  #hero-morph-dot.morph-grown {
-    /* JS sets the final translate coords inline via style to match the
-       actual globe center on this viewport. */
-  }
-
-  /* While the morph is in flight, keep the real globe invisible so the
-     effect reads as "the dot itself is becoming the sphere." */
-  body.tour-active.tour-at-hero.tour-morphing #globe-root { opacity: 0; }
-  body.tour-active.tour-at-hero:not(.tour-morphing) #globe-root { opacity: 1; }
-
-  /* Mark the target 'i' so its dot lines up with the morph start — we
-     don't replace it, just read its bounding rect in JS. */
-  #hero-i-target {
-    /* Normal rendering; this span is purely for getBoundingClientRect. */
-    display: inline;
   }
 
   /* Tour launcher button (bottom-right corner) */
@@ -3677,15 +3636,12 @@
   </section>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
   <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-label="Guided tour">
-    <!-- Cinematic morph: the dot on the 'i' in 'living' grows into the globe. -->
-    <div id="hero-morph-dot" aria-hidden="true"></div>
-
     <!-- Step 0: Split hero — left text, right live globe -->
     <div class="tour-hero">
       <div class="tour-hero-left">
         <div class="tour-hero-inner">
           <div class="tour-eyebrow">An Atlas of Boston Discourse</div>
-          <h1 class="tour-headline">What are people in Boston saying about l<span id="hero-i-target">i</span>ving here?</h1>
+          <h1 class="tour-headline">What are people in Boston saying about living here?</h1>
           <p class="tour-lede">Four hundred thousand Reddit posts from 2015 to 2025, projected onto a sphere.</p>
           <div class="tour-hero-actions">
             <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
@@ -3836,6 +3792,16 @@
   <div id="point-tooltip" class="point-tooltip hidden"></div>
 </div>
 
-<script type="module" src="./js/main.js?v=258"></script>
+<script>
+  // Bootstrap the tour into its hero state before first paint, so the page
+  // never flashes the default viewer. Skipped if a deep-link hash is present.
+  (function () {
+    if (location.hash) return;
+    document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
+    var ov = document.getElementById('tour-overlay');
+    if (ov) ov.classList.remove('hidden');
+  })();
+</script>
+<script type="module" src="./js/main.js?v=259"></script>
 </body>
 </html>

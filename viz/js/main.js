@@ -96,12 +96,16 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=256');
+    const { createTour } = await import('./tour.js?v=259');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
+    // The inline bootstrap in index.html already applied the hero body
+    // classes + un-hid the overlay before first paint. We just need the
+    // tour JS to take ownership of that visible state (idx = 0, spin,
+    // globe rotation). Skipped if a deep-link hash is present.
     if (!location.hash) {
-      setTimeout(() => tour.start(), 800);
+      tour.start();
     }
   } catch (e) { console.warn('tour init failed:', e); }
 
