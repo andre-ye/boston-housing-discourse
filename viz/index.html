@@ -2443,6 +2443,15 @@
   }
   .tour-overlay.hidden { display: none; }
 
+  /* While the hero is up, make the page a uniform pitch-black. The globe
+     canvas is alpha-cleared so whatever's behind it shows through — by
+     matching text-side and globe-side to the same black, the hero reads
+     as text floating on the same ground as the sphere rather than as a
+     text panel pushed up against the globe. */
+  body.tour-active.tour-at-hero {
+    background: #000 !important;
+  }
+
   /* ── Hero: split layout — left text / right live globe ─────────── */
   .tour-overlay .tour-hero {
     position: absolute;
@@ -3805,6 +3814,6 @@
     if (ov) ov.classList.remove('hidden');
   })();
 </script>
-<script type="module" src="./js/main.js?v=261"></script>
+<script type="module" src="./js/main.js?v=262"></script>
 </body>
 </html>
