@@ -657,8 +657,14 @@ export class GlobeView extends EventTarget {
   }
 
   _tick() {
-    this.worldQuat.slerp(this.worldQuatTarget, 0.18);
-    this.distance += (this.distanceTarget - this.distance) * 0.14;
+    // When the guided tour is active, ease more slowly so rotations read
+    // as deliberate camera moves rather than snap-to. 0.18/0.14 → 0.05/0.04
+    // stretches the settle time from ~1.5s to ~6s.
+    const tourOn = typeof window !== 'undefined' && window.App?.tour?.isActive?.();
+    const slerpRate = tourOn ? 0.05 : 0.18;
+    const zoomRate  = tourOn ? 0.04 : 0.14;
+    this.worldQuat.slerp(this.worldQuatTarget, slerpRate);
+    this.distance += (this.distanceTarget - this.distance) * zoomRate;
     this.worldGroup.quaternion.copy(this.worldQuat);
 
     // Globe is centred in its own panel now (the canvas itself sits between
