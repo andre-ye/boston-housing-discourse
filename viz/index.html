@@ -660,8 +660,9 @@
     50%      { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 26px 8px rgba(255,255,255,0.65); }
   }
 
-  /* Top-right hints — tell the user about the SPACE & SHIFT shortcuts. */
-  #space-hint, #shift-hint {
+  /* Top-right hints — tell the user about the SHIFT shortcut + how to
+     open a Reddit thread. */
+  #space-hint, #shift-hint, #link-hint {
     position: absolute;
     right: 18px;
     z-index: 8;
@@ -679,16 +680,24 @@
      (Gestalt figure-ground). body.has-floating-card is toggled by the
      card-show/hide paths. */
   body.has-floating-card #space-hint,
-  body.has-floating-card #shift-hint {
+  body.has-floating-card #shift-hint,
+  body.has-floating-card #link-hint {
     opacity: 0;
     pointer-events: none;
     transform: translateX(6px);
   }
-  #space-hint, #shift-hint { pointer-events: none; }
-  #space-hint { top: 16px; }
-  #shift-hint { top: 58px; }
-  #hover-hint { top: 100px; }
+  #space-hint, #shift-hint, #link-hint { pointer-events: none; }
+  /* Space is unbound now — hide that hint. */
+  #space-hint { display: none; }
+  #shift-hint { top: 16px; }
+  #hover-hint { top: 58px; }
+  #link-hint { top: 100px; }
   #hover-hint.off .sh-text { text-decoration: line-through; opacity: 0.55; }
+  #link-hint .sh-plus {
+    font: 600 11px 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.45);
+    margin: 0 2px;
+  }
   #space-hint .sh-key {
     font: 600 11px 'Inter', system-ui, sans-serif;
     color: #fff;
@@ -2731,6 +2740,7 @@
   body.tour-active.tour-chrome-off #space-hint,
   body.tour-active.tour-chrome-off #shift-hint,
   body.tour-active.tour-chrome-off #hover-hint,
+  body.tour-active.tour-chrome-off #link-hint,
   body.tour-active.tour-chrome-off #hover-halo,
   body.tour-active.tour-chrome-off #loading {
     opacity: 0 !important;
@@ -3642,6 +3652,9 @@
         <kbd class="sh-key">h</kbd>
         <span class="sh-text">toggle hover card</span>
       </div>
+      <div id="link-hint">
+        <kbd class="sh-key">⌘</kbd><span class="sh-plus">+</span><span class="sh-text">click to open Reddit thread</span>
+      </div>
     </div>
     <div id="loading">
       <div class="spinner"></div>
@@ -3814,6 +3827,6 @@
     if (ov) ov.classList.remove('hidden');
   })();
 </script>
-<script type="module" src="./js/main.js?v=264"></script>
+<script type="module" src="./js/main.js?v=265"></script>
 </body>
 </html>

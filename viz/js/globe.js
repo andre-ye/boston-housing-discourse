@@ -415,7 +415,7 @@ export class GlobeView extends EventTarget {
     const my = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     const idx = this._pickPoint(mx, my);
     if (idx >= 0) {
-      this.dispatchEvent(new CustomEvent('pointclick', { detail: { idx, clientX: e.clientX, clientY: e.clientY } }));
+      this.dispatchEvent(new CustomEvent('pointclick', { detail: { idx, clientX: e.clientX, clientY: e.clientY, origEvent: e } }));
     } else {
       this.dispatchEvent(new CustomEvent('bgclick'));
     }

@@ -6,7 +6,7 @@ function sphereColor(c) {
   return SPHERE_PALETTE[i];
 }
 import { NavController } from './nav.js?v=231';
-import { GlobeView } from './globe.js?v=264';
+import { GlobeView } from './globe.js?v=265';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -96,7 +96,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=264');
+    const { createTour } = await import('./tour.js?v=265');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -956,7 +956,12 @@ async function boot() {
   });
   globe.addEventListener('pointclick', async (ev) => {
     const details = await getPointDetails(App.state, ev.detail.idx);
-    if (details?.permalink) {
+    // Only jump to the Reddit thread if the user held cmd/ctrl. Plain
+    // clicks now open the side card instead — easier to skim, doesn't
+    // hijack the tab on every mis-click.
+    const e = ev.detail?.origEvent || ev.detail?.event;
+    const wantsLink = !!(e && (e.metaKey || e.ctrlKey));
+    if (wantsLink && details?.permalink) {
       window.open(details.permalink, '_blank', 'noopener,noreferrer');
     } else {
       showDetailCard(details);
