@@ -2466,16 +2466,9 @@
     justify-content: center;
     padding: 7vh 48px 7vh 56px;
     background: transparent;
-    /* Soft readability gradient behind the text — fades in from the left
-       edge and dissolves toward the vertical midpoint so the globe side
-       stays unobstructed. */
-    background-image: linear-gradient(
-      to right,
-      rgba(5,6,11,0.62) 0%,
-      rgba(5,6,11,0.42) 40%,
-      rgba(5,6,11,0.0) 100%
-    );
     border-right: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   /* Right half — transparent so the globe renders cleanly. */
@@ -2725,7 +2718,12 @@
   body.tour-active.tour-chrome-off .detail-card,
   body.tour-active.tour-chrome-off #point-tooltip,
   body.tour-active.tour-chrome-off .timeline,
-  body.tour-active.tour-chrome-off .ui-topbar {
+  body.tour-active.tour-chrome-off .ui-topbar,
+  body.tour-active.tour-chrome-off #space-hint,
+  body.tour-active.tour-chrome-off #shift-hint,
+  body.tour-active.tour-chrome-off #hover-hint,
+  body.tour-active.tour-chrome-off #hover-halo,
+  body.tour-active.tour-chrome-off #loading {
     opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity 0.3s;
@@ -3657,9 +3655,7 @@
         </div>
       </div>
       <!-- Right half is transparent so the globe canvas shows through -->
-      <div class="tour-hero-right" aria-hidden="true">
-        <div class="tour-hero-globe-label">Drag to spin &middot; scroll to zoom</div>
-      </div>
+      <div class="tour-hero-right" aria-hidden="true"></div>
     </div>
 
     <!-- Steps 1–9: Narration card (floats over the globe) -->
@@ -3809,6 +3805,6 @@
     if (ov) ov.classList.remove('hidden');
   })();
 </script>
-<script type="module" src="./js/main.js?v=260"></script>
+<script type="module" src="./js/main.js?v=261"></script>
 </body>
 </html>
