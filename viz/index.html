@@ -2707,6 +2707,13 @@
     opacity: 1 !important;
     visibility: visible !important;
   }
+  /* Once the tour closes entirely, snap the keyboard hints back to full
+     opacity so they don't stay stuck from the transition. */
+  body:not(.tour-active) #shift-hint,
+  body:not(.tour-active) #hover-hint,
+  body:not(.tour-active) #link-hint {
+    opacity: 1 !important;
+  }
   /* During the hero screen, fade chrome to zero — nothing to show yet */
   body.tour-active.tour-at-hero #nav,
   body.tour-active.tour-at-hero .focus-card,
@@ -3827,6 +3834,6 @@
     if (ov) ov.classList.remove('hidden');
   })();
 </script>
-<script type="module" src="./js/main.js?v=265"></script>
+<script type="module" src="./js/main.js?v=266"></script>
 </body>
 </html>
