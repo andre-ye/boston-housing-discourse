@@ -2687,7 +2687,14 @@
   body.tour-active .timeline,
   body.tour-active .ui-topbar {
     pointer-events: none !important;
-    transition: opacity 0.3s;
+  }
+  /* Force chrome visible during drill-down beats — avoids a stuck
+     opacity transition after tour-chrome-off is removed. */
+  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) #nav,
+  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) .focus-card,
+  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) .detail-card {
+    opacity: 1 !important;
+    visibility: visible !important;
   }
   /* During the hero screen, fade chrome to zero — nothing to show yet */
   body.tour-active.tour-at-hero #nav,
@@ -3802,6 +3809,6 @@
     if (ov) ov.classList.remove('hidden');
   })();
 </script>
-<script type="module" src="./js/main.js?v=259"></script>
+<script type="module" src="./js/main.js?v=260"></script>
 </body>
 </html>
