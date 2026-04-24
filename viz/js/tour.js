@@ -515,7 +515,8 @@ export function createTour({ globe, App, nav }) {
   document.addEventListener('keydown', (e) => {
     if (!active) return;
     if (e.key === 'Escape')                        { close(); e.preventDefault(); }
-    else if (e.key === 'ArrowRight' || e.key === ' ') { next(); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { next(); e.preventDefault(); }
+    // Space is intentionally NOT bound — it should have no effect on the viz.
     else if (e.key === 'ArrowLeft')                { prev(); e.preventDefault(); }
   });
 

@@ -96,7 +96,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=262');
+    const { createTour } = await import('./tour.js?v=263');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -1280,23 +1280,10 @@ async function boot() {
       }
     }
   }
-  // _spaceDown was hoisted above; don't redeclare.
-  window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.repeat) return;
-    const ae = document.activeElement;
-    const tag = ae?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return;
-    if (ae?.isContentEditable) return;
-    if (_spaceDown) return;
-    _spaceDown = true;
-    e.preventDefault();
-    sproutSpawn();
-  });
-  window.addEventListener('keyup', (e) => {
-    if (e.code !== 'Space') return;
-    _spaceDown = false;
-    sproutClear();
-  });
+  // Space key is intentionally not bound to anything on the
+  // visualization — it was previously used for a comment-sprout feature
+  // but that triggered accidentally during tour navigation and typing.
+
 
   globe.addEventListener('pinclick', (ev) => {
     showInterviewCard(ev.detail.pin);
@@ -1816,7 +1803,7 @@ async function boot() {
     };
     hint.addEventListener('click', trigger);
     hint.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') trigger(e);
+      if (e.key === 'Enter') trigger(e);
     });
   })();
 
