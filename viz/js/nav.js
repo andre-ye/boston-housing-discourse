@@ -1,7 +1,7 @@
-// Stacked-bar navigation (L1 clusters → L2 subtopics → L3 positions)
+// Stacked-bar navigation (L1 clusters → L2 subtopics → L3 points of view)
 // with Sankey-style ribbons connecting parent segments to their children.
 
-import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=231';
+import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=234';
 
 // Each segment must be tall enough for a 2-line label. We use a readable
 // floor (30px) rather than the old 3px — the bar grows vertically and
@@ -245,7 +245,80 @@ export class NavController extends EventTarget {
 
     window.addEventListener('keydown', (e) => {
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+
+      // Escape dismisses layered UI even when focus is in the search box
+      // (the global handler used to return early for INPUT, so Esc never
+      // reached help / detail / tour).
+      if (e.key === 'Escape') {
+        // Priority-ordered Esc: title slide → tour → help → detail → position / interview → regex paint.
+        const presTitle = document.getElementById('presentation-title-overlay');
+        if (presTitle && !presTitle.classList.contains('hidden')) {
+          document.getElementById('presentation-title-continue')?.click();
+          e.preventDefault();
+          return;
+        }
+        const tourApi = window.App?.tour;
+        const tourOv = document.getElementById('tour-overlay');
+        const tourUp = tourOv && !tourOv.classList.contains('hidden');
+        if (tourApi?.isActive?.() || tourUp) {
+          tourApi?.close?.();
+          // If tour module failed to load, still tear down bootstrap overlay.
+          if (tourOv && !tourOv.classList.contains('hidden')) {
+            tourOv.classList.add('hidden');
+            document.body.classList.remove('tour-at-hero', 'tour-chrome-off', 'tour-morphing', 'tour-active');
+          }
+          e.preventDefault();
+          return;
+        }
+        const help = document.getElementById('help-overlay');
+        if (help && !help.classList.contains('hidden')) {
+          toggleHelp(false);
+          e.preventDefault();
+          return;
+        }
+        const dc = document.getElementById('detail-card');
+        if (dc && !dc.classList.contains('hidden')) {
+          dc.classList.add('hidden');
+          e.preventDefault();
+          return;
+        }
+        const posCard = document.getElementById('position-card');
+        if (posCard && !posCard.classList.contains('hidden')) {
+          const close = document.getElementById('pc2-close');
+          if (close) {
+            close.click();
+            e.preventDefault();
+            return;
+          }
+        }
+        const ivCard = document.getElementById('interview-card');
+        if (ivCard && !ivCard.classList.contains('hidden')) {
+          const close = ivCard.querySelector('.ic-close');
+          if (close) {
+            close.click();
+            e.preventDefault();
+            return;
+          }
+          ivCard.classList.add('hidden');
+          e.preventDefault();
+          return;
+        }
+        if (window.App?.globe?._multiHighlightActive) {
+          this._clearRegexPaint?.();
+          e.preventDefault();
+          return;
+        }
+        const gl = window.App?.globe;
+        if (gl && typeof gl.isZoomedAwayFromCanonical === 'function' && gl.isZoomedAwayFromCanonical()) {
+          gl.resetCanonicalZoom();
+          e.preventDefault();
+          return;
+        }
+        return;
+      }
+
+      if (typing) return;
       if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const input = document.getElementById('search-input');
         if (input) { input.focus(); input.select(); e.preventDefault(); }
@@ -314,35 +387,6 @@ export class NavController extends EventTarget {
           e.preventDefault();
         }
       }
-      if (e.key === 'Escape') {
-        // Priority-ordered Esc: help → position/interview card → regex paint.
-        // Each check closes ONE thing so repeated Esc walks back through
-        // nested overlays the user opened.
-        const help = document.getElementById('help-overlay');
-        if (help && !help.classList.contains('hidden')) {
-          toggleHelp(false);
-          e.preventDefault(); return;
-        }
-        const posCard = document.getElementById('position-card');
-        if (posCard && !posCard.classList.contains('hidden')) {
-          const close = document.getElementById('pc2-close');
-          if (close) { close.click(); e.preventDefault(); return; }
-        }
-        const ivCard = document.getElementById('interview-card');
-        if (ivCard && !ivCard.classList.contains('hidden')) {
-          // Close button gets a dynamic id on each render (ic-close-btn),
-          // so look up by class instead of a possibly-stale element id.
-          const close = ivCard.querySelector('.ic-close');
-          if (close) { close.click(); e.preventDefault(); return; }
-          // Fallback: hide the card directly if somehow the button isn't there.
-          ivCard.classList.add('hidden');
-          e.preventDefault(); return;
-        }
-        if (window.App?.globe?._multiHighlightActive) {
-          this._clearRegexPaint?.();
-          e.preventDefault(); return;
-        }
-      }
     });
   }
 
@@ -351,6 +395,9 @@ export class NavController extends EventTarget {
     const input = document.getElementById('search-input');
     const suggestions = document.getElementById('search-suggestions');
     if (!input || !suggestions) return;
+    // Single-word hint only (no long syntax placeholder in the field).
+    input.placeholder = 'Search';
+    input.setAttribute('aria-label', 'Search');
 
     this._ngrams = null;
     fetch('tsne_chunks/ngrams.json').then(r => r.ok ? r.json() : null).then(d => {
@@ -392,7 +439,7 @@ export class NavController extends EventTarget {
           const cl = mapping.dominant_cl;
           const gid = mapping.top_sub_gid;
           const subInfo = gid != null ? byGid[gid] : null;
-          const clName = clusterMeta[String(cl)]?.name || `Cluster ${cl}`;
+          const clName = clusterMeta[String(cl)]?.name || `Topic ${cl}`;
           for (const text of cell.samples || []) {
             if (typeof text !== 'string' || !text) continue;
             flat.push({ text, cl, gid, subName: subInfo?.name || '', clusterName: clName });
@@ -438,7 +485,7 @@ export class NavController extends EventTarget {
         return renderHistory();
       }
       const order = ['cluster', 'sub', 'position'];
-      const kindLabel = { cluster: 'clusters', sub: 'subtopics', position: 'positions' };
+      const kindLabel = { cluster: 'topics', sub: 'subtopics', position: 'points of view' };
       // Previews — not a table-of-contents dump. Keep it glanceable.
       const PREVIEW_PER_KIND = 5;
       const parts = [];
@@ -533,11 +580,22 @@ export class NavController extends EventTarget {
       if (!globe) return;
       const clusters = new Set();
       const subs = new Set();
+      const positions = new Set();
       for (const h of hits) {
         if (h.kind === 'cluster' && h.cl != null) clusters.add(h.cl);
-        else if ((h.kind === 'sub' || h.kind === 'position') && h.gid != null) {
+        else if (h.kind === 'sub' && h.gid != null) {
           const g = this.subGidMap.byGid[h.gid];
           if (g) subs.add(`${g.cl}_${g.sub}`);
+        } else if (h.kind === 'position' && h.gid != null) {
+          const g = this.subGidMap.byGid[h.gid];
+          if (g) subs.add(`${g.cl}_${g.sub}`);
+          if (h.posIdx != null) positions.add(`${h.gid}_${h.posIdx}`);
+        } else if (h.kind === 'gridcell' && h.cl != null) {
+          clusters.add(h.cl);
+          if (h.gid != null) {
+            const g = this.subGidMap.byGid[h.gid];
+            if (g) subs.add(`${g.cl}_${g.sub}`);
+          }
         } else if (h.kind === 'text' && h.cl != null) {
           if (h.gid != null) {
             const g = this.subGidMap.byGid[h.gid];
@@ -547,10 +605,10 @@ export class NavController extends EventTarget {
           }
         }
       }
-      if (clusters.size === 0 && subs.size === 0) {
+      if (clusters.size === 0 && subs.size === 0 && positions.size === 0) {
         globe.setMultiHighlight({});
       } else {
-        globe.setMultiHighlight({ clusters, subs });
+        globe.setMultiHighlight({ clusters, subs, positions });
       }
     };
 
@@ -601,9 +659,12 @@ export class NavController extends EventTarget {
         suggestions.classList.remove('hidden');
         return;
       }
-      const groups = { subreddit: [], cluster: [], sub: [], position: [], ngram: [], text: [] };
+      const groups = { subreddit: [], cluster: [], sub: [], position: [], gridcell: [], ngram: [], text: [] };
       for (const h of hits) groups[h.kind]?.push(h);
-      const kindLabel = { subreddit: 'subreddits', cluster: 'clusters', sub: 'subtopics', position: 'positions', ngram: 'phrases', text: 'post snippets' };
+      const kindLabel = {
+        subreddit: 'subreddits', cluster: 'topics', sub: 'subtopics', position: 'points of view',
+        gridcell: 'Sentiment', ngram: 'phrases', text: 'post snippets',
+      };
       const parts = [];
       // Flattened display-order array — crucial because the suggestion
       // groups render in a fixed visual order (subreddit → cluster → ...)
@@ -620,7 +681,8 @@ export class NavController extends EventTarget {
           ...parsed.includes.map(fmt),
           ...parsed.excludes.map(t => '−' + fmt(t)),
         ];
-        const subCount = hits.filter(h => h.kind === 'sub' || h.kind === 'cluster').length;
+        const subCount = hits.filter(h =>
+          h.kind === 'sub' || h.kind === 'cluster' || h.kind === 'position' || h.kind === 'gridcell').length;
         const paintHint = subCount >= 2
           ? ` <span class="sugg-paint-hint"><kbd>⇧↵</kbd> paint ${subCount} on globe</span>`
           : '';
@@ -633,8 +695,8 @@ export class NavController extends EventTarget {
       // below, after the cluster/sub/position matches.
       const isTextMode = parsed.includes.some(t => t.field === 'text');
       const order = isTextMode
-        ? ['sub', 'cluster', 'text', 'subreddit', 'position', 'ngram']
-        : ['subreddit', 'cluster', 'sub', 'position', 'ngram', 'text'];
+        ? ['sub', 'cluster', 'text', 'subreddit', 'position', 'gridcell', 'ngram']
+        : ['subreddit', 'cluster', 'sub', 'position', 'gridcell', 'ngram', 'text'];
       for (const k of order) {
         if (groups[k].length === 0) continue;
         parts.push(`<div class="sugg-group"><div class="sugg-group-title">${kindLabel[k]}</div>`);
@@ -725,7 +787,8 @@ export class NavController extends EventTarget {
         // (the mode hint signals it). Text searches always require Shift to
         // paint, so plain Enter still lands on the top hit.
         const parsed = this._lastQuery;
-        const hasMultiKinds = currentMatches.some(m => m.kind === 'sub' || m.kind === 'cluster');
+        const hasMultiKinds = currentMatches.some(m =>
+          m.kind === 'sub' || m.kind === 'cluster' || m.kind === 'position' || m.kind === 'gridcell');
         const isTextMode = parsed && parsed.includes?.some(t => t.field === 'text');
         const autoPaint = parsed && parsed.kind === 'regex' && !isTextMode
           && hasMultiKinds && currentMatches.filter(m => m.kind !== 'ngram').length > 1;
@@ -749,15 +812,26 @@ export class NavController extends EventTarget {
     if (!window.App?.globe) return;
     const clusters = new Set();
     const subs = new Set();
+    const positions = new Set();
     for (const h of hits) {
       if (h.kind === 'cluster') clusters.add(h.cl);
-      else if (h.kind === 'sub' || h.kind === 'position') {
+      else if (h.kind === 'sub' && h.gid != null) {
         const g = this.subGidMap.byGid[h.gid];
         if (g) subs.add(`${g.cl}_${g.sub}`);
+      } else if (h.kind === 'position' && h.gid != null) {
+        const g = this.subGidMap.byGid[h.gid];
+        if (g) subs.add(`${g.cl}_${g.sub}`);
+        if (h.posIdx != null) positions.add(`${h.gid}_${h.posIdx}`);
+      } else if (h.kind === 'gridcell' && h.cl != null) {
+        clusters.add(h.cl);
+        if (h.gid != null) {
+          const g = this.subGidMap.byGid[h.gid];
+          if (g) subs.add(`${g.cl}_${g.sub}`);
+        }
       }
     }
-    if (clusters.size === 0 && subs.size === 0) return;
-    window.App.globe.setMultiHighlight({ clusters, subs });
+    if (clusters.size === 0 && subs.size === 0 && positions.size === 0) return;
+    window.App.globe.setMultiHighlight({ clusters, subs, positions });
     // Ease to a wider view so the pattern is visible.
     const d = Math.max(2.1, window.App.globe.distanceTarget);
     window.App.globe.rotateTo(0.2, 0, d);
@@ -785,7 +859,7 @@ export class NavController extends EventTarget {
       document.getElementById('nav-header').appendChild(chip);
     }
     const parts = [];
-    if (clusterCount) parts.push(`${clusterCount} cluster${clusterCount === 1 ? '' : 's'}`);
+    if (clusterCount) parts.push(`${clusterCount} topic${clusterCount === 1 ? '' : 's'}`);
     if (subCount) parts.push(`${subCount} sub${subCount === 1 ? '' : 's'}`);
     const label = parts.join(' + ') || '0 matches';
     chip.innerHTML = `<button class="rc-body" title="Show match list">${label} highlighted</button><button class="rc-x" aria-label="Clear">×</button>`;
@@ -809,8 +883,27 @@ export class NavController extends EventTarget {
     const clusters = this.state.clusterMeta || {};
     for (const [clStr, meta] of Object.entries(clusters)) {
       const cl = +clStr;
-      out.push({ kind: 'cluster', cl, label: meta.name || `Cluster ${cl}`,
+      out.push({ kind: 'cluster', cl, label: meta.name || `Topic ${cl}`,
         color: clusterColor(cl), context: '' });
+    }
+    const gridCells = this.state.gridCells;
+    if (gridCells && gridCells.length) {
+      for (const c of gridCells) {
+        const cl = c.dominant_cl;
+        if (cl == null || !clusters[String(cl)]) continue;
+        const gid = c.top_sub_gid;
+        const prop = c.prop || '';
+        out.push({
+          kind: 'gridcell',
+          cellId: c.id,
+          cl,
+          gid: gid != null ? gid : undefined,
+          label: prop.length > 120 ? `${prop.slice(0, 117)}…` : prop,
+          color: clusterColor(cl),
+          context: `Sentiment · ${(c.n ?? 0).toLocaleString()} posts`,
+          extra: prop,
+        });
+      }
     }
     const subMeta = this.state.subMeta || {};
     for (const clStr of Object.keys(subMeta)) {
@@ -922,8 +1015,8 @@ export class NavController extends EventTarget {
     if (term.field && entry) {
       const k = entry.kind;
       if (term.field === 'r'   && k !== 'subreddit') return false;
-      if (term.field === 'sub' && k !== 'sub' && k !== 'position') return false;
-      if (term.field === 'cl'  && k !== 'cluster' && k !== 'sub' && k !== 'position') return false;
+      if (term.field === 'sub' && k !== 'sub' && k !== 'position' && k !== 'gridcell') return false;
+      if (term.field === 'cl'  && k !== 'cluster' && k !== 'sub' && k !== 'position' && k !== 'gridcell') return false;
       if (term.field === 'pos' && k !== 'position') return false;
       if (term.field === 'ng'  && k !== 'ngram') return false;
     }
@@ -1012,7 +1105,7 @@ export class NavController extends EventTarget {
     }
     const topCls = [...byCluster.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
     for (const [cl, count] of topCls) {
-      const name = this.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
+      const name = this.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
       out.push({
         kind: 'cluster', cl, label: name,
         color: clusterColor(cl),
@@ -1051,16 +1144,17 @@ export class NavController extends EventTarget {
     if (parsed.includes.some(t => t.field === 'text') && this._textCorpus) {
       return this._matchTextCorpus(parsed);
     }
-    // When the user types a plain phrase (no field scope) ≥4 chars and
-    // the text corpus is loaded, also search post bodies and fold the
-    // hits in below the metadata matches. Auto-triggers the corpus load
-    // the first time so subsequent keystrokes find it warm.
-    const firstTerm = parsed.includes[0];
+    // Plain query (no field scope): search topic metadata AND post-body
+    // snippets. Any token ≥2 chars (or any regex token) triggers snippet
+    // search once the text corpus is loaded; shorter inputs stay metadata-only.
     const plainPhrase =
       parsed.includes.length > 0 &&
       !parsed.includes.some(t => t.field) &&
       parsed.kind !== 'error' &&
-      firstTerm && firstTerm.display && firstTerm.display.length >= 4;
+      parsed.includes.some(t =>
+        t.kind === 'regex' ||
+        (t.display && String(t.display).length >= 2)
+      );
     if (plainPhrase && !this._textCorpus && !this._textCorpusFailed) {
       this._ensureTextCorpus?.()?.then?.(() => {
         // Retrigger the active render so the text hits show up when ready.
@@ -1089,13 +1183,13 @@ export class NavController extends EventTarget {
     }
     out.sort((a, b) => b.score - a.score);
     const capped = [];
-    const caps = { subreddit: 4, cluster: 5, sub: 6, position: 8, ngram: 5, text: 6 };
-    const counts = { subreddit: 0, cluster: 0, sub: 0, position: 0, ngram: 0, text: 0 };
+    const caps = { subreddit: 4, cluster: 5, sub: 6, position: 8, gridcell: 8, ngram: 5, text: 12 };
+    const counts = { subreddit: 0, cluster: 0, sub: 0, position: 0, gridcell: 0, ngram: 0, text: 0 };
     for (const h of out) {
       if (counts[h.kind] >= caps[h.kind]) continue;
       capped.push(h); counts[h.kind]++;
     }
-    // Fold in post-body matches for any plain-phrase query ≥4 chars.
+    // Fold in post-body matches for plain queries (see plainPhrase above).
     if (plainPhrase && this._textCorpus) {
       const textHits = this._matchTextCorpus(parsed);
       // _matchTextCorpus already returns sub/cluster chips at the top + text
@@ -1241,6 +1335,9 @@ export class NavController extends EventTarget {
       } else if (window.App?.globe?.setSubredditHighlight) {
         window.App.globe.setSubredditHighlight(new Set([hit.srId]));
       }
+    } else if (hit.kind === 'gridcell') {
+      if (hit.gid != null) this.focus({ cl: hit.cl, gid: hit.gid });
+      else this.focus({ cl: hit.cl });
     } else if (hit.kind === 'ngram') {
       // Replace input with the phrase and re-run the search so the user
       // sees what the phrase actually matches (previously this closed the
@@ -1254,7 +1351,7 @@ export class NavController extends EventTarget {
     // — overwriting it with the clicked region's name destroys the query
     // they might want to re-run or tweak after landing.
     const isTextMode = this._lastQuery?.includes?.some(t => t.field === 'text');
-    if (!isTextMode) input.value = hit.label;
+    if (!isTextMode && hit.kind !== 'gridcell') input.value = hit.label;
     document.getElementById('search-suggestions').classList.add('hidden');
     input.blur();
   }
@@ -1287,7 +1384,7 @@ export class NavController extends EventTarget {
       const c = document.createElement('div');
       c.className = 'crumb' + (this.focusGid == null ? ' active' : '');
       c.style.color = clusterColor(this.focusCl);
-      c.textContent = meta ? meta.name : `Cluster ${this.focusCl}`;
+      c.textContent = meta ? meta.name : `Topic ${this.focusCl}`;
       c.onclick = () => this.focus({ cl: this.focusCl });
       el.appendChild(c);
       linkCrumb(c, this.stackL1, String(this.focusCl));
@@ -1505,6 +1602,43 @@ export class NavController extends EventTarget {
         seg.setAttribute('role', 'button');
         seg.setAttribute('tabindex', '0');
         seg.addEventListener('keydown', (e) => {
+          const stackId = stackEl.id;
+          const isL1 = stackId === 'stack-l1' || stackId === 'col-l1';
+          const isL2 = stackId === 'stack-l2' || stackId === 'col-l2';
+          const isL3 = stackId === 'stack-l3' || stackId === 'col-l3';
+
+          const cycleWithinStack = () => {
+            const segs = [...stackEl.querySelectorAll(':scope > .bar-seg')]
+              .filter((s) => !s.classList.contains('leaving'));
+            if (!segs.length) return;
+            const idx = Math.max(0, segs.indexOf(seg));
+            const next = e.shiftKey
+              ? (segs[idx - 1] ?? segs[segs.length - 1])
+              : (segs[idx + 1] ?? segs[0]);
+            next.focus();
+          };
+
+          if (e.key === 'Tab' && (isL1 || isL2 || isL3)) {
+            if (isL1 && this.focusCl == null) {
+              e.preventDefault();
+              cycleWithinStack();
+              return;
+            }
+            if (isL1 && this.focusCl != null && !e.shiftKey) {
+              e.preventDefault();
+              info.onClick?.();
+              requestAnimationFrame(() => {
+                const next = document.querySelector('#stack-l2 .bar-seg.active, #stack-l2 .bar-seg, #col-l2 .bar-seg.active, #col-l2 .bar-seg');
+                next?.focus();
+              });
+              return;
+            }
+            if (isL2 || isL3) {
+              e.preventDefault();
+              cycleWithinStack();
+              return;
+            }
+          }
           if (e.key === 'Enter') {
             e.preventDefault();
             seg.click();
@@ -1662,10 +1796,10 @@ export class NavController extends EventTarget {
     const t3 = document.getElementById('title-l3');
     if (t1) {
       if (cl != null) {
-        const name = this.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
-        t1.textContent = `Cluster: ${name}`;
+        const name = this.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
+        t1.textContent = `Topic: ${name}`;
       } else {
-        t1.textContent = t1.dataset.default || 'Clusters';
+        t1.textContent = t1.dataset.default || 'Topics';
       }
     }
     if (t2) {
@@ -1676,7 +1810,7 @@ export class NavController extends EventTarget {
         t2.textContent = t2.dataset.default || 'Subtopics';
       }
     }
-    if (t3) t3.textContent = t3.dataset.default || 'Positions';
+    if (t3) t3.textContent = t3.dataset.default || 'Points of view';
     this._applyFade();
     this.renderBreadcrumbs();
     requestAnimationFrame(() => {

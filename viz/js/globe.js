@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=231';
+import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=233';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -62,22 +62,17 @@ export class GlobeView extends EventTarget {
     }
   }
 
-  setInterviewPins(placements, interviewsDoc) {
+  setInterviewPins(placements, _interviewsDoc) {
     // Build one DOM pin per placement. Positioned every frame by
     // _updatePinScreenPositions() below.
-    const ivByIdMap = new Map((interviewsDoc?.interviews || []).map(iv => [iv.id, iv]));
     this.pinLayer.innerHTML = '';
     this.pins = [];
     for (const pl of placements || []) {
-      const iv = ivByIdMap.get(pl.id);
       const cl = pl.cluster;
       const color = sphereColor(cl);
       const clMeta = this.state.clusterMeta?.[String(cl)];
       const data = {
         ...pl,
-        role: iv?.role,
-        lives: iv?.lives,
-        would_live: iv?.would_live,
         cluster_name: clMeta?.name,
       };
       const el = document.createElement('button');
@@ -164,6 +159,9 @@ export class GlobeView extends EventTarget {
     this.worldQuatTarget = new THREE.Quaternion();
     this.distance = 3.0;
     this.distanceTarget = 3.0;
+    // Last zoom set by rotateTo / app navigation (scroll wheel only changes
+    // distanceTarget). Used so Esc can snap back after user zoom.
+    this._canonicalDistance = 3.0;
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
 
@@ -485,7 +483,27 @@ export class GlobeView extends EventTarget {
     const desired = new THREE.Vector3(0, 0, 1);
     const q = new THREE.Quaternion().setFromUnitVectors(target, desired);
     this.worldQuatTarget.copy(q);
-    if (distance != null) this.distanceTarget = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, distance));
+    if (distance != null) {
+      this.distanceTarget = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, distance));
+      this._canonicalDistance = this.distanceTarget;
+    }
+  }
+
+  /** User scroll moved zoom away from the last app-set distance (rotateTo). */
+  isZoomedAwayFromCanonical() {
+    const c = this._canonicalDistance != null ? this._canonicalDistance : 3.0;
+    const tol = 0.055;
+    // Compare both: wheel updates distanceTarget first; distance eases behind.
+    // If we only checked distanceTarget, Esc could no-op while the camera
+    // was still mid-zoom after the user had scrolled back to the target.
+    return Math.abs(this.distanceTarget - c) > tol || Math.abs(this.distance - c) > tol;
+  }
+
+  /** Snap zoom to the canonical distance from the last rotateTo (or default). */
+  resetCanonicalZoom() {
+    const c = this._canonicalDistance != null ? this._canonicalDistance : 3.0;
+    this.distanceTarget = c;
+    this.distance = c;
   }
 
   // Composite dim state. Each setter updates one slot and calls
@@ -496,11 +514,12 @@ export class GlobeView extends EventTarget {
   //   focusPosIdx       : number | null   (requires focusSubLocal)
   //   multiClusters     : Set<number> | null
   //   multiSubs         : Set<string "cl_sub"> | null
+  //   multiPositions    : Set<string "gid_posIdx"> | null  (search / regex paint)
   //   subredditIds      : Set<number> | null
   //   monthRange        : { lo, hi } inclusive month-idx | null
   _filter = {
     focusCl: null, focusSubLocal: null, focusPosIdx: null,
-    multiClusters: null, multiSubs: null, subredditIds: null,
+    multiClusters: null, multiSubs: null, multiPositions: null, subredditIds: null,
     monthRange: null,
   };
   _recomputeDim() {
@@ -509,11 +528,14 @@ export class GlobeView extends EventTarget {
     const dim = this.pointGeom.attributes.dim.array;
     const hasMultiC = f.multiClusters && f.multiClusters.size > 0;
     const hasMultiS = f.multiSubs && f.multiSubs.size > 0;
+    const hasMultiP = f.multiPositions && f.multiPositions.size > 0;
     const hasSR = f.subredditIds && f.subredditIds.size > 0;
     const assign = st.subredditAssignments;
     const hasMonth = !!f.monthRange;
     const monthAssign = st.monthAssignments;
-    const noFilter = f.focusCl == null && f.focusSubLocal == null && !hasMultiC && !hasMultiS && !hasSR && !hasMonth;
+    const byLocal = window.App?.subGidMap?.byLocal;
+    const noFilter = f.focusCl == null && f.focusSubLocal == null && f.focusPosIdx == null &&
+      !hasMultiC && !hasMultiS && !hasMultiP && !hasSR && !hasMonth;
     if (noFilter) {
       dim.fill(1.0);
     } else {
@@ -526,6 +548,12 @@ export class GlobeView extends EventTarget {
             st.positionAssignments[i] !== f.focusPosIdx) ok = false;
         if (ok && hasMultiC && !hasMultiS && !f.multiClusters.has(st.cluster[i])) ok = false;
         if (ok && hasMultiS && !f.multiSubs.has(`${st.cluster[i]}_${st.subLocal[i]}`)) ok = false;
+        if (ok && hasMultiP && st.positionAssignments && byLocal) {
+          const cl = st.cluster[i], sl = st.subLocal[i];
+          const gid = byLocal[cl]?.[sl];
+          const pa = st.positionAssignments[i];
+          if (gid == null || pa == null || pa === 255 || !f.multiPositions.has(`${gid}_${pa}`)) ok = false;
+        }
         if (ok && hasSR && assign && !f.subredditIds.has(assign[i])) ok = false;
         if (ok && hasMonth && monthAssign) {
           const m = monthAssign[i];
@@ -535,7 +563,7 @@ export class GlobeView extends EventTarget {
       }
     }
     this.pointGeom.attributes.dim.needsUpdate = true;
-    this._multiHighlightActive = hasMultiC || hasMultiS;
+    this._multiHighlightActive = hasMultiC || hasMultiS || hasMultiP;
     this._subredditHighlightActive = hasSR;
   }
 
@@ -557,11 +585,12 @@ export class GlobeView extends EventTarget {
     this._recomputeDim();
   }
 
-  // Regex-on-globe paint for search: unions of clusters + subs.
-  setMultiHighlight({ clusters = null, subs = null } = {}) {
+  // Regex-on-globe paint for search: unions of clusters + subs + stance keys.
+  setMultiHighlight({ clusters = null, subs = null, positions = null } = {}) {
     const f = this._filter;
     f.multiClusters = clusters && clusters.size > 0 ? clusters : null;
     f.multiSubs = subs && subs.size > 0 ? subs : null;
+    f.multiPositions = positions && positions.size > 0 ? positions : null;
     this._recomputeDim();
   }
 

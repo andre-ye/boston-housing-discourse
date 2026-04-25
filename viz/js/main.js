@@ -1,12 +1,28 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=231';
+import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=234';
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
   return SPHERE_PALETTE[i];
 }
-import { NavController } from './nav.js?v=231';
-import { GlobeView } from './globe.js?v=265';
+
+/** Signed net score on the meta line (display only). */
+function redditScoreInlineHtml(score) {
+  if (score == null || score === '') return '';
+  const n = typeof score === 'number' ? score : +score;
+  if (Number.isNaN(n)) return '';
+  const t = Math.trunc(n);
+  const cls = t > 0 ? 'is-positive' : (t < 0 ? 'is-negative' : 'is-zero');
+  const text = t > 0 ? `+${t}` : String(t);
+  return `<span class="reddit-score-inline ${cls}" title="Reddit score" aria-label="Score ${t}">${escapeHtml(text)}</span>`;
+}
+
+/** Meta strip label for Reddit items — post vs. comment is not shown; always "Thread". */
+function formatRedditKindLabel(_type) {
+  return 'Thread';
+}
+import { NavController } from './nav.js?v=242';
+import { GlobeView } from './globe.js?v=268';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -90,22 +106,28 @@ async function boot() {
     globe = new GlobeView(canvas, App.state);
     window.App.globe = globe;
     window.App.nav = nav;
+    document.getElementById('reset-view-hint')?.addEventListener('click', () => {
+      globe?.resetCanonicalZoom?.();
+    });
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
   // Guided tour — Atlantic-style opener + three cluster beats. Launcher
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=266');
+    const { createTour } = await import('./tour.js?v=279');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
-    // The inline bootstrap in index.html already applied the hero body
-    // classes + un-hid the overlay before first paint. We just need the
-    // tour JS to take ownership of that visible state (idx = 0, spin,
-    // globe rotation). Skipped if a deep-link hash is present.
+    // Cold load: index.html shows a title slide first; tour starts after Continue
+    // (or immediately if the user continued before this module finished loading).
+    // Deep-links (#cl=…) skip the title slide and the auto tour.
     if (!location.hash) {
-      tour.start();
+      const titleEl = document.getElementById('presentation-title-overlay');
+      const stillOnTitle = titleEl && !titleEl.classList.contains('hidden');
+      if (!stillOnTitle || window.__presentationContinueRequested) {
+        tour.start();
+      }
     }
   } catch (e) { console.warn('tour init failed:', e); }
 
@@ -211,7 +233,7 @@ async function boot() {
       const gid = nav.focusGid;
       if (cl == null) return;
       const clMeta = App.state.clusterMeta?.[String(cl)];
-      const clName = clMeta?.name || `Cluster ${cl}`;
+      const clName = clMeta?.name || `Topic ${cl}`;
       const range = globe._filter?.monthRange || null;
       const rangeLabel = range
         ? ` (${App.state.monthLabels[range.lo]} → ${App.state.monthLabels[range.hi]})`
@@ -241,7 +263,7 @@ async function boot() {
             return name ? `- ${name} *(${sub})* — ${count}` : null;
           })
           .filter(Boolean);
-        if (rows.length) stancesBlock = '\n**Loudest stances:**\n' + rows.join('\n');
+        if (rows.length) stancesBlock = '\n**Loudest points of view:**\n' + rows.join('\n');
       }
       // Shareable link — carry every active filter so the recipient lands
       // on the exact view (matches the position-card link in v=193).
@@ -506,7 +528,7 @@ async function boot() {
       const title = (d.title || '').trim();
       const body = (d.body || '').replace(/\n{3,}/g, '\n\n');
       row.innerHTML = `
-        <div class="dl-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(d.type || 'post')} · ${escapeHtml(d.month || '')}${d.score != null ? ` · score ${d.score}` : ''}</div>
+        <div class="dl-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month || '')}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="dl-title">${escapeHtml(title)}</div>` : ''}
         ${body ? `<div class="dl-body">${escapeHtml(body)}</div>` : ''}
       `;
@@ -523,7 +545,7 @@ async function boot() {
       detailEl.classList.add('empty');
       detailKind.textContent = 'the whole globe';
       detailTitle.textContent = '422,114 voices';
-      detailDesc.textContent = 'Pick a cluster on the left to see what people in that region of the conversation are saying.';
+      detailDesc.textContent = 'Pick a topic on the left to see what people in that region of the conversation are saying.';
       detailMeta.textContent = '';
       detailList.innerHTML = '';
       return;
@@ -537,10 +559,10 @@ async function boot() {
       const posDoc = App.state.positionsDoc?.[String(gid)]?.positions?.[posIdx]
                   || App.state.positionAnchors?.[String(gid)]?.positions?.[posIdx];
       const sub = App.subGidMap.byGid[gid];
-      detailKind.textContent = 'position · within ' + (sub?.name || '');
-      detailTitle.textContent = posDoc?.name || pos?.name || `Position ${posIdx}`;
+      detailKind.textContent = 'point of view · within ' + (sub?.name || '');
+      detailTitle.textContent = posDoc?.name || pos?.name || `Point of view ${posIdx}`;
       detailDesc.textContent = posDoc?.description || '';
-      detailMeta.textContent = (pos?.count || 0).toLocaleString() + ' points tagged with this position';
+      detailMeta.textContent = (pos?.count || 0).toLocaleString() + ' points tagged with this point of view';
     } else if (gid != null) {
       const sub = App.subGidMap.byGid[gid];
       const clMeta = App.state.clusterMeta?.[String(cl)];
@@ -550,8 +572,8 @@ async function boot() {
       detailMeta.textContent = '';
     } else {
       const clMeta = App.state.clusterMeta?.[String(cl)];
-      detailKind.textContent = 'cluster';
-      detailTitle.textContent = clMeta?.name || `Cluster ${cl}`;
+      detailKind.textContent = 'topic';
+      detailTitle.textContent = clMeta?.name || `Topic ${cl}`;
       detailDesc.textContent = '';
       detailMeta.textContent = '';
     }
@@ -608,12 +630,12 @@ async function boot() {
     if (matches.length === 0) return;
     const chips = matches.map(p => {
       const iv = ivById.get(p.id);
-      const role = (iv?.role || '').slice(0, 40);
-      const quote = (iv?.quote || '').slice(0, 90);
+      const qs = interviewQuotes(iv);
+      const preview = (qs[0] || '').slice(0, 96);
       return `
-        <button class="fc-voice" data-id="${p.id}" title="${escapeHtml(quote)}">
+        <button class="fc-voice" data-id="${p.id}" title="${escapeHtml(preview)}">
           <span class="fc-voice-id">${p.id}</span>
-          <span class="fc-voice-role">${escapeHtml(role)}</span>
+          <span class="fc-voice-role">${escapeHtml(preview ? `${preview}${preview.length >= 96 ? '…' : ''}` : 'Street voice')}</span>
         </button>
       `;
     }).join('');
@@ -629,7 +651,7 @@ async function boot() {
           // Enrich with interview data fields the card renderer expects
           const iv = ivById.get(id);
           const meta = App.state.clusterMeta?.[String(pin.cluster)];
-          const full = { ...pin, role: iv?.role, lives: iv?.lives, would_live: iv?.would_live, cluster_name: meta?.name };
+          const full = { ...pin, cluster_name: meta?.name };
           showInterviewCard(full);
         }
       };
@@ -703,7 +725,7 @@ async function boot() {
       const different = dom && clusterTopName && dom.name !== clusterTopName;
       const voice = dom ? `
         <span class="fc-st-voice${different ? ' fc-st-voice-diff' : ''}"
-              title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — different from this cluster's dominant r/${clusterTopName}` : `voiced mostly in r/${dom.name}`)}">
+              title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — different from this topic's dominant r/${clusterTopName}` : `voiced mostly in r/${dom.name}`)}">
           ${different ? '<span class="fc-st-cross">⇋</span>' : ''}r/${escapeHtml(dom.name)}
         </span>` : '';
       // Full name + description in tooltip for the ellipsized fc-st-name.
@@ -721,10 +743,10 @@ async function boot() {
         </button>
       `;
     }).join('');
-    let sectionLabel = 'loudest stances here';
+    let sectionLabel = 'loudest points of view here';
     if (top[0]?.inSub && top[0]?.inRange) sectionLabel = `loudest in r/${_activeSubredditFilter.name} · this period`;
     else if (top[0]?.inSub) sectionLabel = `loudest in r/${_activeSubredditFilter.name}`;
-    else if (top[0]?.inRange) sectionLabel = 'loudest stances — this period';
+    else if (top[0]?.inRange) sectionLabel = 'loudest points of view — this period';
     fstances.innerHTML = `
       <div class="fc-stances-label">${sectionLabel}</div>
       <div class="fc-stances-list">${chips}</div>
@@ -742,9 +764,9 @@ async function boot() {
   // header crumbs are tiny; these are big enough to reliably hit.
   function renderFocusCrumbs(cl, gid) {
     if (!fcrumbs) return;
-    const parts = [`<button class="fc-up" data-level="all">← All clusters</button>`];
+    const parts = [`<button class="fc-up" data-level="all">← All topics</button>`];
     if (cl != null && gid != null) {
-      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Cluster ${cl}`;
+      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
       parts.push(`<button class="fc-up" data-level="cluster" style="color:${sphereColor(cl)}">${escapeHtml(clName)}</button>`);
     }
     fcrumbs.innerHTML = parts.join('<span class="fc-sep">›</span>');
@@ -836,9 +858,9 @@ async function boot() {
       const a = clusterAnchor(App.state, cl);
       if (a) globe.rotateTo(a.lat, a.lon, 1.9);
       const meta = App.state.clusterMeta[String(cl)];
-      ftitle.textContent = meta ? meta.name : `Cluster ${cl}`;
+      ftitle.textContent = meta ? meta.name : `Topic ${cl}`;
       ftitle.style.color = sphereColor(cl);
-      fkind.innerHTML = `cluster ${renderTrendBadge(getClusterSeries(cl))}`;
+      fkind.innerHTML = `topic ${renderTrendBadge(getClusterSeries(cl))}`;
       fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
       if (fspark) fspark.innerHTML = renderClusterSparkline(cl, sphereColor(cl));
       renderFocusCrumbs(cl, null);
@@ -881,21 +903,6 @@ async function boot() {
   // Hoisted here so the hover handlers below can check it; actual
   // keydown/keyup listeners live farther down in the sprout block.
   let _spaceDown = false;
-  // Hover-card on/off (user toggles with `h`). Default on.
-  let hoverCardEnabled = true;
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'h' && e.key !== 'H') return;
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    hoverCardEnabled = !hoverCardEnabled;
-    const hint = document.getElementById('hover-hint');
-    if (hint) hint.classList.toggle('off', !hoverCardEnabled);
-    if (!hoverCardEnabled) {
-      const tip = document.getElementById('point-tooltip');
-      tip?.classList.remove('visible');
-      tip?.classList.add('hidden');
-    }
-  });
 
   // ─── Globe hover → floating cursor tooltip + thread arcs ────────
   // Tooltip is a fixed-position card that follows the mouse. It replaces
@@ -918,9 +925,8 @@ async function boot() {
   globe.addEventListener('hover', async (ev) => {
     // Suppress the hover card entirely while SPACE is held — otherwise
     // moving the mouse around to read the sprouts keeps flashing
-    // tooltips at the cursor. Also suppress if the user has toggled it
-    // off via the `h` key.
-    if (_spaceDown || !hoverCardEnabled) { hideTooltip(); return; }
+    // tooltips at the cursor.
+    if (_spaceDown) { hideTooltip(); return; }
     const { idx, clientX, clientY } = ev.detail;
     if (idx < 0) {
       hideTooltip();
@@ -932,11 +938,11 @@ async function boot() {
       const title = (details.title || '').trim();
       const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
       const meta = App.state.clusterMeta[String(details.cluster)];
-      const catName = meta ? meta.name : `Cluster ${details.cluster}`;
+      const catName = meta ? meta.name : `Topic ${details.cluster}`;
       const clColor = sphereColor(details.cluster);
       pointTooltip.innerHTML = `
         <div class="hv-cluster" style="color:${clColor}">${catName}</div>
-        <div class="hv-meta">r/${details.subreddit} · ${details.type} · ${details.month} · score ${details.score}</div>
+        <div class="hv-meta">r/${escapeHtml(details.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
         ${title ? `<div class="hv-title">${escapeHtml(title)}</div>` : ''}
         <div class="hv-body">${escapeHtml(body)}</div>
       `;
@@ -1015,6 +1021,22 @@ async function boot() {
   const SPROUT_BODY_CAP = 240;
   const SPROUT_MARGIN_PX = 14;
   let activeSprouts = [];   // { idx, lat, lon, el, line, offX, offY, w, h }
+  /** Space keyup used to clear sprouts immediately; that removed the DOM before
+   *  a click if the user released Space to reach the mouse. Defer clear slightly. */
+  let sproutClearTimer = null;
+  function cancelSproutClearTimer() {
+    if (sproutClearTimer != null) {
+      clearTimeout(sproutClearTimer);
+      sproutClearTimer = null;
+    }
+  }
+  function scheduleSproutClear() {
+    cancelSproutClearTimer();
+    sproutClearTimer = setTimeout(() => {
+      sproutClearTimer = null;
+      sproutClear();
+    }, 400);
+  }
 
   // "In the current viewport" means both:
   //   1. forward-facing (facing > 0) — otherwise the point is on the back
@@ -1142,6 +1164,19 @@ async function boot() {
         el.href = d.permalink;
         el.target = '_blank';
         el.rel = 'noopener noreferrer';
+        el.addEventListener('click', () => {
+          cancelSproutClearTimer();
+          requestAnimationFrame(() => sproutClear());
+        });
+      } else {
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        el.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          cancelSproutClearTimer();
+          showDetailCard(d);
+          sproutClear();
+        });
       }
       // Border + thin glow in the cluster color so the caption reads as
       // belonging to the same cluster as its tether + halo.
@@ -1149,7 +1184,7 @@ async function boot() {
       el.style.boxShadow =
         `0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px ${anchorColorEarly}55, 0 0 12px ${anchorColorEarly}44`;
       el.innerHTML = `
-        <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(d.type || 'post')}${d.month ? ' · ' + escapeHtml(d.month) : ''}</div>
+        <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))}${d.month ? ' · ' + escapeHtml(d.month) : ''}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="sp-title">${escapeHtml(title)}</div>` : ''}
         ${bodyShort ? `<div class="sp-body">${escapeHtml(bodyShort)}</div>` : ''}
         ${hasLink ? '<span class="sp-link">↗</span>' : ''}
@@ -1285,10 +1320,40 @@ async function boot() {
       }
     }
   }
-  // Space key is intentionally not bound to anything on the
-  // visualization — it was previously used for a comment-sprout feature
-  // but that triggered accidentally during tour navigation and typing.
 
+  function _sproutSpaceAllowed(e) {
+    if (e.defaultPrevented) return false;
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    const ae = document.activeElement;
+    const t = ae?.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON' || t === 'A') return false;
+    if (ae?.isContentEditable) return false;
+    const pres = document.getElementById('presentation-title-overlay');
+    if (pres && !pres.classList.contains('hidden')) return false;
+    if (window.App?.tour?.isActive?.()) return false;
+    return true;
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    if (!_sproutSpaceAllowed(e)) return;
+    cancelSproutClearTimer();
+    e.preventDefault();
+    if (_spaceDown) return;
+    _spaceDown = true;
+    sproutSpawn();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    if (!_spaceDown) return;
+    _spaceDown = false;
+    scheduleSproutClear();
+  });
+  window.addEventListener('blur', () => {
+    if (!_spaceDown) return;
+    _spaceDown = false;
+    cancelSproutClearTimer();
+    sproutClear();
+  });
 
   globe.addEventListener('pinclick', (ev) => {
     showInterviewCard(ev.detail.pin);
@@ -1963,7 +2028,9 @@ async function boot() {
     const doc = App.state.positionAnchors[String(gid)];
     const pos = doc?.positions?.[posIdx];
     if (pos && pos.lat != null) {
-      globe.rotateTo(pos.lat, pos.lon, Math.min(globe.distanceTarget, 1.35));
+      // Fixed framing distance — do not fold scroll-zoom into _canonicalDistance
+      // or "Reset view" / Esc cannot zoom back out after the user scrolls in.
+      globe.rotateTo(pos.lat, pos.lon, 1.35);
       pulseAt(pos.lat, pos.lon, sphereColor(cl));
     }
     showPositionCard(cl, gid, posIdx);
@@ -2049,9 +2116,9 @@ async function boot() {
 
     el.innerHTML = `
       <button class="pc2-close" id="pc2-close" aria-label="Close">×</button>
-      <button class="pc2-copy-md" id="pc2-copy-md" aria-label="Copy as markdown" title="Copy stance summary as markdown (for notes / writeups)">📋</button>
+      <button class="pc2-copy-md" id="pc2-copy-md" aria-label="Copy as markdown" title="Copy point-of-view summary as markdown (for notes / writeups)">📋</button>
       <nav class="pc2-breadcrumbs">
-        <button class="pc2-up" data-level="all" aria-label="All clusters">All</button>
+        <button class="pc2-up" data-level="all" aria-label="All topics">All</button>
         <span class="pc2-sep">›</span>
         <button class="pc2-up" data-level="cluster" style="color:${color}">${escapeHtml(doc.cluster_name)}</button>
         <span class="pc2-sep">›</span>
@@ -2109,7 +2176,7 @@ async function boot() {
           `;
         }).join('');
         return `
-          <div class="pc2-sibling-label">other stances in this subtopic</div>
+          <div class="pc2-sibling-label">other points of view in this subtopic</div>
           <div class="pc2-siblings">${chips}</div>
         `;
       })()}
@@ -2286,7 +2353,7 @@ async function boot() {
     const sampleList = document.getElementById('pc2-sample-list');
     if (sampleList) {
       if (sampleIdxs.length === 0) {
-        sampleList.innerHTML = `<div class="pc2-sample-empty">No attributed posts — this position is largely inferred from the subtopic's top samples.</div>`;
+        sampleList.innerHTML = `<div class="pc2-sample-empty">No attributed posts — this point of view is largely inferred from the subtopic's top samples.</div>`;
       } else {
         for (const idx of sampleIdxs) {
           const placeholder = document.createElement('div');
@@ -2319,9 +2386,9 @@ async function boot() {
               placeholder.innerHTML = `
                 ${title ? `<div class="pc2-sample-title">${escapeHtml(title)}</div>` : ''}
                 <div class="pc2-sample-body">${escapeHtml(bodyClip)}</div>
-                <div class="pc2-sample-meta">r/${escapeHtml(d.subreddit)} · ${escapeHtml(d.month)}</div>
+                <div class="pc2-sample-meta">r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
               `;
-              placeholder.onclick = () => showDetailCard(d);
+              placeholder.onclick = () => openRedditThreadOrDetail(d);
               placeholder.style.cursor = 'pointer';
             } catch (e) {}
           })();
@@ -2465,7 +2532,7 @@ async function boot() {
     compassEl.addEventListener('click', () => {
       const t = currentFocusTarget();
       if (!t) return;
-      globe.rotateTo(t.lat, t.lon, Math.min(globe.distanceTarget, t.distance || globe.distanceTarget));
+      globe.rotateTo(t.lat, t.lon, t.distance);
       pulseAt(t.lat, t.lon, t.color);
     });
   }
@@ -2526,6 +2593,8 @@ async function boot() {
   }
 
   globe._onFrame = () => {
+    const rvHint = document.getElementById('reset-view-hint');
+    if (rvHint) rvHint.classList.toggle('rv-away', !!globe.isZoomedAwayFromCanonical?.());
     // Drive pins + captions + position flags every frame.
     globe._updatePinScreenPositions?.();
     updateZoomCaptions?.();
@@ -2688,6 +2757,20 @@ async function boot() {
     }
   });
 
+  function interviewQuotes(iv) {
+    if (!iv) return [];
+    const arr = iv.quotes;
+    if (Array.isArray(arr) && arr.length) return arr.map(x => String(x).trim()).filter(Boolean);
+    if (iv.quote) return [String(iv.quote).trim()].filter(Boolean);
+    return [];
+  }
+  function subtopicLineForPin(pin) {
+    if (pin == null || pin.sub == null) return '';
+    const subs = App.state.subMeta?.[String(pin.cluster)] || [];
+    const hit = subs.find(s => s.sub === pin.sub);
+    return hit?.name || '';
+  }
+
   // ─── Interview pins ───────────────────────────────────────────
   globe.setInterviewPins(App.state.interviewPins?.placements || [], App.state.interviews);
 
@@ -2701,7 +2784,7 @@ async function boot() {
     // Group by cluster (name → array of placements).
     const byCluster = new Map();
     for (const p of placements) {
-      const name = App.state.clusterMeta?.[String(p.cluster)]?.name || `Cluster ${p.cluster}`;
+      const name = App.state.clusterMeta?.[String(p.cluster)]?.name || `Topic ${p.cluster}`;
       if (!byCluster.has(p.cluster)) byCluster.set(p.cluster, { name, items: [] });
       byCluster.get(p.cluster).items.push(p);
     }
@@ -2727,18 +2810,17 @@ async function boot() {
         const el = document.createElement('div');
         el.className = 'voice-item';
         el.dataset.id = p.id;
-        const quote = (iv?.quote || '').trim();
-        const role = (iv?.role || 'Interview').trim();
+        const qs = interviewQuotes(iv);
+        const preview = (qs[0] || '').trim();
         const themes = (iv?.themes || []).slice(0, 4);
         const themeHtml = themes.length
-          ? `<div class="v-themes">${themes.map(t => `<button type="button" class="v-theme" data-theme="${escapeHtml(t)}" title="Search clusters + posts for: ${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>`
+          ? `<div class="v-themes">${themes.map(t => `<button type="button" class="v-theme" data-theme="${escapeHtml(t)}" title="Search topics + posts for: ${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>`
           : '';
         el.innerHTML = `
           <div class="v-head">
             <span class="v-id">${escapeHtml(p.id)}</span>
-            <span class="v-role">${escapeHtml(role)}</span>
           </div>
-          ${quote ? `<div class="v-quote">"${escapeHtml(quote)}"</div>` : ''}
+          ${preview ? `<div class="v-quote">"${escapeHtml(preview)}"</div>` : ''}
           ${themeHtml}
         `;
         el.onclick = (evt) => {
@@ -2755,10 +2837,9 @@ async function boot() {
             }
             return;
           }
-          globe.rotateTo(p.lat, p.lon, Math.min(globe.distanceTarget, 1.8));
+          globe.rotateTo(p.lat, p.lon, 1.8);
           const data = {
             ...p,
-            role: iv?.role, lives: iv?.lives, would_live: iv?.would_live,
             cluster_name: App.state.clusterMeta?.[String(p.cluster)]?.name,
           };
           voicesInline.classList.add('hidden');
@@ -2797,24 +2878,15 @@ async function boot() {
     const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id) || {};
     const cl = pin.cluster;
     const clColor = sphereColor(cl);
-    const clName = pin.cluster_name || (App.state.clusterMeta?.[String(cl)]?.name) || `Cluster ${cl}`;
-    const fields = [
-      ['Lives', iv.lives],
-      ['Would live', iv.would_live],
-      ['Work', iv.work],
-      ['Commute', iv.commute],
-      ['Would change', iv.change],
-    ].filter(([, v]) => v);
-    const title = iv.role ? escapeHtml(iv.role) : `Interview ${escapeHtml(pin.id)}`;
-    const body = [
-      iv.quote ? `“${iv.quote}”` : '',
-      iv.notes || '',
-      fields.map(([k, v]) => `${k}: ${v}`).join('\n'),
-    ].filter(Boolean).join('\n\n');
+    const clName = pin.cluster_name || (App.state.clusterMeta?.[String(cl)]?.name) || `Topic ${cl}`;
+    const subn = subtopicLineForPin(pin);
+    const topicHead = subn ? `${clName} · ${subn}` : clName;
+    const quotes = interviewQuotes(iv);
+    const body = quotes.map(q => `“${q}”`).join('\n\n');
     pointTooltip.innerHTML = `
       <div class="hv-cluster" style="color:${clColor}">${escapeHtml(pin.id)} · ${escapeHtml(clName)}</div>
-      <div class="hv-meta">Street interview${iv.interviewed_at ? ` · ${escapeHtml(iv.interviewed_at)}` : ''}</div>
-      <div class="hv-title">${title}</div>
+      <div class="hv-meta">${escapeHtml(topicHead)}</div>
+      <div class="hv-title">Street voice</div>
       ${body ? `<div class="hv-body">${escapeHtml(body)}</div>` : ''}
     `;
     pointTooltip.classList.remove('hidden');
@@ -2877,30 +2949,27 @@ async function boot() {
     hideInspectorEmpty();
     const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id);
     if (!iv) return;
-    const fields = [
-      ['Role', iv.role],
-      ['Interviewed', iv.interviewed_at],
-      ['Lives', iv.lives],
-      ['Would live', iv.would_live],
-      ['Work', iv.work],
-      ['Commute', iv.commute],
-      ['Would change', iv.change],
-    ].filter(([, v]) => v);
     const color = sphereColor(pin.cluster);
+    const topic = pin.cluster_name || App.state.clusterMeta?.[String(pin.cluster)]?.name || `Topic ${pin.cluster}`;
+    const subn = subtopicLineForPin(pin);
+    const topicLine = subn ? `${topic} · ${subn}` : topic;
+    const quotes = interviewQuotes(iv);
+    const quotesHtml = quotes.length
+      ? `<div class="ic-quotes">${quotes.map(q => `<blockquote class="ic-quote" style="border-left-color:${color}">“${escapeHtml(q)}”</blockquote>`).join('')}</div>`
+      : '';
+    const bridge =
+      `This pin sits among threads in “${topic}”${subn ? ` → “${subn}”` : ''} because the interview text matched language in this region of the map. It is one street voice, not a summary of every post here.`;
     ic.innerHTML = `
       <button class="ic-close" id="ic-close-btn" aria-label="Close">×</button>
       <div class="ic-head">
         <div class="ic-avatar" style="background:${color}">${escapeHtml(pin.id)}</div>
         <div class="ic-head-text">
-          <div class="ic-eyebrow">Street interview · pinned near ${escapeHtml(pin.cluster_name || 'the data')}</div>
-          <div class="ic-role">${escapeHtml(iv.role || '')}</div>
+          <div class="ic-eyebrow">Street voice</div>
+          <div class="ic-role">${escapeHtml(topicLine)}</div>
         </div>
       </div>
-      ${iv.quote ? `<blockquote class="ic-quote" style="border-left-color:${color}">“${escapeHtml(iv.quote)}”</blockquote>` : ''}
-      <dl class="ic-fields">
-        ${fields.map(([k, v]) => `<div class="ic-field"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
-      </dl>
-      ${iv.notes ? `<div class="ic-notes">${escapeHtml(iv.notes)}</div>` : ''}
+      ${quotesHtml}
+      <p class="ic-bridge">${escapeHtml(bridge)}</p>
       <div class="ic-reddit-row">
         <div class="ic-reddit-label">Nearest Reddit voice</div>
         <button class="ic-reddit-btn" id="ic-reddit-btn">open the pinned thread →</button>
@@ -2937,7 +3006,7 @@ async function boot() {
     document.getElementById('ic-close-btn').onclick = hideInterviewCard;
     document.getElementById('ic-reddit-btn').onclick = async () => {
       const d = await getPointDetails(App.state, pin.idx);
-      showDetailCard(d);
+      openRedditThreadOrDetail(d);
     };
     // Nearby-stance chips → drill to that position.
     ic.querySelectorAll('.ic-nearby-stance').forEach(btn => {
@@ -2951,8 +3020,7 @@ async function boot() {
     });
     // Rotate the globe so the pin faces the camera, then drop the pulse +
     // auto-load serendipitous nearby voices (zoom <1.65 triggers captions).
-    const targetDist = Math.min(globe.distanceTarget, 1.5);
-    globe.rotateTo(pin.lat, pin.lon, targetDist);
+    globe.rotateTo(pin.lat, pin.lon, 1.5);
     pulseAt(pin.lat, pin.lon, sphereColor(pin.cluster));
     setTimeout(() => { try { refreshCaptions(); } catch(e){} }, 560);
   }
@@ -3143,7 +3211,7 @@ async function boot() {
           const col = sphereColor(d.cluster);
           el.style.setProperty('--cap-color', col);
           line.setAttribute('stroke', col);
-          el.onclick = () => showDetailCard(d);
+          el.onclick = () => openRedditThreadOrDetail(d);
           setTimeout(() => {
             el.classList.add('show');
             line.setAttribute('stroke-opacity', '0.55');
@@ -3376,6 +3444,16 @@ async function boot() {
   const dcBody = document.getElementById('dc-body');
   const dcLink = document.getElementById('dc-link');
   document.getElementById('dc-close').onclick = () => dc.classList.add('hidden');
+  /** Prefer opening the Reddit thread in a new tab when we have a permalink. */
+  function openRedditThreadOrDetail(d) {
+    const raw = (d?.permalink || '').trim();
+    if (raw) {
+      const abs = /^https?:\/\//i.test(raw) ? raw : `https://www.reddit.com${raw.startsWith('/') ? '' : '/'}${raw}`;
+      window.open(abs, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    showDetailCard(d);
+  }
   function showDetailCard(d) {
     if (ic) ic.classList.add('hidden');
     focusCard.classList.add('hidden');
@@ -3383,8 +3461,11 @@ async function boot() {
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
-    dcMeta.textContent = `r/${d.subreddit} · ${d.type} · ${d.month} · score ${d.score}`;
-    dcTitle.textContent = d.title || (d.type === 'comment' ? '(comment)' : '(submission)');
+    {
+      const left = `r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}`;
+      dcMeta.innerHTML = `<span class="dc-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
+    }
+    dcTitle.textContent = (d.title || '').trim();
     dcBody.textContent = (d.body || '').slice(0, 1600);
     if (d.permalink) { dcLink.href = d.permalink; dcLink.style.display = ''; }
     else dcLink.style.display = 'none';
@@ -3689,13 +3770,13 @@ function renderPositionSparkline(gid, posIdx, color) {
   const key = `${gid}:${posIdx}`;
   const series = ph?.by_position?.[key];
   if (!series || !series.length) return renderSubSparkline(gid, color);
-  const html = renderSparklineBySeries(series, ph.labels || [], color, 'in stance');
+  const html = renderSparklineBySeries(series, ph.labels || [], color, 'in point of view');
   _scheduleBandUpdate();
   return html;
 }
 function renderClusterSparkline(cl, color) {
   const hist = window.App?.state?.timeHist;
-  const html = renderSparklineBySeries(hist?.by_cluster?.[String(cl)], hist?.labels || [], color, 'in cluster');
+  const html = renderSparklineBySeries(hist?.by_cluster?.[String(cl)], hist?.labels || [], color, 'in topic');
   _scheduleBandUpdate();
   return html;
 }
@@ -3922,7 +4003,7 @@ function renderPositionSubreddits(gid, posIdx, color) {
   const subCount = arr.length > 5 ? ` <span class="pc2-sr-more">+${arr.length - 5} more</span>` : '';
   return `
     <div class="pc2-sr-section">
-      <div class="pc2-kw-label">who voiced this stance${subCount}</div>
+      <div class="pc2-kw-label">who voiced this point of view${subCount}</div>
       <div class="pc2-sr-bar">${segs}${otherSeg}</div>
       <div class="pc2-sr-labels">${labels}</div>
     </div>

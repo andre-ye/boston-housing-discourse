@@ -1,6 +1,6 @@
 // Guided tour — Atlantic-style narrative opener + deep drill-down
-// across three clusters, each entering cluster → sub → position tier.
-// Version 254.
+// across three clusters, each entering cluster → sub → point-of-view tier.
+// Version 279 — copy aligned with nav + insp intro + time filter UI.
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
 
@@ -28,57 +28,55 @@ const BEATS = [
   // ── Step 0: hero ──────────────────────────────────────────────────────
   {
     kind: 'hero',
+    eyebrow: 'A Social Sphere of Boston Discourse',
+    headline: 'The Boston Social Sphere Discourse of Reddit',
+    lede:
+      'Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015\u20132025, grouped by topics and points of view',
   },
 
   // ── Step 1: methodology part 1 — the street interviews ──────────────
   {
     kind: 'interstitial',
-    eyebrow: 'How we got here',
-    title: 'We started by talking to 26 people.',
+    eyebrow: 'A dash of qualitative: Touching grass and talking to people',
+    title: 'We started by talking to 26 people',
     prose:
-      'We stood at MBTA stops in Dorchester, Quincy, and Braintree, along the ' +
-      'Commuter Rail lines, and on the streets of Cambridge. We asked them about ' +
-      'housing affordability and how they commute. Their answers were the seed \u2014 ' +
-      'the hunches about what Bostonians were already worrying over.',
+      'We stood at MBTA stops, commuter rail platforms, and on sidewalks around the ' +
+      'metro area. We asked people about ' +
+      'where they live and their commute.',
   },
 
   // ── Step 2: methodology part 2 — scaling out to Reddit ───────────────
   {
     kind: 'interstitial',
-    eyebrow: 'Then we went wider',
-    title: 'Four hundred and twenty-two thousand more voices.',
+    eyebrow: 'A bucket of quantitative: Scraping a decade of Reddit discourse',
+    title: 'We then gathered 422k+ voices on Reddit',
     prose:
-      'Those street conversations were breadcrumbs. To see where the conversations ' +
-      'actually ran, we scraped 422,000+ Reddit posts and comments from 2015 to ' +
+      'To see how the conversations we had matched up with what was being said online, we scraped 422,000+ Reddit posts and comments from 2015 to ' +
       '2025 \u2014 housing, transit, city life. Then we laid them out so neighboring ' +
-      'points argue about the same thing.',
+      'dots (posts or comments) sit near threads on related topics.',
   },
+
+    // ── Step 4: interstitial — how to read + what it's for ───────────────
+    {
+      kind: 'interstitial',
+      eyebrow: 'How to read it',
+      title: 'A sphere of voices.',
+      prose:
+      'Each dot is a post or comment. Color encodes topic; the left nav moves from topics \u2192 subtopics \u2192 points of view. ' +
+        'The P1\u2013P18 pins are people we interviewed, placed near the regions their language matched. ' +
+        'On the globe, hold Space for five random posts or comments from what is visible; press t or click \u23f1 (bottom-right) to filter by time.',
+    },
 
   // ── Step 3: interstitial — why a sphere ──────────────────────────────
   {
     kind: 'interstitial',
-    eyebrow: 'Why a sphere',
-    title: 'No center, no edges.',
+    eyebrow: 'No center, no edges',
+    title: 'Why a sphere?',
     prose:
-      'A flat map would have to pick a cluster to put in the middle, and for a ' +
-      'corpus this varied no center was defensible. A sphere refuses the choice. ' +
-      'Rotate in any direction for as long as you want \u2014 nothing ends, nothing is ' +
-      'in a corner.',
+      'There is no center or edges so no discourse is cornered to a particular realm. A sphere also links related threads in space so browsing feels more serendipitous.',
   },
 
-  // ── Step 4: interstitial — how to read + what it's for ───────────────
-  {
-    kind: 'interstitial',
-    eyebrow: 'How to read it',
-    title: 'A sphere of voices.',
-    prose:
-      'Each point is a Reddit post; points near each other argue about similar ' +
-      'things. The P1\u2013P18 pins are the real Bostonians we interviewed, placed ' +
-      'next to the posts that sound most like them. If you live here, it\u2019s a ' +
-      'place to orient your own concerns against everyone else\u2019s. If you make ' +
-      'policy, it\u2019s an aggregation of what actually comes up \u2014 in their words, ' +
-      'not in a poll.',
-  },
+
 
   // ── Steps 2–4: Gentrification & Rent Control (cl=32) ─────────────────
   {
@@ -88,9 +86,9 @@ const BEATS = [
     eyebrow: 'Who gets to live here',
     title: 'Rent control, zoning, and housing supply',
     prose:
-      'Cluster 32 — "Gentrification & Rent Control" — holds a decade of argument ' +
+      'Topic 32 — "Gentrification & Rent Control" — holds a decade of argument ' +
       'about what Boston\'s housing crisis actually is. The globe is rotating to ' +
-      'bring it into focus. Every neighboring point is a thread on the same fault line.',
+      'bring it into focus. Neighboring dots are posts or comments on the same fault line.',
     pullquotes: [
       'Market supply can\'t match demand here.',
       'Rent control is good for incumbents and bad for newcomers.',
@@ -106,7 +104,7 @@ const BEATS = [
     title: 'The rent control fault line',
     prose:
       'The globe zooms into "Rent Stabilization Ideas" — one subtopic within ' +
-      'the cluster. Each point here is a post taking a side: for rent control, ' +
+      'the topic. Each point here is a post or comment taking a side: for rent control, ' +
       'against it, or threading some nuanced middle path. Hover a point to read ' +
       'the actual thread.',
     pullquotes: [
@@ -119,8 +117,8 @@ const BEATS = [
     cl: 32,
     gid: 131,           // Rent Stabilization Ideas
     posIdx: 2,          // "Shortage & Disincentive" — 756 posts
-    step: 'Stop 1 of 3 — position',
-    eyebrow: 'Position: Shortage & Disincentive',
+    step: 'Stop 1 of 3 — point of view',
+    eyebrow: 'Point of view: Shortage & Disincentive',
     title: 'Rent control makes the shortage worse',
     prose:
       'This specific stance — 756 posts — argues rent control shrinks supply ' +
@@ -141,7 +139,7 @@ const BEATS = [
     eyebrow: 'Once you\'re inside the door',
     title: 'Heating, repairs, and landlord obligations',
     prose:
-      'The globe swings to cluster 8 — "Tenant Rights & Landlords." ' +
+      'The globe swings to topic 8 — "Tenant Rights & Landlords." ' +
       'This is the day-to-day texture of renting in Boston: what counts as an ' +
       'emergency, how cold the apartment has to get before you can call the city, ' +
       'and the quiet infrastructure of who owes what.',
@@ -159,7 +157,7 @@ const BEATS = [
     eyebrow: 'Subtopic: Utilities & Heat Disputes',
     title: 'When the heat goes out',
     prose:
-      'Drill into "Utilities & Heat Disputes." These posts cluster together ' +
+      'Drill into "Utilities & Heat Disputes." These posts group together ' +
       'because they share the same legal question: does the landlord have to act, ' +
       'and by when? The point cloud tightens as the camera closes in on this pocket.',
     pullquotes: [
@@ -172,8 +170,8 @@ const BEATS = [
     cl: 8,
     gid: 30,           // Utilities & Heat Disputes
     posIdx: 5,         // "Heating System Issues & Repairs" — 309 posts
-    step: 'Stop 2 of 3 — position',
-    eyebrow: 'Position: Heating System Issues & Repairs',
+    step: 'Stop 2 of 3 — point of view',
+    eyebrow: 'Point of view: Heating System Issues & Repairs',
     title: 'Heat must be provided in winter',
     prose:
       '309 posts assert a simple legal fact: during winter, Massachusetts law ' +
@@ -193,9 +191,9 @@ const BEATS = [
     eyebrow: 'The unexpected argument',
     title: 'Where the loudest fights are about bike lanes',
     prose:
-      'The third cluster is a surprise. Nothing polarizes Boston Reddit quite ' +
+      'The third topic is a surprise. Nothing polarizes Boston Reddit quite ' +
       'like a white stripe painted on Commonwealth Ave. The globe has crossed to ' +
-      'a completely different region — cluster 41, "Pedestrian & Cyclist Safety." ' +
+      'a completely different region — topic 41, "Pedestrian & Cyclist Safety." ' +
       'Who kills whom. Who runs red lights. Ghost bikes, Vision Zero, right-hooks ' +
       'at Porter.',
     pullquotes: [
@@ -226,8 +224,8 @@ const BEATS = [
     cl: 41,
     gid: 170,          // Pedestrian Deaths & Blame
     posIdx: 3,         // "Cyclists Unfairly Blamed" — 570 posts
-    step: 'Stop 3 of 3 — position',
-    eyebrow: 'Position: Cyclists Unfairly Blamed',
+    step: 'Stop 3 of 3 — point of view',
+    eyebrow: 'Point of view: Cyclists Unfairly Blamed',
     title: 'Society scapegoats cyclists',
     prose:
       '570 posts push back against the framing that cyclists are the problem. ' +
@@ -240,34 +238,33 @@ const BEATS = [
     ],
   },
 
-  // ── Step 10: pin spotlight — P2, legal assistant on the Quincy ferry ─
+  // ── Step 10: pin spotlight — P2, ferry commuter (anonymized summary) ─
   {
     kind: 'pin',
     pinId: 'P2',
     eyebrow: 'One of the interviews',
-    title: 'Half an hour of pure delight.',
+    title: 'A calm commute on the water.',
     prose:
-      'P2 is a legal assistant retiring next week. She lives in Squantum, ' +
-      'takes the ferry from Quincy into downtown, and calls that commute ' +
-      'half an hour of pure delight. We pinned her and seventeen other ' +
-      'real Bostonians we interviewed on the street next to the posts that ' +
-      'sound most like them. Click any P-pin to read the rest of what they said.',
+      'One person we spoke with described a multimodal commute where a water ' +
+      'leg felt calmer than the rest. We pinned them and seventeen other voices ' +
+      'next to the topic regions their language matched. Click any P-pin for ' +
+      'short lines that echo that nearby Reddit conversation—no bios, no addresses.',
     pullquotes: [
-      'Ferry to downtown \u2014 half an hour of pure delight.',
+      'The water commute feels like the calm part of the day.',
     ],
   },
 
   // ── Step 11: outro ─────────────────────────────────────────────────────
   {
     kind: 'outro',
-    eyebrow: 'Now it\'s yours',
-    title: 'Take your time.',
+    eyebrow: 'Now it\'s your turn',
+    title: 'Go forth and explore',
     prose:
-      'The sphere holds 422,114 posts from 2015 to 2025. ' +
+      'The sphere holds 422k voices (posts and comments) from 2015 to 2025. ' +
       'Hover any point to read the thread. Scroll to zoom. ' +
-      'Click a cluster bar on the left to drill in. ' +
-      'Use [ ] to cycle positions, { } for subtopics, t for the timeline, ' +
-      '? for the full key reference.',
+      'Click a topic bar on the left to drill into subtopics and points of view. ' +
+      'Use [ ] to cycle points of view, { } for subtopics; t or \u23f1 (bottom-right) opens the time filter. ' +
+      'Press ? for the full shortcut list.',
   },
 ];
 
@@ -339,10 +336,18 @@ export function createTour({ globe, App, nav }) {
   }
 
   // ── Render functions ────────────────────────────────────────────────
-  function renderHero() {
+  function renderHero(beat) {
     showOnly('hero');
     document.body.classList.add('tour-at-hero');
     document.body.classList.add('tour-chrome-off');
+
+    const heroEyebrowEl = heroEl?.querySelector('.tour-eyebrow');
+    const heroHeadlineEl = heroEl?.querySelector('.tour-headline');
+    const heroLedeEl = heroEl?.querySelector('.tour-lede');
+    if (heroEyebrowEl) heroEyebrowEl.textContent = beat?.eyebrow || '';
+    if (heroHeadlineEl) heroHeadlineEl.textContent = beat?.headline || '';
+    if (heroLedeEl) heroLedeEl.textContent = beat?.lede || '';
+
     globe.rotateTo(15, -25, 3.0);
     startHeroSpin();
   }
@@ -368,9 +373,9 @@ export function createTour({ globe, App, nav }) {
         .join('');
     }
 
-    // Buttons — hide Back on first card; change Next label on last card before outro
+    // Buttons — show Back on every card so users can return to hero.
     const isLastCard = (idx === BEATS.length - 2);
-    btnPrev?.classList.toggle('hidden', idx <= 1);
+    btnPrev?.classList.toggle('hidden', idx <= 0);
     if (btnNext) {
       btnNext.textContent = isLastCard ? 'Finish tour \u2192' : 'Next \u2192';
     }
@@ -452,7 +457,7 @@ export function createTour({ globe, App, nav }) {
     document.body.classList.toggle('tour-chrome-off', chromeOff);
 
     if (beat.kind === 'hero') {
-      renderHero();
+      renderHero(beat);
     } else if (beat.kind === 'outro') {
       renderOutro(beat);
       try { globe.rotateTo(15, -25, 3.0); } catch {}
@@ -477,7 +482,10 @@ export function createTour({ globe, App, nav }) {
   }
 
   function close() {
-    if (!active) return;
+    // Inline bootstrap in index.html can show the overlay before `start()`
+    // sets `active`; Esc must still dismiss. Also allow idempotent close.
+    const overlayVisible = overlay && !overlay.classList.contains('hidden');
+    if (!active && !overlayVisible) return;
     active = false;
     stopHeroSpin();
     overlay.classList.add('hidden');
@@ -498,7 +506,7 @@ export function createTour({ globe, App, nav }) {
   }
 
   function prev() {
-    if (idx <= 1) return; // step 0 is hero; don't go behind step 1
+    if (idx <= 0) return;
     idx -= 1;
     render();
   }
@@ -512,13 +520,24 @@ export function createTour({ globe, App, nav }) {
   btnExplore?.addEventListener('click', close);
 
   // ── Keyboard ────────────────────────────────────────────────────────
+  // Escape: window **capture** so we beat the search box handler (which only
+  // clears the query) and any bubble-phase listeners; overlay bootstrap gap
+  // is covered via `overlayVisible` + close() idempotency.
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const overlayVisible = !overlay.classList.contains('hidden');
+    if (!active && !overlayVisible) return;
+    close();
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   document.addEventListener('keydown', (e) => {
     if (!active) return;
-    if (e.key === 'Escape')                        { close(); e.preventDefault(); }
-    else if (e.key === 'ArrowRight') { next(); e.preventDefault(); }
-    // Space is intentionally NOT bound — it should have no effect on the viz.
-    else if (e.key === 'ArrowLeft')                { prev(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { next(); e.preventDefault(); }
+    // Space is handled in main.js (sprouts) only when the tour is not active.
+    else if (e.key === 'ArrowLeft') { prev(); e.preventDefault(); }
   });
 
-  return { start, close, isActive: () => active };
+  return { start, close, isActive: () => active || !overlay.classList.contains('hidden') };
 }

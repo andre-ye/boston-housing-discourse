@@ -223,6 +223,28 @@ export async function loadData(onProgress) {
   App.loadingMsg('Loading chunk manifest…');
   const manifest = await fetchJSON('tsne_chunks/manifest.json');
 
+  // 2D grid cell LLM summaries — searchable "sentiment" layer alongside topics.
+  let gridCells = null;
+  try {
+    const [gp, gcc] = await Promise.all([
+      fetchJSON('tsne_chunks/grid_propositions.json'),
+      fetchJSON('tsne_chunks/grid_cell_clusters.json'),
+    ]);
+    const cells = gp?.cells;
+    if (cells && gcc && typeof gcc === 'object') {
+      gridCells = cells.map((cell) => {
+        const meta = gcc[cell.id] || {};
+        return {
+          id: cell.id,
+          prop: (cell.prop || '').trim(),
+          n: cell.n,
+          dominant_cl: meta.dominant_cl,
+          top_sub_gid: meta.top_sub_gid,
+        };
+      }).filter((c) => c.prop);
+    }
+  } catch (e) { /* optional */ }
+
   const state = {
     N: sphere.N,
     coords: sphere.coords,     // Float32 [lat, lon] interleaved
@@ -244,6 +266,7 @@ export async function loadData(onProgress) {
     monthAssignments,          // Uint8Array of length N, month idx per point
     monthLabels,               // [label, label, ...]
     positionTimeHist,          // { labels: [], by_position: { "<gid>:<pos>": [counts] } }
+    gridCells,                 // [{ id, prop, n, dominant_cl, top_sub_gid }] or null
     manifest,
     // lazy-loaded per-chunk payload cache, keyed by chunk index → promise
     chunkCache: new Map(),
@@ -365,7 +388,10 @@ export function summarizeClusters(state) {
   list.sort((a, b) => b.count - a.count);
   const total = list.reduce((s, d) => s + d.count, 0);
   for (const d of list) d.pct = d.count / total;
-  return { list, total };
+  // Omit micro-topics from the nav L1 stack (still on the globe; deep links work).
+  const MIN_TOPIC_PCT = 0.001; // 0.1% of corpus
+  const filtered = list.filter((d) => d.pct >= MIN_TOPIC_PCT);
+  return { list: filtered, total };
 }
 
 // Per-cluster subcluster counts.

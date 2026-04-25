@@ -6,7 +6,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   :root {
+    /* Single canonical page black (rgb components for rgba() overlays). */
     --bg: #0a0c12;
+    --bg-r: 10;
+    --bg-g: 12;
+    --bg-b: 18;
     --bg-soft: #11141c;
     --fg: #dce3ef;
     --fg-dim: #8794ab;
@@ -27,6 +31,7 @@
   #app {
     position: relative;
     height: 100vh; width: 100vw;
+    background: var(--bg);
   }
   :root {
     --nav-w: 340px;
@@ -60,7 +65,7 @@
     min-height: 0;
   }
   /* Right-side detail panel — shows what the current focus (cluster /
-     subtopic / position) is about and lists the linked posts + comments. */
+     subtopic / point of view) is about and lists the linked posts + comments. */
   #detail {
     position: absolute;
     top: 0; right: 0; bottom: 0;
@@ -414,7 +419,7 @@
     -webkit-line-clamp: 2;
     white-space: normal;
   }
-  /* L3 (Positions) labels are sentence-form and want more room. Allow up
+  /* L3 (points of view) labels are sentence-form and want more room. Allow up
      to 6 lines and don't truncate with an ellipsis on that column. */
   #col-l3 .bar-seg .label {
     -webkit-line-clamp: 6 !important;
@@ -436,7 +441,7 @@
   .bar-seg.active .pct { opacity: 1; color: rgba(20,24,35,0.95); }
   .bar-seg.faded { opacity: 0.28; }
   /* Trend glyph on bar segments — especially useful on L3 so surging
-     positions surface at the navigation level, before any card is open. */
+     points of view surface at the navigation level, before any card is open. */
   .bar-seg .bar-trend {
     position: absolute; right: 4px; top: 3px;
     z-index: 2;
@@ -467,7 +472,7 @@
     position: relative;
     background:
       radial-gradient(ellipse 60% 55% at 62% 48%, rgba(124,240,201,0.04) 0%, transparent 60%),
-      radial-gradient(ellipse at center, #0e1220 0%, #05060b 70%);
+      var(--bg);
     overflow: hidden;
   }
   #globe-root::after {
@@ -662,7 +667,7 @@
 
   /* Top-right hints — tell the user about the SHIFT shortcut + how to
      open a Reddit thread. */
-  #space-hint, #shift-hint, #link-hint {
+  #space-hint, #shift-hint, #link-hint, #reset-view-hint {
     position: absolute;
     right: 18px;
     z-index: 8;
@@ -675,10 +680,9 @@
     user-select: none;
     transition: opacity 0.18s ease, transform 0.18s ease;
   }
-  /* When a floating card is open at top-right, the hints sit directly
-     underneath it — fade them out so the card owns that stacking region
-     (Gestalt figure-ground). body.has-floating-card is toggled by the
-     card-show/hide paths. */
+  /* When a floating card is open at top-right, fade the shortcut hints —
+     they sit under the inspector cards. Keep "Reset view" usable: it only
+     snaps zoom and must stay above the topic card (z-index) and clickable. */
   body.has-floating-card #space-hint,
   body.has-floating-card #shift-hint,
   body.has-floating-card #link-hint {
@@ -687,18 +691,50 @@
     transform: translateX(6px);
   }
   #space-hint, #shift-hint, #link-hint { pointer-events: none; }
-  /* Space is unbound now — hide that hint. */
-  #space-hint { display: none; }
-  #shift-hint { top: 16px; }
-  #hover-hint { top: 58px; }
-  #link-hint { top: 100px; }
-  #hover-hint.off .sh-text { text-decoration: line-through; opacity: 0.55; }
+  #space-hint { top: 16px; }
+  #shift-hint { top: 54px; }
+  #link-hint { top: 96px; }
+  /* Clickable — sits in pointer-events:none overlay; child uses auto. */
+  #reset-view-hint {
+    top: 138px;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    /* Above body > #focus-card et al. (z-index 13) so zoom reset works in-topic. */
+    z-index: 18;
+    pointer-events: auto;
+    opacity: 0.38;
+    border-color: rgba(255,255,255,0.06);
+    transition: opacity 0.2s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  #reset-view-hint.rv-away {
+    opacity: 1;
+    border-color: rgba(124,240,201,0.22);
+    background: rgba(14,22,24,0.88);
+  }
+  #reset-view-hint:hover,
+  #reset-view-hint:focus-visible {
+    opacity: 1;
+    border-color: rgba(124,240,201,0.45);
+    background: rgba(124,240,201,0.1);
+    outline: none;
+  }
+  #reset-view-hint .rv-label {
+    font: 500 11px 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.15px;
+  }
   #link-hint .sh-plus {
     font: 600 11px 'Inter', system-ui, sans-serif;
     color: rgba(255,255,255,0.45);
     margin: 0 2px;
   }
-  #space-hint .sh-key {
+  #space-hint .sh-key,
+  #shift-hint .sh-key,
+  #link-hint .sh-key,
+  #reset-view-hint .sh-key {
     font: 600 11px 'Inter', system-ui, sans-serif;
     color: #fff;
     letter-spacing: 0.5px;
@@ -713,6 +749,7 @@
       inset 0 -2px 0 rgba(0,0,0,0.5),
       0 1px 2px rgba(0,0,0,0.5);
   }
+  #reset-view-hint .sh-key { min-width: 0; padding: 4px 10px; font-size: 10px; }
   #space-hint .sh-text {
     font: 500 12px 'Inter', system-ui, sans-serif;
     color: #fff;
@@ -869,7 +906,7 @@
   #focus-card .meta {
     font-size: 11px; color: var(--fg-dim);
   }
-  /* Back-navigation breadcrumbs inside focus + position cards. Big enough
+  /* Back-navigation breadcrumbs inside focus + point-of-view cards. Big enough
      to reliably click, colored for continuity. */
   .fc-breadcrumbs, .pc2-breadcrumbs {
     display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
@@ -1403,7 +1440,7 @@
     100% { transform: scale(2.3); opacity: 0;    }
   }
   /* Attention-grabbing ring that fires once when we rotate to a target
-     (pin, position flag, or sub). Draws a fading halo so the user's eye
+     (pin, L3 flag, or sub). Draws a fading halo so the user's eye
      follows the globe to the destination. */
   .landing-pulse {
     position: absolute;
@@ -1510,6 +1547,19 @@
     border-left: 3px solid var(--accent);
     color: var(--fg);
     font: italic 400 14px/1.5 'Source Serif Pro', Georgia, serif;
+  }
+  .interview-card .ic-quotes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .interview-card .ic-quotes .ic-quote { margin: 0; }
+  .interview-card .ic-bridge {
+    margin: 0 0 14px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--fg-dim);
   }
   .interview-card .ic-fields {
     margin: 0 0 12px;
@@ -1765,7 +1815,7 @@
     color: var(--accent);
   }
 
-  /* ─── Position flags (sub-sub layer) ─────────────────────── */
+  /* ─── L3 / point-of-view flags (sub-sub layer) ─────────────── */
   .pos-flag {
     position: absolute; left: 0; top: 0;
     transform: translate(0, 0);
@@ -1831,7 +1881,7 @@
     box-shadow: 0 0 0 2px #fff, 0 0 8px currentColor;
   }
 
-  /* ─── Position card ─────────────────────────────────────── */
+  /* ─── Point-of-view card ────────────────────────────────── */
   .position-card {
     position: absolute;
     right: 22px; top: 22px;
@@ -2022,7 +2072,7 @@
     text-transform: uppercase;
     color: var(--fg-mute);
   }
-  /* Per-position subreddit breakdown — answers "who voiced this stance?" */
+  /* Per–point-of-view subreddit breakdown — answers "who voiced this stance?" */
   .position-card .pc2-sr-section { margin-top: 12px; }
   .position-card .pc2-sr-more {
     color: var(--fg-mute); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 9.5px;
@@ -2120,7 +2170,7 @@
   .position-card .pc2-resonant-diff {
     border-color: rgba(255,160,100,0.22);
   }
-  /* Resonant chips surface positions in OTHER subs sharing keywords.
+  /* Resonant chips surface points of view in OTHER subs sharing keywords.
      Two-part pill: stance name + which subtopic it lives in. */
   .position-card .pc2-resonant {
     display: inline-flex; align-items: center; gap: 8px;
@@ -2278,7 +2328,7 @@
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     flex-direction: column; gap: 12px;
-    background: rgba(5,6,11,0.85);
+    background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.85);
     z-index: 20;
     transition: opacity 0.3s;
   }
@@ -2433,9 +2483,98 @@
     from { transform: translateX(-50%) translateY(4px); opacity: 0; }
     to   { transform: translateX(-50%) translateY(0);   opacity: 1; }
   }
+
+  /* ── Class presentation title slide (before guided tour) ─────────── */
+  .presentation-title-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+             max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    background: var(--bg);
+    border: none;
+    pointer-events: auto;
+    animation: presentation-title-in 0.5s ease;
+  }
+  .presentation-title-overlay.hidden { display: none; }
+  @keyframes presentation-title-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .presentation-title-inner {
+    max-width: 520px;
+    width: 100%;
+    text-align: center;
+    color: #f4ede1;
+  }
+  .presentation-title-inner h1 {
+    font: 400 clamp(28px, 5vw, 40px)/1.15 'Source Serif Pro', Georgia, serif;
+    color: #fff;
+    margin: 0 0 12px;
+    letter-spacing: -0.5px;
+  }
+  .presentation-title-inner .presentation-team-name {
+    font: 600 14px/1.3 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.5px;
+    color: rgba(244,237,225,0.92);
+    margin: 28px 0 10px;
+  }
+  .presentation-title-inner .presentation-team-list {
+    list-style: none;
+    margin: 0 0 28px;
+    padding: 0;
+    font: 400 15px/1.55 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.82);
+  }
+  .presentation-title-inner .presentation-team-list li + li {
+    margin-top: 4px;
+  }
+  .presentation-title-btn {
+    font: 600 11px/1 'Inter', system-ui, sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 14px 28px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid rgba(124,240,201,0.45);
+    background: rgba(124,240,201,0.14);
+    color: #e8fff8;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .presentation-title-btn:hover {
+    background: rgba(124,240,201,0.26);
+    border-color: rgba(124,240,201,0.7);
+    color: #fff;
+  }
+  .presentation-title-hint {
+    margin: 14px 0 0;
+    font: 400 11px/1.4 'Inter', system-ui, sans-serif;
+    color: rgba(244,237,225,0.38);
+  }
+  .presentation-title-hint kbd {
+    font: 600 10px 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: rgba(244,237,225,0.65);
+  }
+  @media (max-width: 560px) {
+    .presentation-title-inner .presentation-team-list {
+      font-size: 14px;
+    }
+    .presentation-title-btn {
+      width: 100%;
+      max-width: 320px;
+    }
+  }
+
   .help-overlay {
     position: fixed; inset: 0;
-    background: rgba(5,6,11,0.72);
+    background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.72);
     backdrop-filter: blur(6px);
     display: flex; align-items: center; justify-content: center;
     z-index: 100;
@@ -2452,13 +2591,10 @@
   }
   .tour-overlay.hidden { display: none; }
 
-  /* While the hero is up, make the page a uniform pitch-black. The globe
-     canvas is alpha-cleared so whatever's behind it shows through — by
-     matching text-side and globe-side to the same black, the hero reads
-     as text floating on the same ground as the sphere rather than as a
-     text panel pushed up against the globe. */
+  /* While the hero is up, match body to --bg so the cleared canvas reads
+     as the same ground as the rest of the app (no #000 seam). */
   body.tour-active.tour-at-hero {
-    background: #000 !important;
+    background: var(--bg) !important;
   }
 
   /* ── Hero: split layout — left text / right live globe ─────────── */
@@ -2646,7 +2782,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(5,6,11,0.82);
+    background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.82);
     backdrop-filter: blur(12px);
     pointer-events: auto;
     animation: tour-hero-in 0.5s ease;
@@ -2709,8 +2845,8 @@
   }
   /* Once the tour closes entirely, snap the keyboard hints back to full
      opacity so they don't stay stuck from the transition. */
+  body:not(.tour-active) #space-hint,
   body:not(.tour-active) #shift-hint,
-  body:not(.tour-active) #hover-hint,
   body:not(.tour-active) #link-hint {
     opacity: 1 !important;
   }
@@ -2746,8 +2882,8 @@
   body.tour-active.tour-chrome-off .ui-topbar,
   body.tour-active.tour-chrome-off #space-hint,
   body.tour-active.tour-chrome-off #shift-hint,
-  body.tour-active.tour-chrome-off #hover-hint,
   body.tour-active.tour-chrome-off #link-hint,
+  body.tour-active.tour-chrome-off #reset-view-hint,
   body.tour-active.tour-chrome-off #hover-halo,
   body.tour-active.tour-chrome-off #loading {
     opacity: 0 !important;
@@ -3163,6 +3299,20 @@
     word-wrap: break-word;
   }
 
+  /* Reddit net score on the same line as r/ · kind · date */
+  .reddit-score-inline {
+    font: 700 11px/1 'Inter', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .reddit-score-inline.is-positive { color: #ff7a4d; }
+  .reddit-score-inline.is-negative { color: #9db7ff; }
+  .reddit-score-inline.is-zero { color: var(--fg-mute); }
+  .sprout .sp-meta .reddit-score-inline {
+    font-size: 10px;
+    text-transform: none;
+  }
+
   /* ─── Neutralize the old absolute-positioned cards ─────────── */
   /* They now live inside #insp-body and stack naturally. */
   #focus-card,
@@ -3226,7 +3376,8 @@
   /* Detail-card (Reddit post) inside inspector */
   #detail-card { max-height: none !important; overflow: visible !important; }
   #detail-card.hidden { display: none; }
-  #detail-card .dc-meta { font-size: 10px; letter-spacing: 0.4px; color: var(--fg-mute); text-transform: uppercase; margin-bottom: 4px; }
+  #detail-card .dc-meta { font-size: 10px; letter-spacing: 0.4px; color: var(--fg-mute); margin-bottom: 4px; }
+  #detail-card .dc-meta .dc-meta-text { text-transform: uppercase; }
   #detail-card .dc-title { font: 600 14px/1.3 'Inter', system-ui, sans-serif; margin: 0 0 8px; color: var(--fg); }
   #detail-card .dc-body { font-size: 12px; line-height: 1.5; color: var(--fg-dim); white-space: pre-wrap; margin-bottom: 10px; }
   #detail-card .dc-link { font-size: 11px; color: var(--accent); border-bottom: 1px dashed currentColor; }
@@ -3269,7 +3420,7 @@
   #interview-card .ic-reddit-label { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 4px; }
   #interview-card .ic-reddit-btn { background: none; border: none; color: var(--accent); font-size: 12px; padding: 2px 0; cursor: pointer; border-bottom: 1px dashed currentColor; }
 
-  /* Position card inside inspector */
+  /* Point-of-view card inside inspector */
   #position-card { max-height: none !important; overflow: visible !important; }
   #position-card.hidden { display: none; }
   #position-card .pc2-eyebrow { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
@@ -3556,19 +3707,19 @@
 <div id="app">
   <aside id="nav">
     <div id="nav-header">
-      <h1>A globe of Boston on Reddit</h1>
-      <div class="sub">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, clustered by topic and stance. A view into what Bostonians are actually worried about &mdash; in their own words, not as polls or headlines frame it.</div>
-      <div class="sub-stats">422 k voices &middot; 49 clusters &middot; 194 subtopics &middot; 1.2 k positions</div>
+      <h1>The Boston Social Sphere Discourse of Reddit</h1>
+      <div class="sub">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</div>
+      <div class="sub-stats">422 k voices &middot; 49 topics &middot; 194 subtopics &middot; 1.2 k points of view</div>
       <div id="search-wrap">
-        <input id="search-input" type="search" autocomplete="off" spellcheck="false"
-               placeholder="Search  (/  ·  /regex/  ·  sub:  cl:  r/  text:  -exclude)" />
+        <input id="search-input" type="text" inputmode="search" autocomplete="off" spellcheck="false"
+               placeholder="Search" aria-label="Search" />
         <div id="search-suggestions" class="hidden"></div>
       </div>
       <div id="breadcrumbs" style="display:none"></div>
     </div>
     <div id="nav-bars">
       <div class="bar-column" id="col-l1">
-        <div class="bar-col-title" id="title-l1" data-default="Clusters">Clusters</div>
+        <div class="bar-col-title" id="title-l1" data-default="Topics">Topics</div>
         <div class="bar-stack" id="stack-l1"></div>
       </div>
       <div class="bar-column collapsed" id="col-l2">
@@ -3576,7 +3727,7 @@
         <div class="bar-stack" id="stack-l2"></div>
       </div>
       <div class="bar-column collapsed" id="col-l3">
-        <div class="bar-col-title" id="title-l3" data-default="Positions">Positions</div>
+        <div class="bar-col-title" id="title-l3" data-default="Points of view">Points of view</div>
         <div class="bar-stack" id="stack-l3"></div>
       </div>
       <svg id="ribbons-overlay"></svg>
@@ -3585,28 +3736,28 @@
       <div class="insp-empty insp-empty--main" id="insp-empty-main">
         <div class="insp-intro-full">
           <p class="insp-intro-lead">
-            Each dot is a post or comment. Color encodes <b>topic</b>; the left nav moves from <b>clusters → subtopics → positions</b> so you can compare how different groups talk about the same issue.
+            Each dot is a post or comment. Color encodes <b>topic</b>; the left nav moves from <b>topics → subtopics → points of view</b> so you can compare how different groups talk about the same issue.
           </p>
           <p class="insp-intro-analyze">
-            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>cluster bar</b>, then a <b>subtopic</b>, then a <b>position</b> ribbon to narrow stances. On the globe, hold <kbd>Space</kbd> for a <b>five-comment spread</b> from what is visible, and press <kbd>?</kbd> for the full shortcut list.
+            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, hold <kbd>Space</kbd> for <b>five random posts or comments</b> from what is visible, and press <kbd>?</kbd> for the full shortcut list.
           </p>
           <div class="insp-intro-cluster-wrap">
             <div class="insp-intro-cluster-h">Three angles people argue about</div>
-            <button type="button" class="intro-cluster-chip" data-cl="37" aria-label="Open Rent Control Debate cluster">
+            <button type="button" class="intro-cluster-chip" data-cl="37" aria-label="Open Rent Control Debate topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Rent control debate</span>
                 <span class="icc-desc">Does rent control help tenants, or chill new supply? Follow threads where people weigh tradeoffs and evidence.</span>
               </span>
             </button>
-            <button type="button" class="intro-cluster-chip" data-cl="8" aria-label="Open Tenant Rights &amp; Landlords cluster">
+            <button type="button" class="intro-cluster-chip" data-cl="8" aria-label="Open Tenant Rights &amp; Landlords topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Tenant rights &amp; landlords</span>
                 <span class="icc-desc">Practical problems Boston renters run into—heat, lead paint, emergencies—and what people say worked (or did not).</span>
               </span>
             </button>
-            <button type="button" class="intro-cluster-chip" data-cl="43" aria-label="Open Cost of Living &amp; Leaving Boston cluster">
+            <button type="button" class="intro-cluster-chip" data-cl="43" aria-label="Open Cost of Living &amp; Leaving Boston topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Cost of living &amp; leaving Boston</span>
@@ -3619,7 +3770,7 @@
       <div id="focus-card" class="fc-slot hidden">
         <button class="fc-copy-md" id="fc-copy-md" aria-label="Copy as markdown" title="Copy summary as markdown (for notes / writeups)">📋</button>
         <nav class="fc-breadcrumbs" id="fc-breadcrumbs"></nav>
-        <div class="kind" id="focus-kind">cluster</div>
+        <div class="kind" id="focus-kind">topic</div>
         <div class="title" id="focus-title">—</div>
         <div class="meta" id="focus-meta"></div>
         <div id="focus-subs"></div>
@@ -3649,34 +3800,66 @@
       <svg id="sprout-lines" pointer-events="none"></svg>
       <div id="space-hint">
         <kbd class="sh-key">space</kbd>
-        <span class="sh-text">to show comment spread</span>
+        <span class="sh-text">hold for 5 random posts / comments</span>
       </div>
       <div id="shift-hint">
         <kbd class="sh-key">shift</kbd>
         <span class="sh-text">to show relations</span>
       </div>
-      <div id="hover-hint">
-        <kbd class="sh-key">h</kbd>
-        <span class="sh-text">toggle hover card</span>
-      </div>
       <div id="link-hint">
         <kbd class="sh-key">⌘</kbd><span class="sh-plus">+</span><span class="sh-text">click to open Reddit thread</span>
       </div>
+      <button type="button" id="reset-view-hint" aria-keyshortcuts="Escape"
+              title="Restore zoom after scrolling (same as Esc when no panel is open)"
+              aria-label="Reset globe zoom to match current navigation">
+        <span class="rv-label">Reset view</span>
+        <kbd class="sh-key">esc</kbd>
+      </button>
     </div>
+    <!-- Month-range filter (globe dims outside range). Toggle: ⏱ or key <kbd>t</kbd>. -->
+    <div id="timeline-scrubber" class="timeline hidden" role="region" aria-label="Filter by time">
+      <div class="tl-head">
+        <div id="tl-label" class="tl-label"></div>
+        <div class="tl-actions">
+          <button type="button" id="tl-play" class="tl-play" aria-label="Play time-lapse sweep">▶</button>
+          <button type="button" id="tl-clear" class="tl-clear" aria-label="Clear time filter" title="Whole corpus">×</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <svg id="tl-svg" class="tl-svg" aria-hidden="true"></svg>
+        <div id="tl-tooltip" class="tl-tooltip hidden" aria-hidden="true"></div>
+      </div>
+      <p id="tl-hint" class="tl-hint">Drag on the chart to pick a month range</p>
+    </div>
+    <button type="button" id="tl-toggle" class="timeline" aria-label="Time filter" title="Time range (keyboard t)">⏱</button>
     <div id="loading">
       <div class="spinner"></div>
       <div class="msg" id="loading-msg">Loading sphere coordinates…</div>
     </div>
   </section>
+  <div id="presentation-title-overlay" class="presentation-title-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="presentation-project-title">
+    <div class="presentation-title-inner">
+      <h1 id="presentation-project-title">Boston Housing Discourse</h1>
+      <p class="presentation-team-name">Team: Early Bird Gets the Work</p>
+      <ul class="presentation-team-list" aria-label="Team members">
+        <li>Andre Ye</li>
+        <li>Garbrielle Cohn</li>
+        <li>Carmel Schare</li>
+        <li>Kendall Nakai</li>
+      </ul>
+      <button type="button" id="presentation-title-continue" class="presentation-title-btn">Continue to demo</button>
+      <p class="presentation-title-hint"><kbd>Enter</kbd> or <kbd>Esc</kbd> to continue</p>
+    </div>
+  </div>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
   <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-label="Guided tour">
     <!-- Step 0: Split hero — left text, right live globe -->
     <div class="tour-hero">
       <div class="tour-hero-left">
         <div class="tour-hero-inner">
-          <div class="tour-eyebrow">An Atlas of Boston Discourse</div>
-          <h1 class="tour-headline">What are people in Boston saying about living here?</h1>
-          <p class="tour-lede">Four hundred thousand Reddit posts from 2015 to 2025, projected onto a sphere.</p>
+          <div class="tour-eyebrow">A Social Sphere of Boston Discourse</div>
+          <h1 class="tour-headline">The Boston Social Sphere Discourse of Reddit</h1>
+          <p class="tour-lede">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</p>
           <div class="tour-hero-actions">
             <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
             <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Skip &amp; explore</button>
@@ -3723,7 +3906,7 @@
           <h3>Serendipitous discovery</h3>
           <dl>
             <div><dt><kbd>✦</kbd> <kbd>s</kbd></dt><dd>Surprise Me — drops you at a random well-supported stance, weighted toward currently-trending subtopics (respects active time range). Globe rotates, landing-pulse, nearby captions fade in.</dd></div>
-            <div><dt>Next surprise</dt><dd>While a position card is open from Surprise, use the <strong>✦ next surprise</strong> control on the card (Space is reserved for comment spread).</dd></div>
+            <div><dt>Next surprise</dt><dd>While a point-of-view card is open from Surprise, use the <strong>✦ next surprise</strong> control on the card (Space is reserved for the random five-post spread on the globe).</dd></div>
             <div><dt>Click <kbd>P#</kbd> pin</dt><dd>Show a street-interview voice with the nearest pinned Reddit thread.</dd></div>
             <div><dt>Zoom in</dt><dd>Caption tags fade in on nearby posts.</dd></div>
           </dl>
@@ -3731,9 +3914,9 @@
         <section>
           <h3>Top-down navigation</h3>
           <dl>
-            <div><dt>Click bars</dt><dd>Drill cluster → subtopic → position. Ribbons show hierarchy.</dd></div>
-            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle positions within the current subtopic.</dd></div>
-            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subtopics within the current cluster.</dd></div>
+            <div><dt>Click bars</dt><dd>Drill topic → subtopic → points of view. Ribbons show hierarchy.</dd></div>
+            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle points of view within the current subtopic.</dd></div>
+            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subtopics within the current topic.</dd></div>
             <div><dt>Hover breadcrumb</dt><dd>Linked bar segment highlights.</dd></div>
             <div><dt>URL</dt><dd>Drilling the nav does not change the address bar. If you open the page with a <code>#cl=…</code> link in the URL, that snapshot is applied once on load.</dd></div>
           </dl>
@@ -3742,14 +3925,14 @@
           <h3>Search</h3>
           <dl>
             <div><dt><kbd>/</kbd></dt><dd>Focus the search box.</dd></div>
-            <div><dt>Plain text</dt><dd>Substring match across subreddits, clusters, subtopics, positions (inc. keywords + descriptions), and phrases.</dd></div>
+            <div><dt>Plain text</dt><dd>Substring match across subreddits, topics, subtopics, points of view (inc. keywords + descriptions), and phrases.</dd></div>
             <div><dt><code>/regex/</code> or <code>re:pat</code></dt><dd>Regex mode. Input turns violet. Invalid patterns show an error.</dd></div>
-            <div><dt><code>sub:</code> <code>cl:</code> <code>r/</code> <code>pos:</code></dt><dd>Field scope — restrict a term to one kind, e.g. <code>sub:rent</code>, <code>cl:/housing|afford/</code>, <code>r/boston</code>.</dd></div>
-            <div><dt><code>text:</code></dt><dd>Search actual post bodies — e.g. <code>text:landlord</code>, <code>text:/(rent|mortgage).*spike/</code>. Hits show snippets with cluster context; click jumps to the nearest area.</dd></div>
+            <div><dt><code>sub:</code> <code>cl:</code> <code>r/</code> <code>pos:</code></dt><dd>Field scope — restrict a term to one kind, e.g. <code>sub:rent</code>, <code>cl:/housing|afford/</code>, <code>r/boston</code>, <code>pos:shortage</code> (points of view).</dd></div>
+            <div><dt><code>text:</code></dt><dd>Search actual post bodies — e.g. <code>text:landlord</code>, <code>text:/(rent|mortgage).*spike/</code>. Hits show snippets with topic context; click jumps to the nearest area.</dd></div>
             <div><dt><code>-term</code></dt><dd>Exclude entries that match the term, e.g. <code>rent -afford</code>. Combines with any operator.</dd></div>
             <div><dt>Multi-token AND</dt><dd>Space-separated tokens must all match, e.g. <code>cl:housing -tax</code>.</dd></div>
             <div><dt>Focus empty input</dt><dd>Shows your last 8 searches; <kbd>Enter</kbd> reruns.</dd></div>
-            <div><dt><kbd>Shift</kbd>+<kbd>Enter</kbd> (regex)</dt><dd>Paint every matching cluster/sub on the globe. Chip shows count; × or <kbd>Esc</kbd> clears.</dd></div>
+            <div><dt><kbd>Shift</kbd>+<kbd>Enter</kbd> (regex)</dt><dd>Paint every matching topic/sub on the globe. Chip shows count; × or <kbd>Esc</kbd> clears.</dd></div>
             <div><dt>Click <b>r/*</b> suggestion</dt><dd>Filter the globe to that subreddit (intersects with any drill state).</dd></div>
             <div><dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd></dt><dd>Browse suggestions and jump.</dd></div>
           </dl>
@@ -3757,25 +3940,25 @@
         <section>
           <h3>Focus card (bottom-right)</h3>
           <dl>
-            <div><dt>Breadcrumb pills</dt><dd>Back to cluster or "All clusters" with one click.</dd></div>
+            <div><dt>Breadcrumb pills</dt><dd>Back to topic or "All topics" with one click.</dd></div>
             <div><dt>Trend badge</dt><dd><b>▲ surging</b> / <b>▲ trending</b> / <b>▼ fading</b> — normalized by corpus growth so it's real signal, not a growing-dataset artifact.</dd></div>
             <div><dt>Where it lives</dt><dd>Top-3 subreddits for this region; click any label to filter the globe.</dd></div>
-            <div><dt>Loudest stances here</dt><dd>Cluster level only — ranked by count × trend; re-ranks by in-range count when the timeline is active. ⇋ marks stances voiced by a different community.</dd></div>
+            <div><dt>Loudest points of view here</dt><dd>Topic level only — ranked by count × trend; re-ranks by in-range count when the timeline is active. ⇋ marks stances voiced by a different community.</dd></div>
             <div><dt>Monthly sparkline</dt><dd>Hover to read exact month + post count. Click anywhere on the line (or the "Peak MMM YYYY" label in the footer) to zoom the timeline to a 12-month window centered on that month. Active time range paints a band behind the line.</dd></div>
             <div><dt>Voices pinned here</dt><dd>Click a <kbd>P#</kbd> pill to open that street interview.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Button top-right copies a pasteable summary — title, voice mix, top stances, shareable link — for notes or writeups.</dd></div>
+            <div><dt>📋 Copy as markdown</dt><dd>Button top-right copies a pasteable summary — title, voice mix, top points of view, shareable link — for notes or writeups.</dd></div>
           </dl>
         </section>
         <section>
-          <h3>Position card (left panel)</h3>
+          <h3>Point of view card (left panel)</h3>
           <dl>
             <div><dt>Evidence posts</dt><dd>Three real Reddit posts attributed to this stance. Time filter respected.</dd></div>
-            <div><dt>Who voiced this stance</dt><dd>Per-position subreddit breakdown; click a label to filter the globe to that community.</dd></div>
-            <div><dt>Other stances in this sub</dt><dd>Sibling positions; ⇋ marks ones dominated by a different subreddit than the current stance.</dd></div>
-            <div><dt>Resonates in other subtopics</dt><dd>Cross-sub positions sharing keywords (Jaccard-like), with the same ⇋ cross-community marker.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Pasteable stance summary including description, voice mix, signal phrases, volume, three evidence quotes, and a deep-link.</dd></div>
-            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle positions within current sub.</dd></div>
-            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subs within current cluster.</dd></div>
+            <div><dt>Who voiced this stance</dt><dd>Subreddit breakdown for this point of view; click a label to filter the globe to that community.</dd></div>
+            <div><dt>Other stances in this sub</dt><dd>Sibling points of view; ⇋ marks ones dominated by a different subreddit than the current stance.</dd></div>
+            <div><dt>Resonates in other subtopics</dt><dd>Cross-sub points of view sharing keywords (Jaccard-like), with the same ⇋ cross-community marker.</dd></div>
+            <div><dt>📋 Copy as markdown</dt><dd>Pasteable point-of-view summary including description, voice mix, signal phrases, volume, three evidence quotes, and a deep-link.</dd></div>
+            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle points of view within current sub.</dd></div>
+            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subs within current topic.</dd></div>
           </dl>
         </section>
         <section>
@@ -3794,8 +3977,8 @@
             <div><dt>Filter chips</dt><dd>Active subreddit (green) + timeline range (amber) + regex paint (violet) chips appear in the nav header. Each has a × to clear.</dd></div>
             <div><dt><span class="tico">⟲</span> Reset <kbd>x</kbd></dt><dd>Clears drill focus, sub filter, timeline range, regex/text paint, search input, and URL hash — one click (or <kbd>x</kbd>) back to fresh.</dd></div>
             <div><dt><span class="tico">↗</span> Share</dt><dd>Copies the current page URL (navigation state is not encoded in the address bar). Use <strong>Copy as markdown</strong> on the focus card for a link that includes drill and filters.</dd></div>
-            <div><dt>Browser back / forward</dt><dd>Steps through your drill path (cluster ▸ sub ▸ stance) one level at a time. Filter changes replace state in place, so scrubbing the timeline or toggling a sub filter doesn't flood history.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Small button on focus + position cards copies a pasteable summary (title, trend, voice mix, top stances / evidence samples, deep-link with current drill + filters + query). For notes or writeups.</dd></div>
+            <div><dt>Browser back / forward</dt><dd>Steps through your drill path (topic ▸ sub ▸ stance) one level at a time. Filter changes replace state in place, so scrubbing the timeline or toggling a sub filter doesn't flood history.</dd></div>
+            <div><dt>📋 Copy as markdown</dt><dd>Small button on focus + point-of-view cards copies a pasteable summary (title, trend, voice mix, top points of view / evidence samples, deep-link with current drill + filters + query). For notes or writeups.</dd></div>
           </dl>
         </section>
         <section>
@@ -3803,16 +3986,18 @@
           <dl>
             <div><dt>Drag</dt><dd>Rotate the globe.</dd></div>
             <div><dt>Scroll</dt><dd>Zoom in / out.</dd></div>
+            <div><dt><kbd>Space</kbd> (hold)</dt><dd>Five random posts or comments drawn from points that are on-screen and match active filters (nav drill, time range, subreddit filter, etc.). Release to dismiss.</dd></div>
+            <div><dt><kbd>Esc</kbd></dt><dd>When no overlay is open, restores scroll zoom to the distance last chosen for your drill (topic / subtopic / point of view). Same as the <strong>Reset view</strong> chip on the right.</dd></div>
             <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
           </dl>
         </section>
       </div>
       <section class="help-clusters">
         <div class="help-clusters-head">
-          <h3>All clusters</h3>
-          <div class="help-filter" role="group" aria-label="Filter clusters">
-            <button class="help-filter-btn active" id="help-filter-all" title="Show all clusters">all</button>
-            <button class="help-filter-btn" id="help-filter-hot" title="Show only trending + surging clusters"><span class="hf-icon">▲</span> trending</button>
+          <h3>All topics</h3>
+          <div class="help-filter" role="group" aria-label="Filter topics">
+            <button class="help-filter-btn active" id="help-filter-all" title="Show all topics">all</button>
+            <button class="help-filter-btn" id="help-filter-hot" title="Show only trending + surging topics"><span class="hf-icon">▲</span> trending</button>
           </div>
         </div>
         <div class="help-cluster-note">Click a chip to drill into it. Colors match the globe + nav bars.</div>
@@ -3825,15 +4010,41 @@
 </div>
 
 <script>
-  // Bootstrap the tour into its hero state before first paint, so the page
-  // never flashes the default viewer. Skipped if a deep-link hash is present.
+  // Title slide first on cold load; guided tour starts after Continue.
+  // Deep-links (#cl=…) skip both. If the user clicks Continue before main.js
+  // loads, __presentationContinueRequested lets the module call tour.start().
   (function () {
     if (location.hash) return;
-    document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
-    var ov = document.getElementById('tour-overlay');
-    if (ov) ov.classList.remove('hidden');
+    var overlay = document.getElementById('presentation-title-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+    document.body.classList.add('presentation-title-active');
+
+    function presentationTitleContinue() {
+      if (window.__presentationTitleContinueDone) return;
+      window.__presentationTitleContinueDone = true;
+      window.__presentationContinueRequested = true;
+      if (overlay) overlay.classList.add('hidden');
+      document.body.classList.remove('presentation-title-active');
+      document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
+      var tourOv = document.getElementById('tour-overlay');
+      if (tourOv) tourOv.classList.remove('hidden');
+      var t = window.App && window.App.tour;
+      if (t && typeof t.start === 'function') t.start();
+    }
+
+    document.getElementById('presentation-title-continue')
+      ?.addEventListener('click', presentationTitleContinue);
+    document.addEventListener('keydown', function presTitleKey(e) {
+      if (!overlay || overlay.classList.contains('hidden')) return;
+      if (e.key !== 'Enter' && e.key !== 'Escape') return;
+      var tag = document.activeElement && document.activeElement.tagName;
+      if (e.key === 'Enter' && (tag === 'INPUT' || tag === 'TEXTAREA')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      presentationTitleContinue();
+    }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=266"></script>
+<script type="module" src="./js/main.js?v=293"></script>
 </body>
 </html>

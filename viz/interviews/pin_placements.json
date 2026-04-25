@@ -2,7 +2,6 @@
   "placements": [
     {
       "id": "P1",
-      "role": "High school students (2)",
       "idx": 260609,
       "lat": -0.3250649571418762,
       "lon": -2.686474084854126,
@@ -46,7 +45,6 @@
     },
     {
       "id": "P2",
-      "role": "Legal assistant, retiring next week",
       "idx": 264890,
       "lat": -1.2380937337875366,
       "lon": -2.1112711429595947,
@@ -90,7 +88,6 @@
     },
     {
       "id": "P3",
-      "role": "Kids crossing guard; retired homemaker",
       "idx": 344643,
       "lat": 0.7724594473838806,
       "lon": -0.47225064039230347,
@@ -134,7 +131,6 @@
     },
     {
       "id": "P4",
-      "role": "Transit Ambassador for the MBTA",
       "idx": 36670,
       "lat": -0.9249500036239624,
       "lon": 1.0505053997039795,
@@ -178,7 +174,6 @@
     },
     {
       "id": "P5",
-      "role": "Electrician",
       "idx": 64793,
       "lat": 0.4483092427253723,
       "lon": -1.5299056768417358,
@@ -222,7 +217,6 @@
     },
     {
       "id": "P6",
-      "role": "Construction worker",
       "idx": 208128,
       "lat": 0.2768334746360779,
       "lon": -1.1555230617523193,
@@ -266,7 +260,6 @@
     },
     {
       "id": "P7",
-      "role": "Pastry chef",
       "idx": 316379,
       "lat": -0.061466820538043976,
       "lon": -0.7393220067024231,
@@ -310,7 +303,6 @@
     },
     {
       "id": "P8",
-      "role": "High school students",
       "idx": 10496,
       "lat": -0.30377891659736633,
       "lon": -0.5541395545005798,
@@ -354,7 +346,6 @@
     },
     {
       "id": "P9",
-      "role": "Practice assistant at Brigham & Women's Hospital",
       "idx": 262468,
       "lat": -0.5415447354316711,
       "lon": -0.380049467086792,
@@ -398,7 +389,6 @@
     },
     {
       "id": "P10",
-      "role": "Student at UMass",
       "idx": 222613,
       "lat": -0.4538562595844269,
       "lon": -0.4186926782131195,
@@ -442,7 +432,6 @@
     },
     {
       "id": "P11",
-      "role": "Deliverer of medical equipment / preparer of medical information for Boston Scientific",
       "idx": 330956,
       "lat": -0.8483948111534119,
       "lon": -0.22302550077438354,
@@ -486,7 +475,6 @@
     },
     {
       "id": "P12",
-      "role": "Teacher at Boston Public High Schools",
       "idx": 137280,
       "lat": 0.18283239006996155,
       "lon": -1.2644914388656616,
@@ -530,7 +518,6 @@
     },
     {
       "id": "P13",
-      "role": "Technician in the medical field",
       "idx": 288990,
       "lat": -0.7243451476097107,
       "lon": -0.40151166915893555,
@@ -574,7 +561,6 @@
     },
     {
       "id": "P14",
-      "role": "Student at UMass Amherst",
       "idx": 263087,
       "lat": -0.8339250683784485,
       "lon": 0.25392597913742065,
@@ -618,7 +604,6 @@
     },
     {
       "id": "P15",
-      "role": "CTO at a startup (also a data scientist colleague)",
       "idx": 140243,
       "lat": -0.9227397441864014,
       "lon": -0.9143702983856201,
@@ -662,7 +647,6 @@
     },
     {
       "id": "P16",
-      "role": "Works from home (10+ years)",
       "idx": 229056,
       "lat": -0.26989033818244934,
       "lon": -0.6246914863586426,
@@ -706,7 +690,6 @@
     },
     {
       "id": "P17",
-      "role": "Industrial pump rentals \u2014 contracts & logistics (desk job)",
       "idx": 130703,
       "lat": 0.4423508644104004,
       "lon": -0.912104606628418,
@@ -750,7 +733,6 @@
     },
     {
       "id": "P18",
-      "role": "Post-doc at MIT",
       "idx": 222983,
       "lat": 0.9646859169006348,
       "lon": 1.029832124710083,

@@ -1,4 +1,5 @@
-Contains street interivew data.
+WORKING FIELD NOTES (raw) — not used by the viz. Do not treat as publication-ready.
+The viewer loads anonymized summaries from `interviews.json` instead.
 
 P1
 Interview - 2 high school students, interviewed at Quincy Red Line station
