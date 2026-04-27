@@ -2571,6 +2571,32 @@
       max-width: 320px;
     }
   }
+  .pres-page { animation: presentation-title-in 0.3s ease; }
+  .pres-page.hidden { display: none; }
+  .pres-audience-title {
+    font: 400 clamp(20px, 3.5vw, 28px)/1.2 'Source Serif Pro', Georgia, serif;
+    color: #fff;
+    margin: 0 0 24px;
+    letter-spacing: -0.3px;
+  }
+  .pres-audience-block {
+    text-align: left;
+    margin-bottom: 18px;
+  }
+  .pres-audience-block:last-of-type {
+    margin-bottom: 28px;
+  }
+  .pres-audience-label {
+    font: 600 13px/1.3 'Inter', system-ui, sans-serif;
+    color: rgba(244,237,225,0.95);
+    margin: 0 0 5px;
+    letter-spacing: 0.2px;
+  }
+  .pres-audience-desc {
+    font: 400 14px/1.6 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.72);
+    margin: 0;
+  }
 
   .help-overlay {
     position: fixed; inset: 0;
@@ -3623,6 +3649,12 @@
     color: var(--fg-mute);
     padding: 4px 10px 3px;
   }
+  .sugg-group-title--paintable {
+    cursor: pointer;
+  }
+  .sugg-group-title--paintable:hover {
+    color: rgba(124,240,201,0.85);
+  }
   .sugg-group-title-row {
     display: flex; align-items: baseline; justify-content: space-between;
   }
@@ -3839,16 +3871,32 @@
   </section>
   <div id="presentation-title-overlay" class="presentation-title-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="presentation-project-title">
     <div class="presentation-title-inner">
-      <h1 id="presentation-project-title">Boston Housing Discourse</h1>
-      <p class="presentation-team-name">Team: Early Bird Gets the Work</p>
-      <ul class="presentation-team-list" aria-label="Team members">
-        <li>Andre Ye</li>
-        <li>Garbrielle Cohn</li>
-        <li>Carmel Schare</li>
-        <li>Kendall Nakai</li>
-      </ul>
-      <button type="button" id="presentation-title-continue" class="presentation-title-btn">Continue to demo</button>
-      <p class="presentation-title-hint"><kbd>Enter</kbd> or <kbd>Esc</kbd> to continue</p>
+      <!-- Page 1: title + team -->
+      <div class="pres-page" id="pres-page-1">
+        <h1 id="presentation-project-title">Boston Housing Discourse</h1>
+        <p class="presentation-team-name">Team: Early Bird Gets the Work</p>
+        <ul class="presentation-team-list" aria-label="Team members">
+          <li>Andre Ye</li>
+          <li>Garbrielle Cohn</li>
+          <li>Carmel Schare</li>
+          <li>Kendall Nakai</li>
+        </ul>
+        <button type="button" id="pres-page-1-next" class="presentation-title-btn">Next &rarr;</button>
+      </div>
+      <!-- Page 2: target audience -->
+      <div class="pres-page hidden" id="pres-page-2">
+        <h2 class="pres-audience-title">Target Audience</h2>
+        <div class="pres-audience-block">
+          <p class="pres-audience-label">Boston residents</p>
+          <p class="pres-audience-desc">An interactive view of local conversations, allowing residents to explore what's being discussed, follow how discussions evolve over time, and see how their own perspectives compare within the broader community.</p>
+        </div>
+        <div class="pres-audience-block">
+          <p class="pres-audience-label">Government officials</p>
+          <p class="pres-audience-desc">A high-level view of community priorities highlighting dominant topics, their relative weight, and how opinions cluster so officials can quickly identify trends and inform policy decisions.</p>
+        </div>
+        <button type="button" id="presentation-title-continue" class="presentation-title-btn">Continue to demo</button>
+        <p class="presentation-title-hint"><kbd>Enter</kbd> or <kbd>Esc</kbd> to continue</p>
+      </div>
     </div>
   </div>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
@@ -4019,6 +4067,15 @@
     if (overlay) overlay.classList.remove('hidden');
     document.body.classList.add('presentation-title-active');
 
+    var presPage = 1;
+
+    function goToPage2() {
+      if (presPage !== 1) return;
+      presPage = 2;
+      document.getElementById('pres-page-1').classList.add('hidden');
+      document.getElementById('pres-page-2').classList.remove('hidden');
+    }
+
     function presentationTitleContinue() {
       if (window.__presentationTitleContinueDone) return;
       window.__presentationTitleContinueDone = true;
@@ -4032,6 +4089,8 @@
       if (t && typeof t.start === 'function') t.start();
     }
 
+    document.getElementById('pres-page-1-next')
+      ?.addEventListener('click', goToPage2);
     document.getElementById('presentation-title-continue')
       ?.addEventListener('click', presentationTitleContinue);
     document.addEventListener('keydown', function presTitleKey(e) {
@@ -4041,10 +4100,11 @@
       if (e.key === 'Enter' && (tag === 'INPUT' || tag === 'TEXTAREA')) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      presentationTitleContinue();
+      if (presPage === 1) goToPage2();
+      else presentationTitleContinue();
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=293"></script>
+<script type="module" src="./js/main.js?v=300"></script>
 </body>
 </html>

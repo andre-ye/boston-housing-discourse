@@ -21,8 +21,8 @@ function redditScoreInlineHtml(score) {
 function formatRedditKindLabel(_type) {
   return 'Thread';
 }
-import { NavController } from './nav.js?v=242';
-import { GlobeView } from './globe.js?v=268';
+import { NavController } from './nav.js?v=247';
+import { GlobeView } from './globe.js?v=270';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -970,6 +970,8 @@ async function boot() {
     if (wantsLink && details?.permalink) {
       window.open(details.permalink, '_blank', 'noopener,noreferrer');
     } else {
+      pinnedPointIdx = ev.detail.idx;
+      globe.setPinnedPoint(pinnedPointIdx);
       showDetailCard(details);
     }
   });
@@ -982,9 +984,11 @@ async function boot() {
   // ─── Hover halo: bright ring on the currently-hovered point ────
   const hoverHaloEl = document.getElementById('hover-halo');
   let hoverPointIdx = -1;
+  let pinnedPointIdx = -1;
   globe.addEventListener('hover', (ev) => {
-    if (_spaceDown) { hoverPointIdx = -1; return; }
+    if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
     hoverPointIdx = ev?.detail?.idx ?? -1;
+    globe.setHoverPoint(hoverPointIdx);
   });
   function updateHoverHalo() {
     if (!hoverHaloEl) return;
@@ -1154,30 +1158,19 @@ async function boot() {
       const pointClEarly = App.state.cluster?.[k.idx];
       const anchorColorEarly = pointClEarly != null ? sphereColor(pointClEarly) : '#ffffff';
 
-      // Use an <a> so the whole box is a proper new-tab link (with the
-      // affordances browsers give to anchors — cmd-click, middle-click,
-      // copy-link). Falls back to a div if there's no permalink.
-      const hasLink = !!d.permalink;
-      const el = document.createElement(hasLink ? 'a' : 'div');
+      const el = document.createElement('div');
       el.className = 'sprout';
-      if (hasLink) {
-        el.href = d.permalink;
-        el.target = '_blank';
-        el.rel = 'noopener noreferrer';
-        el.addEventListener('click', () => {
-          cancelSproutClearTimer();
-          requestAnimationFrame(() => sproutClear());
-        });
-      } else {
-        el.setAttribute('role', 'button');
-        el.tabIndex = 0;
-        el.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          cancelSproutClearTimer();
-          showDetailCard(d);
-          sproutClear();
-        });
-      }
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      el.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        cancelSproutClearTimer();
+        globe.rotateTo(k.lat, k.lon, 1.8);
+        pinnedPointIdx = k.idx;
+        globe.setPinnedPoint(k.idx);
+        showDetailCard(d);
+        sproutClear();
+      });
       // Border + thin glow in the cluster color so the caption reads as
       // belonging to the same cluster as its tether + halo.
       el.style.borderColor = anchorColorEarly;
@@ -1187,7 +1180,6 @@ async function boot() {
         <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))}${d.month ? ' · ' + escapeHtml(d.month) : ''}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="sp-title">${escapeHtml(title)}</div>` : ''}
         ${bodyShort ? `<div class="sp-body">${escapeHtml(bodyShort)}</div>` : ''}
-        ${hasLink ? '<span class="sp-link">↗</span>' : ''}
       `;
       sproutsEl.appendChild(el);
       // Measure.
@@ -2397,6 +2389,87 @@ async function boot() {
     }
   }
   window.App.focusPosition = focusPosition;
+  window.App.showSnippetCard = (hit) => {
+    const label = hit.context || hit.clusterName || '';
+    showDetailCard({ _metaOverride: label, title: '', body: hit.label || '', permalink: null });
+  };
+
+  // ─── Per-post text search across the chunk corpus ────────────────────
+  // Loads all 22 chunks once (cached forever in chunkCache), then scans
+  // title + hover_body for substring matches. Heavy first call (~5–15 s
+  // locally, longer over the network); subsequent calls are instant.
+  async function ensureAllChunksLoaded(onProgress) {
+    const st = App.state;
+    const total = st.manifest.files.length;
+    let done = 0;
+    const promises = [];
+    for (let ci = 0; ci < total; ci++) {
+      let p = st.chunkCache.get(ci);
+      if (!p) {
+        p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
+        st.chunkCache.set(ci, p);
+      }
+      p.then(() => { done++; onProgress?.(done, total); });
+      promises.push(p);
+    }
+    return Promise.all(promises);
+  }
+
+  async function findPointsContaining(phrase, onProgress) {
+    const lower = String(phrase || '').toLowerCase().trim();
+    if (!lower) return new Set();
+    const chunks = await ensureAllChunksLoaded(onProgress);
+    const matches = new Set();
+    for (const chunk of chunks) {
+      const offset = chunk.offset;
+      const titles = chunk.title || [];
+      const hover = chunk.hover_body || [];
+      const panel = chunk.panel_body || [];
+      for (let i = 0; i < chunk.n; i++) {
+        const t = ((titles[i] || '') + ' ' + (panel[i] || hover[i] || '')).toLowerCase();
+        if (t.includes(lower)) matches.add(offset + i);
+      }
+    }
+    return matches;
+  }
+
+  async function findPointForSnippet(snippetText) {
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const target = norm(snippetText);
+    if (!target) return -1;
+    const targetKey = target.slice(0, 80).toLowerCase();
+    const chunks = await ensureAllChunksLoaded();
+    for (const chunk of chunks) {
+      const offset = chunk.offset;
+      const titles = chunk.title || [];
+      const hover = chunk.hover_body || [];
+      const panel = chunk.panel_body || [];
+      for (let i = 0; i < chunk.n; i++) {
+        const body = norm((titles[i] || '') + ' ' + (panel[i] || hover[i] || '')).toLowerCase();
+        if (body.includes(targetKey) || targetKey.includes(body.slice(0, 80))) {
+          return offset + i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  async function pinPointByIndex(idx) {
+    if (idx == null || idx < 0) return;
+    pinnedPointIdx = idx;
+    globe.setPinnedPoint(idx);
+    const lat = App.state.coords[2 * idx];
+    const lon = App.state.coords[2 * idx + 1];
+    if (lat != null && lon != null) globe.rotateTo(lat, lon, 1.8);
+    try {
+      const details = await getPointDetails(App.state, idx);
+      if (details) showDetailCard(details);
+    } catch (e) {}
+  }
+
+  window.App.findPointsContaining = findPointsContaining;
+  window.App.findPointForSnippet = findPointForSnippet;
+  window.App.pinPointByIndex = pinPointByIndex;
 
   // ─── URL hash (read-only) ─────────────────────────────────────────
   // Hash persistence / history.pushState on drill were disabled so
@@ -2866,6 +2939,7 @@ async function boot() {
       document.getElementById('interview-card').classList.add('hidden');
       document.getElementById('position-card').classList.add('hidden');
       hideInspectorEmpty();
+      pinnedPointIdx = -1; globe.setPinnedPoint(-1);
     } else {
       showInspectorEmpty();
     }
@@ -2942,6 +3016,7 @@ async function boot() {
   async function showInterviewCard(pin) {
     if (!ic) return;
     dc.classList.add('hidden');
+    pinnedPointIdx = -1; globe.setPinnedPoint(-1);
     focusCard.classList.add('hidden');
     document.getElementById('position-card').classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
@@ -3443,7 +3518,11 @@ async function boot() {
   const dcTitle = document.getElementById('dc-title');
   const dcBody = document.getElementById('dc-body');
   const dcLink = document.getElementById('dc-link');
-  document.getElementById('dc-close').onclick = () => dc.classList.add('hidden');
+  document.getElementById('dc-close').onclick = () => {
+    dc.classList.add('hidden');
+    pinnedPointIdx = -1;
+    globe.setPinnedPoint(-1);
+  };
   /** Prefer opening the Reddit thread in a new tab when we have a permalink. */
   function openRedditThreadOrDetail(d) {
     const raw = (d?.permalink || '').trim();
@@ -3461,7 +3540,9 @@ async function boot() {
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
-    {
+    if (d._metaOverride != null) {
+      dcMeta.innerHTML = `<span class="dc-meta-text">${escapeHtml(d._metaOverride)}</span>`;
+    } else {
       const left = `r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}`;
       dcMeta.innerHTML = `<span class="dc-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
     }

@@ -643,9 +643,11 @@ export class NavController extends EventTarget {
         return;
       }
       const hits = this._searchMatches(qTrim);
+      this._currentSearchHits = hits;
       currentMatches = hits;
       activeIdx = hits.length > 0 ? 0 : -1;
-      paintCurrentMatches(hits);
+      // No auto-paint while typing — globe only changes when the user
+      // explicitly clicks a result (cluster, sub, position, snippet, phrase).
       const parsed = this._lastQuery;
       input.classList.toggle('regex-mode', parsed && parsed.kind === 'regex');
       input.classList.toggle('regex-error', parsed && parsed.kind === 'error');
@@ -699,7 +701,8 @@ export class NavController extends EventTarget {
         : ['subreddit', 'cluster', 'sub', 'position', 'gridcell', 'ngram', 'text'];
       for (const k of order) {
         if (groups[k].length === 0) continue;
-        parts.push(`<div class="sugg-group"><div class="sugg-group-title">${kindLabel[k]}</div>`);
+        const titleClass = k === 'ngram' ? 'sugg-group-title sugg-group-title--paintable' : 'sugg-group-title';
+        parts.push(`<div class="sugg-group"><div class="${titleClass}">${kindLabel[k]}</div>`);
         for (const h of groups[k]) {
           const dotColor = h.color || '#7cf0c9';
           const i = displayOrdered.length;
@@ -727,6 +730,17 @@ export class NavController extends EventTarget {
       }
       suggestions.innerHTML = parts.join('');
       suggestions.classList.remove('hidden');
+      // "phrases" section header — clicking paints the globe with all
+      // cluster/sub matches for the current query (same as Shift+Enter).
+      const phrasesHeader = suggestions.querySelector('.sugg-group-title--paintable');
+      if (phrasesHeader) {
+        phrasesHeader.addEventListener('click', (e) => {
+          e.stopPropagation();
+          suggestions.classList.add('hidden');
+          input.blur();
+          this._runSpotlightSearch(input.value.trim());
+        });
+      }
       // Overwrite currentMatches with visual order so keyboard nav + click
       // use the same indexing scheme.
       currentMatches = displayOrdered;
@@ -847,6 +861,58 @@ export class NavController extends EventTarget {
       window.App.globe.setMultiHighlight({});
     }
     const chip = document.getElementById('regex-chip');
+    if (chip) chip.remove();
+  }
+
+  // Per-post text search: scan all chunks for the phrase, then spotlight only
+  // the matching points on the globe. First call loads ~440 MB of chunk JSON;
+  // subsequent calls are instant.
+  _runSpotlightSearch(phrase) {
+    const App = window.App;
+    if (!App?.findPointsContaining || !App?.globe?.setSpotlight) return;
+    const p = String(phrase || '').trim();
+    if (!p) return;
+    this._spotlightToken = (this._spotlightToken || 0) + 1;
+    const myToken = this._spotlightToken;
+    this._showSpotlightChip(`Indexing posts… 0/${this.state.manifest?.files?.length ?? 22}`, false);
+    App.findPointsContaining(p, (done, total) => {
+      if (myToken !== this._spotlightToken) return;
+      this._showSpotlightChip(`Indexing posts… ${done}/${total}`, false);
+    }).then(set => {
+      if (myToken !== this._spotlightToken) return;
+      App.globe.setSpotlight(set);
+      const n = set.size;
+      if (n === 0) this._showSpotlightChip(`No posts contain "${p}"`, true);
+      else this._showSpotlightChip(`${n.toLocaleString()} post${n === 1 ? '' : 's'} mention "${p}"`, true);
+    }).catch(() => {
+      if (myToken !== this._spotlightToken) return;
+      this._showSpotlightChip(`Search failed`, true);
+    });
+  }
+
+  _showSpotlightChip(label, dismissable) {
+    let chip = document.getElementById('spotlight-chip');
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.id = 'spotlight-chip';
+      chip.className = 'regex-chip';
+      document.getElementById('nav-header').appendChild(chip);
+    }
+    if (dismissable) {
+      chip.innerHTML = `<button class="rc-body">${this._escHtml(label)}</button><button class="rc-x" aria-label="Clear">×</button>`;
+      chip.querySelector('.rc-x').onclick = (ev) => {
+        ev.stopPropagation();
+        this._clearSpotlight();
+      };
+    } else {
+      chip.innerHTML = `<span class="rc-body" style="opacity:0.75">${this._escHtml(label)}</span>`;
+    }
+  }
+
+  _clearSpotlight() {
+    this._spotlightToken = (this._spotlightToken || 0) + 1;   // invalidate any in-flight search
+    if (window.App?.globe?.setSpotlight) window.App.globe.setSpotlight(null);
+    const chip = document.getElementById('spotlight-chip');
     if (chip) chip.remove();
   }
 
@@ -1310,11 +1376,19 @@ export class NavController extends EventTarget {
   _applySearchHit(hit, input) {
     if (!hit) return;
     if (hit.kind === 'text') {
-      // Text snippets land at the cell's dominant sub if we know it; else cluster.
-      if (hit.gid != null) this.focus({ cl: hit.cl, gid: hit.gid });
-      else this.focus({ cl: hit.cl });
+      // Find the actual post in the chunk corpus and pin it (white glow + detail card).
+      // Falls back to a synthetic snippet card if the post can't be resolved.
       document.getElementById('search-suggestions').classList.add('hidden');
       input.blur();
+      const App = window.App;
+      if (App?.findPointForSnippet && App?.pinPointByIndex) {
+        App.findPointForSnippet(hit.label).then(idx => {
+          if (idx >= 0) App.pinPointByIndex(idx);
+          else App.showSnippetCard?.(hit);
+        }).catch(() => App.showSnippetCard?.(hit));
+      } else if (App?.showSnippetCard) {
+        App.showSnippetCard(hit);
+      }
       return;
     }
     if (hit.kind === 'cluster') {
@@ -1322,9 +1396,14 @@ export class NavController extends EventTarget {
     } else if (hit.kind === 'sub') {
       this.focus({ cl: hit.cl, gid: hit.gid });
     } else if (hit.kind === 'position') {
-      this.focus({ cl: hit.cl, gid: hit.gid });
-      if (window.App && typeof window.App.focusPosition === 'function') {
-        setTimeout(() => window.App.focusPosition(hit.cl, hit.gid, hit.posIdx), 180);
+      // Pass posIdx so the nav, globe highlight, and detail panel all update
+      // to position level in one shot. Then rotate to the position's own
+      // lat/lon (focus() would otherwise use the subtopic centroid).
+      this.focus({ cl: hit.cl, gid: hit.gid, posIdx: hit.posIdx });
+      const posDoc = this.state.positionAnchors?.[String(hit.gid)];
+      const pos = posDoc?.positions?.[hit.posIdx];
+      if (pos?.lat != null && window.App?.globe) {
+        setTimeout(() => window.App.globe.rotateTo(pos.lat, pos.lon, 1.5), 80);
       }
     } else if (hit.kind === 'subreddit') {
       // Fire the same toggle path the focus-card "where it lives" labels use,
@@ -1339,12 +1418,12 @@ export class NavController extends EventTarget {
       if (hit.gid != null) this.focus({ cl: hit.cl, gid: hit.gid });
       else this.focus({ cl: hit.cl });
     } else if (hit.kind === 'ngram') {
-      // Replace input with the phrase and re-run the search so the user
-      // sees what the phrase actually matches (previously this closed the
-      // dropdown and waited silently).
+      // Per-post spotlight: scan all chunks and light up only points whose
+      // post text actually contains this phrase.
       input.value = hit.label;
-      input.dispatchEvent(new Event('input'));
-      input.focus();
+      document.getElementById('search-suggestions').classList.add('hidden');
+      input.blur();
+      this._runSpotlightSearch(hit.label);
       return;
     }
     // When the user came from a text: query, preserve their search input
@@ -1760,6 +1839,12 @@ export class NavController extends EventTarget {
     // dominant intent; user can re-run the search to repaint.
     if (cl != null && window.App?.globe?._multiHighlightActive) {
       this._clearRegexPaint?.();
+    }
+    // Same logic for per-post spotlight: navigating to a topic should
+    // override the phrase filter, otherwise position clicks after a phrase
+    // search produce empty intersections that look like "nothing happened".
+    if (cl != null && window.App?.globe?._spotlightActive) {
+      this._clearSpotlight?.();
     }
     this.focusCl = cl;
     this.focusGid = gid;

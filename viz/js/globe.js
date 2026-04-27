@@ -231,17 +231,31 @@ export class GlobeView extends EventTarget {
       uniforms: {
         basePx: { value: POINT_SIZE_BASE },
         devicePR: { value: this.renderer.getPixelRatio() },
+        uFocusLocalPos: { value: new THREE.Vector3() },
+        uFocusActive:   { value: 0 },
+        uPinnedLocalPos: { value: new THREE.Vector3() },
+        uPinnedActive:   { value: 0 },
       },
       vertexShader: `
         attribute float size;
         attribute float dim;
         varying vec3 vColor;
         varying float vDim;
+        varying float vFocus;
         uniform float basePx;
         uniform float devicePR;
+        uniform vec3 uFocusLocalPos;
+        uniform int  uFocusActive;
+        uniform vec3 uPinnedLocalPos;
+        uniform int  uPinnedActive;
         void main() {
           vColor = color;
           vDim = dim;
+          float hd = distance(position, uFocusLocalPos);
+          float pd = distance(position, uPinnedLocalPos);
+          bool isFocus = (uFocusActive > 0 && hd < 0.001)
+                      || (uPinnedActive > 0 && pd < 0.001);
+          vFocus = isFocus ? 1.0 : 0.0;
           // Transform to world space first so cull/test uses consistent space.
           vec4 worldPos4 = modelMatrix * vec4(position, 1.0);
           vec3 worldPos = worldPos4.xyz;
@@ -257,16 +271,25 @@ export class GlobeView extends EventTarget {
           // Tight crisp sprites; modest growth on zoom-in.
           float s = basePx * 200.0 * size * pow(-mv.z, -0.55);
           s = clamp(s, 1.2, 6.5);
+          if (isFocus) s = max(s * 2.5, 16.0);
           gl_PointSize = s * devicePR;
         }
       `,
       fragmentShader: `
         varying vec3 vColor;
         varying float vDim;
+        varying float vFocus;
         void main() {
           vec2 uv = gl_PointCoord - vec2(0.5);
           float d = length(uv);
           if (d > 0.5) discard;
+          if (vFocus > 0.5) {
+            float core = 1.0 - smoothstep(0.30, 0.42, d);
+            float halo = exp(-d * d * 8.0) * 0.80;
+            float alpha = max(core, halo);
+            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+            return;
+          }
           // Crisp filled disc with a 1-pixel antialias edge — no halo.
           float disc = 1.0 - smoothstep(0.42, 0.50, d);
           vec3 col = mix(vec3(0.30), vColor, vDim);
@@ -521,6 +544,7 @@ export class GlobeView extends EventTarget {
     focusCl: null, focusSubLocal: null, focusPosIdx: null,
     multiClusters: null, multiSubs: null, multiPositions: null, subredditIds: null,
     monthRange: null,
+    spotlight: null,   // Set<number> of point indices to show (per-post text filter)
   };
   _recomputeDim() {
     const st = this.state;
@@ -534,8 +558,9 @@ export class GlobeView extends EventTarget {
     const hasMonth = !!f.monthRange;
     const monthAssign = st.monthAssignments;
     const byLocal = window.App?.subGidMap?.byLocal;
+    const hasSpot = f.spotlight && f.spotlight.size > 0;
     const noFilter = f.focusCl == null && f.focusSubLocal == null && f.focusPosIdx == null &&
-      !hasMultiC && !hasMultiS && !hasMultiP && !hasSR && !hasMonth;
+      !hasMultiC && !hasMultiS && !hasMultiP && !hasSR && !hasMonth && !hasSpot;
     if (noFilter) {
       dim.fill(1.0);
     } else {
@@ -559,12 +584,14 @@ export class GlobeView extends EventTarget {
           const m = monthAssign[i];
           if (m < f.monthRange.lo || m > f.monthRange.hi) ok = false;
         }
+        if (ok && hasSpot && !f.spotlight.has(i)) ok = false;
         dim[i] = ok ? 1.0 : 0.12;
       }
     }
     this.pointGeom.attributes.dim.needsUpdate = true;
     this._multiHighlightActive = hasMultiC || hasMultiS || hasMultiP;
     this._subredditHighlightActive = hasSR;
+    this._spotlightActive = hasSpot;
   }
 
   setHighlight({ cl = null, gid = null, posIdx = null } = {}) {
@@ -606,6 +633,14 @@ export class GlobeView extends EventTarget {
   setMonthRange(range) {
     const f = this._filter;
     f.monthRange = range && range.lo != null && range.hi != null ? range : null;
+    this._recomputeDim();
+  }
+
+  // Per-post text filter: only points in this set are lit. Intersects with
+  // everything else. Pass null to clear.
+  setSpotlight(idxSet) {
+    const f = this._filter;
+    f.spotlight = idxSet && idxSet.size > 0 ? idxSet : null;
     this._recomputeDim();
   }
 
@@ -683,6 +718,26 @@ export class GlobeView extends EventTarget {
     this.threadArcs = new THREE.Mesh(merged, mat);
     this.threadArcs.visible = this.threadArcsEnabled;
     this.worldGroup.add(this.threadArcs);
+  }
+
+  setHoverPoint(idx) {
+    const pos = this.pointGeom.attributes.position.array;
+    if (idx >= 0) {
+      this.pointMat.uniforms.uFocusLocalPos.value.set(pos[3*idx], pos[3*idx+1], pos[3*idx+2]);
+      this.pointMat.uniforms.uFocusActive.value = 1;
+    } else {
+      this.pointMat.uniforms.uFocusActive.value = 0;
+    }
+  }
+
+  setPinnedPoint(idx) {
+    const pos = this.pointGeom.attributes.position.array;
+    if (idx >= 0) {
+      this.pointMat.uniforms.uPinnedLocalPos.value.set(pos[3*idx], pos[3*idx+1], pos[3*idx+2]);
+      this.pointMat.uniforms.uPinnedActive.value = 1;
+    } else {
+      this.pointMat.uniforms.uPinnedActive.value = 0;
+    }
   }
 
   _tick() {
