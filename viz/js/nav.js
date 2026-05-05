@@ -305,6 +305,10 @@ export class NavController extends EventTarget {
           e.preventDefault();
           return;
         }
+        if (window.App?.closeBookmarksCard?.()) {
+          e.preventDefault();
+          return;
+        }
         if (this._clearSearchState?.()) {
           e.preventDefault();
           return;
