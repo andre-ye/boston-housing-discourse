@@ -251,7 +251,8 @@ export class NavController extends EventTarget {
       // (the global handler used to return early for INPUT, so Esc never
       // reached help / detail / tour).
       if (e.key === 'Escape') {
-        // Priority-ordered Esc: title slide → tour → help → detail → position / interview → regex paint.
+        // Priority-ordered Esc: title slide → tour → help → cards →
+        // search/paint → camera reset.
         const presTitle = document.getElementById('presentation-title-overlay');
         if (presTitle && !presTitle.classList.contains('hidden')) {
           document.getElementById('presentation-title-continue')?.click();
@@ -304,8 +305,7 @@ export class NavController extends EventTarget {
           e.preventDefault();
           return;
         }
-        if (window.App?.globe?._multiHighlightActive) {
-          this._clearRegexPaint?.();
+        if (this._clearSearchState?.()) {
           e.preventDefault();
           return;
         }
@@ -472,6 +472,7 @@ export class NavController extends EventTarget {
 
     let activeIdx = -1;
     let currentMatches = [];
+    let userNavigated = false;
 
     // Empty-query directory: render every clusters / subtopics / positions
     // entry from the search index, so focusing the empty box shows all the
@@ -614,11 +615,12 @@ export class NavController extends EventTarget {
 
     const render = (q) => {
       const qTrim = q.trim();
+      userNavigated = false;
       if (!qTrim) {
+        this._clearSearchState({ clearInput: false });
         suggestions.classList.add('hidden');
         currentMatches = [];
         input.classList.remove('regex-mode', 'regex-error');
-        window.App?.globe?.setMultiHighlight({});
         return;
       }
       // If the user is asking for a text search, eagerly fetch the corpus
@@ -779,39 +781,76 @@ export class NavController extends EventTarget {
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        input.value = ''; suggestions.classList.add('hidden'); input.blur();
-        // Also clear any regex-paint applied on the globe.
-        this._clearRegexPaint();
+        this._clearSearchState();
         return;
       }
-      if (!currentMatches.length) return;
-      if (e.key === 'ArrowDown') { activeIdx = Math.min(currentMatches.length - 1, activeIdx + 1); updateActive(); e.preventDefault(); }
-      if (e.key === 'ArrowUp')   { activeIdx = Math.max(0, activeIdx - 1); updateActive(); e.preventDefault(); }
-      if (e.key === 'Enter' && activeIdx >= 0) {
-        const sel = currentMatches[activeIdx];
-        // History entry: repopulate and re-run.
-        if (sel && sel.kind === '_hist') {
-          input.value = sel.query;
-          render(input.value);
-          e.preventDefault();
-          return;
-        }
-        // Shift+Enter paints the union of sub/cluster hits on the globe.
-        // For metadata regex queries, a plain Enter with >1 hit also paints
-        // (the mode hint signals it). Text searches always require Shift to
-        // paint, so plain Enter still lands on the top hit.
-        const parsed = this._lastQuery;
-        const hasMultiKinds = currentMatches.some(m =>
-          m.kind === 'sub' || m.kind === 'cluster' || m.kind === 'position' || m.kind === 'gridcell');
-        const isTextMode = parsed && parsed.includes?.some(t => t.field === 'text');
-        const autoPaint = parsed && parsed.kind === 'regex' && !isTextMode
-          && hasMultiKinds && currentMatches.filter(m => m.kind !== 'ngram').length > 1;
-        if ((e.shiftKey && hasMultiKinds) || autoPaint) {
-          this._paintRegexOnGlobe(currentMatches);
-          pushHist(input.value);
-          e.preventDefault();
-          return;
-        }
+      if (e.key === 'ArrowDown' && currentMatches.length) {
+        activeIdx = Math.min(currentMatches.length - 1, activeIdx + 1);
+        userNavigated = true;
+        updateActive();
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'ArrowUp' && currentMatches.length) {
+        activeIdx = Math.max(0, activeIdx - 1);
+        userNavigated = true;
+        updateActive();
+        e.preventDefault();
+        return;
+      }
+      if (e.key !== 'Enter') return;
+
+      const qTrim = (input.value || '').trim();
+      if (!qTrim) return;
+      const sel = activeIdx >= 0 ? currentMatches[activeIdx] : null;
+
+      // History entry: repopulate and re-run.
+      if (sel && sel.kind === '_hist') {
+        input.value = sel.query;
+        render(input.value);
+        e.preventDefault();
+        return;
+      }
+
+      const parsed = this._lastQuery;
+      const hasMultiKinds = currentMatches.some(m =>
+        m.kind === 'sub' || m.kind === 'cluster' || m.kind === 'position' || m.kind === 'gridcell');
+
+      // Shift+Enter paints the union of sub/cluster hits on the globe.
+      if (e.shiftKey && hasMultiKinds) {
+        this._paintRegexOnGlobe(currentMatches);
+        pushHist(input.value);
+        e.preventDefault();
+        return;
+      }
+
+      // Plain text + user hasn't arrowed → spotlight the literal input. This
+      // matches "press Enter to search for what I typed" instead of jumping
+      // to whichever metadata suggestion happened to score highest.
+      const isPlainPhrase = parsed && parsed.kind === 'substr'
+        && parsed.includes.length > 0
+        && parsed.includes.every(t => !t.field);
+      if (isPlainPhrase && !userNavigated) {
+        pushHist(input.value);
+        suggestions.classList.add('hidden');
+        input.blur();
+        this._runSpotlightSearch(qTrim);
+        e.preventDefault();
+        return;
+      }
+
+      // Regex / field-scoped queries fall through to the prior behavior:
+      // autoPaint when multi-kind, otherwise apply the active hit.
+      const isTextMode = parsed && parsed.includes?.some(t => t.field === 'text');
+      const autoPaint = parsed && parsed.kind === 'regex' && !isTextMode
+        && hasMultiKinds && currentMatches.filter(m => m.kind !== 'ngram').length > 1;
+      if (autoPaint) {
+        this._paintRegexOnGlobe(currentMatches);
+        pushHist(input.value);
+        e.preventDefault();
+        return;
+      }
+      if (sel) {
         pushHist(input.value);
         this._applySearchHit(sel, input);
         e.preventDefault();
@@ -914,6 +953,32 @@ export class NavController extends EventTarget {
     if (window.App?.globe?.setSpotlight) window.App.globe.setSpotlight(null);
     const chip = document.getElementById('spotlight-chip');
     if (chip) chip.remove();
+  }
+
+  _clearSearchState({ clearInput = true } = {}) {
+    const input = document.getElementById('search-input');
+    const suggestions = document.getElementById('search-suggestions');
+    const hadInput = !!(input && input.value.trim());
+    const hadSuggestions = !!(suggestions && !suggestions.classList.contains('hidden'));
+    const hadRegexPaint = !!window.App?.globe?._multiHighlightActive;
+    const hadSpotlight = !!document.getElementById('spotlight-chip');
+    const hadSubredditFilter = !!window.App?.hasSubredditFilter?.();
+    const hadTopicFilter = this.focusCl != null || this.focusGid != null || this.focusPosIdx != null;
+    if (!hadInput && !hadSuggestions && !hadRegexPaint && !hadSpotlight && !hadSubredditFilter && !hadTopicFilter) return false;
+
+    if (input && clearInput) {
+      input.value = '';
+      input.blur();
+    }
+    input?.classList.remove('regex-mode', 'regex-error');
+    suggestions?.classList.add('hidden');
+    this._currentSearchHits = [];
+    this._lastQuery = null;
+    this._clearRegexPaint?.();
+    this._clearSpotlight?.();
+    window.App?.clearSubredditFilter?.();
+    if (hadTopicFilter) this.focus({});
+    return true;
   }
 
   _showRegexChip(clusterCount, subCount) {

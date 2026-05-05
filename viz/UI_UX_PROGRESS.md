@@ -17,3 +17,7 @@
 - Hover/pinned node relations now render all available connections for that thread instead of a capped/random subset.
 - Converted Space and Shift from hold interactions into toggled modes; Escape dismisses either mode.
 - Centralized selected-node clearing so Escape, reset, voice/interview transitions, and the point detail close button unpin the node and refresh relation mode away from node-only connections.
+- Updated Escape order so after selected-node/card state is cleared, Escape clears search input, suggestions, regex paint, and text spotlight before finally resetting the camera view.
+- Made manual search clearing use the same cleanup path, including subreddit filters created from search results.
+- Extended search clearing to unwind topic/subtopic/position focus filters as well.
+- Plain-text search now treats Enter as "search post bodies for what I typed" — runs a spotlight search instead of auto-jumping to the highest-scored suggestion. Use Arrow keys + Enter to pick a specific suggestion. Shift+Enter still paints regex/multi-kind hits.

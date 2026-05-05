@@ -3842,8 +3842,8 @@
         <kbd class="sh-key">⌘</kbd><span class="sh-plus">+</span><span class="sh-text">click to open Reddit thread</span>
       </div>
       <button type="button" id="reset-view-hint" aria-keyshortcuts="Escape"
-              title="Restore zoom after scrolling (same as Esc when no panel is open)"
-              aria-label="Reset globe zoom to match current navigation">
+              title="Esc clears selection, search/topic filters, then restores zoom"
+              aria-label="Escape clears selection, search and topic filters, then resets globe zoom">
         <span class="rv-label">Reset view</span>
         <kbd class="sh-key">esc</kbd>
       </button>
@@ -3982,7 +3982,8 @@
             <div><dt>Focus empty input</dt><dd>Shows your last 8 searches; <kbd>Enter</kbd> reruns.</dd></div>
             <div><dt><kbd>Shift</kbd>+<kbd>Enter</kbd> (regex)</dt><dd>Paint every matching topic/sub on the globe. Chip shows count; × or <kbd>Esc</kbd> clears.</dd></div>
             <div><dt>Click <b>r/*</b> suggestion</dt><dd>Filter the globe to that subreddit (intersects with any drill state).</dd></div>
-            <div><dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd></dt><dd>Browse suggestions and jump.</dd></div>
+            <div><dt><kbd>Enter</kbd></dt><dd>Search post bodies for the typed text and spotlight matching points. Highlights a count chip; × or <kbd>Esc</kbd> clears.</dd></div>
+            <div><dt><kbd>↑</kbd> <kbd>↓</kbd> + <kbd>Enter</kbd></dt><dd>Pick a specific suggestion (topic, subtopic, point of view, snippet) and jump to it instead of running a text search.</dd></div>
           </dl>
         </section>
         <section>
@@ -4036,7 +4037,7 @@
             <div><dt>Scroll</dt><dd>Zoom in / out.</dd></div>
             <div><dt><kbd>Space</kbd> (toggle)</dt><dd>Five random posts or comments drawn from points that are on-screen and match active filters (nav drill, time range, subreddit filter, etc.). Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
             <div><dt><kbd>Shift</kbd> (toggle)</dt><dd>Show relations. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
-            <div><dt><kbd>Esc</kbd></dt><dd>When no overlay is open, restores scroll zoom to the distance last chosen for your drill (topic / subtopic / point of view). Same as the <strong>Reset view</strong> chip on the right.</dd></div>
+            <div><dt><kbd>Esc</kbd></dt><dd>Backs out in order: transient modes or selected node, search / topic filters / relation paint, then scroll zoom to the distance last chosen for your drill. Same as the <strong>Reset view</strong> chip on the right.</dd></div>
             <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
           </dl>
         </section>
@@ -4106,6 +4107,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=304"></script>
+<script type="module" src="./js/main.js?v=308"></script>
 </body>
 </html>

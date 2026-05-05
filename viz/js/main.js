@@ -21,7 +21,7 @@ function redditScoreInlineHtml(score) {
 function formatRedditKindLabel(_type) {
   return 'Thread';
 }
-import { NavController } from './nav.js?v=248';
+import { NavController } from './nav.js?v=252';
 import { GlobeView } from './globe.js?v=272';
 import * as THREE from 'three';
 
@@ -361,14 +361,22 @@ async function boot() {
   // Active subreddit filter state + chip UI in the nav header.
   let _activeSubredditFilter = null;   // { id, name }
   window.App.toggleSubredditFilter = (...args) => toggleSubredditFilter(...args);
+  window.App.clearSubredditFilter = () => clearSubredditFilter();
+  window.App.hasSubredditFilter = () => !!_activeSubredditFilter;
+  function clearSubredditFilter() {
+    if (!_activeSubredditFilter) return false;
+    _activeSubredditFilter = null;
+    globe.setSubredditHighlight(null);
+    _updateSubredditFilterChip();
+    renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
+    if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
+    if (typeof writeHash === 'function') writeHash();
+    if (typeof refreshCaptions === 'function') setTimeout(refreshCaptions, 200);
+    return true;
+  }
   function toggleSubredditFilter(id, name, contextCl, contextGid) {
     if (_activeSubredditFilter && _activeSubredditFilter.id === id) {
-      _activeSubredditFilter = null;
-      globe.setSubredditHighlight(null);
-      _updateSubredditFilterChip();
-      renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
-      // Re-render cluster-level "loudest stances" now that sub-gating is off.
-      if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
+      clearSubredditFilter();
       return;
     }
     _activeSubredditFilter = { id, name };
@@ -404,10 +412,7 @@ async function boot() {
     if (dim) { for (let i = 0; i < dim.length; i++) if (dim[i] >= 0.9) bright++; }
     chip.innerHTML = `<span><b>${bright.toLocaleString()}</b> in <b>r/${escapeHtml(_activeSubredditFilter.name)}</b></span><button class="sr-x" aria-label="Clear">×</button>`;
     chip.querySelector('.sr-x').onclick = () => {
-      _activeSubredditFilter = null;
-      globe.setSubredditHighlight(null);
-      _updateSubredditFilterChip();
-      renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
+      clearSubredditFilter();
     };
     _renderSubredditAgendaPanel();
   }
