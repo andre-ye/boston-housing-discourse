@@ -1020,6 +1020,7 @@ export class NavController extends EventTarget {
   // token (tokens AND together):
   //   /pattern/flags         → regex match on label+context
   //   re:pattern             → regex match (case-insensitive)
+  //   terms with regex chars → regex match (case-insensitive), e.g. rent|mortgage
   //   sub:<pat>              → restrict include to sub + position kinds
   //   cl:<pat>               → restrict include to cluster + sub + position
   //   r:<pat>  or  r/<pat>   → restrict include to subreddit kind
@@ -1096,18 +1097,31 @@ export class NavController extends EventTarget {
         const rawFlags = m[2] || '';
         const flags = rawFlags.includes('i') ? rawFlags : rawFlags + 'i';
         const re = new RegExp(m[1], flags);
-        return { kind: 'regex', test: (h) => re.test(h), display: m[1], re };
+        return { kind: 'regex', test: (h) => this._testRegex(re, h), display: m[1], re };
       } catch (err) { return { kind: 'error', error: err.message }; }
     }
     if (s.startsWith('re:')) {
       const p = s.slice(3);
       try {
         const re = new RegExp(p, 'i');
-        return { kind: 'regex', test: (h) => re.test(h), display: p, re };
+        return { kind: 'regex', test: (h) => this._testRegex(re, h), display: p, re };
+      } catch (err) { return { kind: 'error', error: err.message }; }
+    }
+    // Bare regex mode: if the search term contains regex syntax, compile it
+    // directly so users can type patterns like `rent|mortgage` or `\bMBTA\b`.
+    if (/[\\^$.*+?()[\]{}|]/.test(s)) {
+      try {
+        const re = new RegExp(s, 'i');
+        return { kind: 'regex', test: (h) => this._testRegex(re, h), display: s, re };
       } catch (err) { return { kind: 'error', error: err.message }; }
     }
     const low = s.toLowerCase();
     return { kind: 'substr', test: (h) => h.toLowerCase().includes(low), display: low, low };
+  }
+
+  _testRegex(re, hay) {
+    re.lastIndex = 0;
+    return re.test(hay);
   }
 
   _tokenizeQuery(raw) {

@@ -21,7 +21,7 @@ function redditScoreInlineHtml(score) {
 function formatRedditKindLabel(_type) {
   return 'Thread';
 }
-import { NavController } from './nav.js?v=247';
+import { NavController } from './nav.js?v=248';
 import { GlobeView } from './globe.js?v=270';
 import * as THREE from 'three';
 
