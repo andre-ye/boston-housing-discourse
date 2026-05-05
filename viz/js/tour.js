@@ -63,7 +63,7 @@ const BEATS = [
       title: 'A sphere of voices.',
       prose:
       'Each dot is a post or comment. Color encodes topic; the left nav moves from topics \u2192 subtopics \u2192 points of view. ' +
-        'The P1\u2013P18 pins are people we interviewed, placed near the regions their language matched. ' +
+        'The P1\u2013P18 pins are people we interviewed, placed near the regions relevant to the topics they discussed. ' +
         'On the globe, hold Space for five random posts or comments from what is visible; press t or click \u23f1 (bottom-right) to filter by time.',
     },
 
@@ -247,7 +247,7 @@ const BEATS = [
     prose:
       'One person we spoke with described a multimodal commute where a water ' +
       'leg felt calmer than the rest. We pinned them and seventeen other voices ' +
-      'next to the topic regions their language matched. Click any P-pin for ' +
+      'next to the topic regions related to what they discussed. Click any P-pin for ' +
       'short lines that echo that nearby Reddit conversation—no bios, no addresses.',
     pullquotes: [
       'The water commute feels like the calm part of the day.',
