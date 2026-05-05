@@ -15,3 +15,5 @@
 - Follow-up: made the zoom scaling much more aggressive after the first pass looked visually unchanged at common focused zoom levels.
 - Changed Shift relations to prefer the selected node: pinned point first, hovered point second, then the old visible-thread overview only when no node is selected.
 - Hover/pinned node relations now render all available connections for that thread instead of a capped/random subset.
+- Converted Space and Shift from hold interactions into toggled modes; Escape dismisses either mode.
+- Centralized selected-node clearing so Escape, reset, voice/interview transitions, and the point detail close button unpin the node and refresh relation mode away from node-only connections.

@@ -900,9 +900,12 @@ async function boot() {
 
   queueMicrotask(() => showInspectorEmpty());
 
-  // Hoisted here so the hover handlers below can check it; actual
-  // keydown/keyup listeners live farther down in the sprout block.
+  // Hoisted here so the hover handlers can check the toggle modes before
+  // their key listeners are registered farther down.
   let _spaceDown = false;
+  let _shiftActive = false;
+  let _shiftEpoch = 0;
+  let _priorThreadsEnabled = false;
 
   // ─── Globe hover → floating cursor tooltip + thread arcs ────────
   // Tooltip is a fixed-position card that follows the mouse. It replaces
@@ -949,7 +952,7 @@ async function boot() {
       pointTooltip.classList.remove('hidden');
       pointTooltip.classList.add('visible');
       if (clientX != null) positionTooltip(clientX, clientY);
-      buildHoverArcs(idx, details);
+      if (!_shiftActive || pinnedPointIdx < 0) buildHoverArcs(idx, details);
     } catch (e) {}
   });
   globe.addEventListener('hovermove', (ev) => {
@@ -985,6 +988,17 @@ async function boot() {
   const hoverHaloEl = document.getElementById('hover-halo');
   let hoverPointIdx = -1;
   let pinnedPointIdx = -1;
+  function clearSelectedPoint({ refreshRelations = true } = {}) {
+    const hadPinned = pinnedPointIdx >= 0;
+    pinnedPointIdx = -1;
+    hoverPointIdx = -1;
+    globe.setPinnedPoint(-1);
+    globe.setHoverPoint(-1);
+    if (hadPinned && refreshRelations && _shiftActive) {
+      shiftHideRelations();
+      shiftShowRelations();
+    }
+  }
   globe.addEventListener('hover', (ev) => {
     if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
     hoverPointIdx = ev?.detail?.idx ?? -1;
@@ -1025,8 +1039,7 @@ async function boot() {
   const SPROUT_BODY_CAP = 240;
   const SPROUT_MARGIN_PX = 14;
   let activeSprouts = [];   // { idx, lat, lon, el, line, offX, offY, w, h }
-  /** Space keyup used to clear sprouts immediately; that removed the DOM before
-   *  a click if the user released Space to reach the mouse. Defer clear slightly. */
+  // Space is a toggle: first press opens a five-post spread, next press clears.
   let sproutClearTimer = null;
   function cancelSproutClearTimer() {
     if (sproutClearTimer != null) {
@@ -1034,14 +1047,6 @@ async function boot() {
       sproutClearTimer = null;
     }
   }
-  function scheduleSproutClear() {
-    cancelSproutClearTimer();
-    sproutClearTimer = setTimeout(() => {
-      sproutClearTimer = null;
-      sproutClear();
-    }, 400);
-  }
-
   // "In the current viewport" means both:
   //   1. forward-facing (facing > 0) — otherwise the point is on the back
   //      of the sphere and not rendered
@@ -1169,6 +1174,7 @@ async function boot() {
         pinnedPointIdx = k.idx;
         globe.setPinnedPoint(k.idx);
         showDetailCard(d);
+        _spaceDown = false;
         sproutClear();
       });
       // Border + thin glow in the cluster color so the caption reads as
@@ -1327,24 +1333,16 @@ async function boot() {
   }
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' && e.key !== ' ') return;
+    if (e.repeat) return;
     if (!_sproutSpaceAllowed(e)) return;
     cancelSproutClearTimer();
     e.preventDefault();
-    if (_spaceDown) return;
-    _spaceDown = true;
-    sproutSpawn();
-  });
-  window.addEventListener('keyup', (e) => {
-    if (e.code !== 'Space' && e.key !== ' ') return;
-    if (!_spaceDown) return;
-    _spaceDown = false;
-    scheduleSproutClear();
+    _spaceDown = !_spaceDown;
+    if (_spaceDown) sproutSpawn();
+    else sproutClear();
   });
   window.addEventListener('blur', () => {
-    if (!_spaceDown) return;
-    _spaceDown = false;
     cancelSproutClearTimer();
-    sproutClear();
   });
 
   globe.addEventListener('pinclick', (ev) => {
@@ -1409,6 +1407,7 @@ async function boot() {
     // Focus drill
     nav.focus({});
     hideInterviewCard();
+    clearSelectedPoint();
     // Subreddit filter
     if (_activeSubredditFilter) {
       _activeSubredditFilter = null;
@@ -2939,7 +2938,7 @@ async function boot() {
       document.getElementById('interview-card').classList.add('hidden');
       document.getElementById('position-card').classList.add('hidden');
       hideInspectorEmpty();
-      pinnedPointIdx = -1; globe.setPinnedPoint(-1);
+      clearSelectedPoint();
     } else {
       showInspectorEmpty();
     }
@@ -3016,7 +3015,7 @@ async function boot() {
   async function showInterviewCard(pin) {
     if (!ic) return;
     dc.classList.add('hidden');
-    pinnedPointIdx = -1; globe.setPinnedPoint(-1);
+    clearSelectedPoint();
     focusCard.classList.add('hidden');
     document.getElementById('position-card').classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
@@ -3393,10 +3392,6 @@ async function boot() {
     return byPost;
   }
 
-  let _shiftActive = false;
-  let _shiftEpoch = 0;
-  let _priorThreadsEnabled = false;
-  let _priorHighlightState = null;
   async function relationPairsForPoint(idx) {
     if (idx == null || idx < 0) return [];
     const details = await getPointDetails(App.state, idx);
@@ -3480,14 +3475,42 @@ async function boot() {
     if (e.key !== 'Shift' || e.repeat) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    shiftShowRelations();
+    e.preventDefault();
+    if (_shiftActive) shiftHideRelations();
+    else shiftShowRelations();
   });
-  window.addEventListener('keyup', (e) => {
-    if (e.key !== 'Shift') return;
-    shiftHideRelations();
-  });
-  // Release on blur so a shift-tab-away doesn't leave the overlay stuck.
-  window.addEventListener('blur', shiftHideRelations);
+
+  // Escape is the universal "back out of transient modes" key. Run in capture
+  // so selected-node state clears before NavController hides the detail card.
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    let handled = false;
+    if (_spaceDown || activeSprouts.length) {
+      _spaceDown = false;
+      cancelSproutClearTimer();
+      sproutClear();
+      handled = true;
+    }
+    if (pinnedPointIdx >= 0) {
+      clearSelectedPoint();
+      handled = true;
+    }
+    if (_shiftActive) {
+      shiftHideRelations();
+      handled = true;
+    }
+    if (handled) {
+      e.preventDefault();
+      const layerOpen = [
+        'presentation-title-overlay', 'tour-overlay', 'help-overlay',
+        'detail-card', 'position-card', 'interview-card',
+      ].some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+      if (!layerOpen) e.stopImmediatePropagation();
+    }
+  }, true);
 
   async function buildHoverArcs(idx, details) {
     const myEpoch = ++hoverEpoch;
@@ -3547,8 +3570,7 @@ async function boot() {
   const dcLink = document.getElementById('dc-link');
   document.getElementById('dc-close').onclick = () => {
     dc.classList.add('hidden');
-    pinnedPointIdx = -1;
-    globe.setPinnedPoint(-1);
+    clearSelectedPoint();
   };
   /** Prefer opening the Reddit thread in a new tab when we have a permalink. */
   function openRedditThreadOrDetail(d) {

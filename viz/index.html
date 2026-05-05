@@ -756,7 +756,7 @@
     letter-spacing: 0.2px;
   }
 
-  /* Ephemeral "sprout" captions that grow when the user holds SPACE. */
+  /* Ephemeral "sprout" captions toggled with SPACE. */
   #sprouts {
     position: absolute; inset: 0;
     pointer-events: none;
@@ -3771,7 +3771,7 @@
             Each dot is a post or comment. Color encodes <b>topic</b>; the left nav moves from <b>topics → subtopics → points of view</b> so you can compare how different groups talk about the same issue.
           </p>
           <p class="insp-intro-analyze">
-            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, hold <kbd>Space</kbd> for <b>five random posts or comments</b> from what is visible, and press <kbd>?</kbd> for the full shortcut list.
+            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, press <kbd>Space</kbd> for <b>five random posts or comments</b> from what is visible, and press <kbd>?</kbd> for the full shortcut list.
           </p>
           <div class="insp-intro-cluster-wrap">
             <div class="insp-intro-cluster-h">Three angles people argue about</div>
@@ -3832,11 +3832,11 @@
       <svg id="sprout-lines" pointer-events="none"></svg>
       <div id="space-hint">
         <kbd class="sh-key">space</kbd>
-        <span class="sh-text">hold for 5 random posts / comments</span>
+        <span class="sh-text">toggle 5 random posts / comments</span>
       </div>
       <div id="shift-hint">
         <kbd class="sh-key">shift</kbd>
-        <span class="sh-text">to show relations</span>
+        <span class="sh-text">toggle relations</span>
       </div>
       <div id="link-hint">
         <kbd class="sh-key">⌘</kbd><span class="sh-plus">+</span><span class="sh-text">click to open Reddit thread</span>
@@ -4034,7 +4034,8 @@
           <dl>
             <div><dt>Drag</dt><dd>Rotate the globe.</dd></div>
             <div><dt>Scroll</dt><dd>Zoom in / out.</dd></div>
-            <div><dt><kbd>Space</kbd> (hold)</dt><dd>Five random posts or comments drawn from points that are on-screen and match active filters (nav drill, time range, subreddit filter, etc.). Release to dismiss.</dd></div>
+            <div><dt><kbd>Space</kbd> (toggle)</dt><dd>Five random posts or comments drawn from points that are on-screen and match active filters (nav drill, time range, subreddit filter, etc.). Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
+            <div><dt><kbd>Shift</kbd> (toggle)</dt><dd>Show relations. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
             <div><dt><kbd>Esc</kbd></dt><dd>When no overlay is open, restores scroll zoom to the distance last chosen for your drill (topic / subtopic / point of view). Same as the <strong>Reset view</strong> chip on the right.</dd></div>
             <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
           </dl>
@@ -4105,6 +4106,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=303"></script>
+<script type="module" src="./js/main.js?v=304"></script>
 </body>
 </html>
