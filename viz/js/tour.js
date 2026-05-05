@@ -1,12 +1,12 @@
 // Guided tour — Atlantic-style narrative opener + deep drill-down
 // across three clusters, each entering cluster → sub → point-of-view tier.
-// Version 286 — true narrative integration of the tutorial. Every
-// affordance (hover, drill cluster→sub→position, click P2, time filter,
-// random sample) is taught INSIDE the corresponding drill step rather
-// than parked in awkward standalone tutorial beats. Each interactive
-// step also pulses the specific element the user is told to click via
-// `pulseClass` body classes (see CSS `tour-pulse-*` rules), so the
-// hint text and the visual highlight always agree.
+// Version 287 — Stops 2 and 3 each pick up a new affordance.
+// Tenant Rights ends with a SEARCH tutorial (type a phrase, watch the
+// globe paint matches across the whole corpus). Bike Lanes ends with a
+// P18 click tutorial (a second specific pin, in a different topical
+// context — reinforces that pins live across the sphere). Pin beats no
+// longer call nav.focus on entry, eliminating the camera-swing where
+// the globe rotated out to the cluster anchor and back to the pin.
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
 
@@ -292,12 +292,11 @@ const BEATS = [
         showChrome: ['pins', 'cards'],
         pulseClass: 'tour-pulse-pin-P2',
         manualContinue: true,
-        setup: ({ globe, nav, App }) => {
-          try { nav.focus({}); } catch {}
-          // Spotlight ONLY P2's home cluster's anchor points so the
-          // surrounding sphere doesn't compete for attention. The pin
-          // itself gets highlighted via the `tour-pulse-pin-P2` body
-          // class wired into CSS.
+        setup: ({ globe, App }) => {
+          // Don't touch nav.focus here — calling it would fire a focus
+          // listener that rotates the globe to (0,0) (when cleared) or
+          // to the cluster anchor, then we'd rotateTo P2 right after.
+          // That double-hop reads as a swing. Just rotate directly.
           const placements = App?.state?.interviewPins?.placements || [];
           const p2 = placements.find(p => p.id === 'P2');
           const idxSet = new Set(
@@ -401,6 +400,53 @@ const BEATS = [
     ],
   },
 
+  // ── Tutorial: SEARCH — type a phrase ────────────────────────────────
+  // After the heating narrative, the user has a concrete word in mind
+  // ("boiler", "heat", "leak"). Pull it through the search bar so they
+  // see the cross-cutting paint pattern — the same word shows up in
+  // multiple topics, and the highlighted dots reveal that overlap.
+  {
+    kind: 'interstitial',
+    eyebrow: 'Stop 2 of 3 — find specific words',
+    title: 'Search the entire corpus',
+    prose:
+      'The search bar in the top-left finds posts and comments by phrase across all 422k voices. Paints every match on the globe — useful when the same word ("boiler", "rent", "ghost bike") cuts across multiple topics.',
+    steps: [
+      {
+        heading: 'Type a word into the search bar',
+        body: 'Click the search bar in the top-left of the sidebar and type a phrase — try "boiler", "leak", or anything you\'re curious about. Matching posts highlight on the globe; non-matching dim. Hit Continue when you\'ve seen the spread.',
+        hint: '↖ Type into the search bar',
+        showChrome: ['nav'],
+        pulseClass: 'tour-pulse-search',
+        manualContinue: true,
+        setup: ({ nav }) => {
+          // Don't change nav.focus — the user is on Heating, the search
+          // runs across the whole corpus from here. Auto-focus the
+          // search input so a single keystroke starts the search.
+          requestAnimationFrame(() => {
+            try {
+              const input = document.getElementById('search-input');
+              input?.focus();
+            } catch {}
+          });
+          return () => {
+            // Leave the user's search query alone — the next beat
+            // (time tutorial) doesn't depend on it being cleared.
+          };
+        },
+        subscribe: (_ctx, advance) => {
+          const input = document.getElementById('search-input');
+          if (!input) { advance(); return () => {}; }
+          const onInput = () => {
+            if ((input.value || '').trim().length >= 2) advance();
+          };
+          input.addEventListener('input', onInput);
+          return () => input.removeEventListener('input', onInput);
+        },
+      },
+    ],
+  },
+
   // ── Tutorial: TIME — click the ⏱ button ─────────────────────────────
   // Heating gripes are seasonal — perfect place to teach the time
   // filter. We instruct a button click rather than a keybind so the
@@ -408,7 +454,7 @@ const BEATS = [
   // `tour-step-show-time` class.
   {
     kind: 'interstitial',
-    eyebrow: 'When did this peak?',
+    eyebrow: 'Stop 2 of 3 — when did this peak?',
     title: 'Filter by time',
     prose:
       'Heating complaints look seasonal. The clock button in the bottom-right opens a month-range slider — drag to dim posts outside the period you care about.',
@@ -419,6 +465,19 @@ const BEATS = [
         hint: 'Click the ⏱ button ↘',
         showChrome: ['time'],
         manualContinue: true,
+        setup: () => {
+          // Clear any leftover search from the previous step so the
+          // time-filter demo starts with a clean dataset.
+          try {
+            const input = document.getElementById('search-input');
+            if (input && input.value) {
+              input.value = '';
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.blur();
+            }
+          } catch {}
+          return () => {};
+        },
         subscribe: (_ctx, advance) => {
           const tlBtn = document.getElementById('tl-toggle');
           if (!tlBtn) { advance(); return () => {}; }
@@ -480,6 +539,74 @@ const BEATS = [
     pullquotes: [
       '"Every cyclist death gets blamed on the cyclist. ' +
        'Every driver death gets blamed on the road."',
+    ],
+  },
+
+  // ── Tutorial: PIN-FOCUS — click P18 to hear the cyclist voice ───────
+  // The user already learned to click pins from P2. P18 gives them a
+  // second pin in a different topical context (bike lanes), reinforcing
+  // that pins live across the whole sphere and any of them can be
+  // focused on individually. Spotlight only P18 so the click target is
+  // unambiguous.
+  {
+    kind: 'interstitial',
+    eyebrow: 'Stop 3 of 3 — focus on a single voice',
+    title: 'Click P18 — a cyclist',
+    prose:
+      'P18 is one of the people we interviewed who actually rides a bike in Boston. They\'re anchored where bike-lane voices cluster. Click P18 — the camera will rotate and a panel pops up with their paraphrased quotes.',
+    steps: [
+      {
+        heading: 'Click the P18 pin',
+        body: 'Find the floating P18 pin (it\'s pulsing) and click it. The globe focuses on that single voice and a panel appears with their take on blocked bike lanes and street design. Hit Continue once you\'ve read it.',
+        hint: 'Click the P18 pin →',
+        showChrome: ['pins', 'cards'],
+        pulseClass: 'tour-pulse-pin-P18',
+        manualContinue: true,
+        setup: ({ globe, App }) => {
+          // Spotlight only P18's anchor point so the surrounding sphere
+          // doesn't compete for attention. Keep the cluster context
+          // (Bike Lanes) so the breadcrumbs still make sense.
+          const placements = App?.state?.interviewPins?.placements || [];
+          const p18 = placements.find(p => p.id === 'P18');
+          const idxSet = new Set(
+            placements.filter(p => p.id === 'P18')
+              .map(p => p.idx).filter(i => Number.isFinite(i))
+          );
+          try { if (idxSet.size > 0) globe.setSpotlight(idxSet); } catch {}
+          document.body.classList.add('tour-pin-spotlight');
+          if (p18) {
+            try { globe.rotateTo(p18.lat, p18.lon, 1.9); } catch {}
+          } else {
+            try { globe.rotateTo(20, -30, 2.4); } catch {}
+          }
+          return () => {
+            try { globe.setSpotlight(null); } catch {}
+            document.body.classList.remove('tour-pin-spotlight');
+            document.getElementById('interview-card')?.classList.add('hidden');
+            document.getElementById('detail-card')?.classList.add('hidden');
+            document.getElementById('position-card')?.classList.add('hidden');
+          };
+        },
+        subscribe: ({ globe }, advance) => {
+          const onPinClick = (ev) => {
+            if (ev?.detail?.pin?.id === 'P18') advance();
+          };
+          globe.addEventListener('pinclick', onPinClick);
+          return () => globe.removeEventListener('pinclick', onPinClick);
+        },
+      },
+    ],
+  },
+  {
+    kind: 'pin',
+    pinId: 'P18',
+    eyebrow: 'A second voice',
+    title: 'A cyclist who documents blocked lanes',
+    prose:
+      'P18 told us about photographing blocked bike lanes — drivers parking on them, repeat offenders, and the conversation between cyclists and drivers about whether enforcement or design is the actual fix.',
+    pullquotes: [
+      'Blocked bike lanes are documented like crime scenes: photos, maps, and repeat offenders.',
+      'Separated lanes show up as the rare thing both sides sometimes agree could reduce conflict.',
     ],
   },
 
@@ -940,14 +1067,16 @@ export function createTour({ globe, App, nav }) {
           }
         }, 150);
       } else if (beat.kind === 'pin') {
-        // Pan the globe to the interview pin and pulse it.
+        // The user just clicked this pin in the previous step, so the
+        // camera is already framed on it. Skip nav.focus entirely —
+        // changing focus to the pin's cluster fires a focus listener
+        // that rotates the globe out to the cluster anchor and then
+        // back, which feels flighty. Just hold the view and pulse the
+        // pin label.
         const pin = (App.state?.interviewPins?.placements || []).find(p => p.id === beat.pinId);
         if (pin) {
-          nav.focus({ cl: pin.cluster });
-          setTimeout(() => {
-            try { globe.rotateTo(pin.lat, pin.lon, 1.4); } catch {}
-            pulseElement(`.pin-label[data-id="${beat.pinId}"]`);
-          }, 220);
+          try { globe.rotateTo(pin.lat, pin.lon, 1.5); } catch {}
+          pulseElement(`.pin[data-id="${beat.pinId}"]`);
         }
       }
     } catch (e) {
@@ -1035,6 +1164,10 @@ export function createTour({ globe, App, nav }) {
       nav.focus({});
       globe.rotateTo(15, -25, 3.0);
     } catch {}
+    // Restore the timeline-scrubber state from localStorage now that
+    // tour-active is gone. The IIFE in main.js skipped auto-open at
+    // boot if the tour was already starting.
+    try { window.App?._timelineRestore?.(); } catch {}
   }
 
   function next() {

@@ -115,7 +115,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=286');
+    const { createTour } = await import('./tour.js?v=287');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -1757,8 +1757,21 @@ async function boot() {
     });
     clearBtn.onclick = (e) => {
       e.stopPropagation();
+      // Originally this only reset the date range. The toggle button
+      // (#tl-toggle) is `display: none` when the scrubber is open, so
+      // there was no mouse path to close the scrubber — only the `t`
+      // keybind worked. Treat × as a real close: clear the filter AND
+      // collapse the scrubber, mirroring the visual affordance.
       lo = 0; hi = N - 1;
       applyFilter();
+      tl.classList.add('hidden');
+      toggle.classList.remove('active');
+      syncTimelineBodyClass();
+      try {
+        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+        p.timeline = 'off';
+        localStorage.setItem('vizPref', JSON.stringify(p));
+      } catch {}
     };
     // Expose for the global Reset button so it can unwind the time filter
     // alongside everything else.
@@ -1785,13 +1798,22 @@ async function boot() {
         localStorage.setItem('vizPref', JSON.stringify(p));
       } catch {}
     };
-    // Restore on first load if previously open.
-    try {
-      const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
-      if (p.timeline === 'on' && tl.classList.contains('hidden')) {
-        queueMicrotask(() => toggle.click());
-      }
-    } catch {}
+    // Restore on first load if previously open. Skip if the tour will
+    // be running — the tour decides when the timeline is allowed on
+    // screen, otherwise the scrubber pops up before its tutorial beat
+    // and the user can't dismiss it (tour-active disables tl-toggle's
+    // pointer-events). We re-check on tour close via App._timelineRestore.
+    const tryRestore = () => {
+      try {
+        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+        if (p.timeline !== 'on') return;
+        if (!tl.classList.contains('hidden')) return;
+        if (document.body.classList.contains('tour-active')) return;
+        toggle.click();
+      } catch {}
+    };
+    queueMicrotask(tryRestore);
+    App._timelineRestore = tryRestore;
     syncTimelineBodyClass();
     updateLabel();
   })();
