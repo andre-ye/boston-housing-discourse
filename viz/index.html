@@ -57,7 +57,6 @@
   /* Header block keeps its own inner padding so only it has margins —
      the bar columns below reach the panel edges. */
   #nav > #nav-header { padding: 14px 14px 6px; flex: 0 0 auto; }
-  #nav > #breadcrumbs { display: none !important; }
   #nav > #nav-bars {
     padding: 0;
     margin: 0;
@@ -214,23 +213,57 @@
     font-size: 11px; color: var(--fg-mute);
     letter-spacing: 0.2px;
   }
+  /* "You are exploring …" header that sits above the bar columns. The
+     focused topic and subtopic names appear here horizontally so the
+     user doesn't have to read the sideways title in the narrow column.
+     Hidden until the user has actually drilled into something. */
   #breadcrumbs {
     display: flex; align-items: center; gap: 6px;
     flex-wrap: wrap;
-    min-height: 22px;
-    margin: 8px 0 10px;
-    font-size: 11.5px; color: var(--fg-dim);
+    margin: 10px 0 6px;
+    font-size: 12px; color: var(--fg-dim);
+    line-height: 1.3;
+    max-height: 200px;
+    transition: opacity 0.18s ease, max-height 0.22s ease, margin 0.22s ease;
+  }
+  #breadcrumbs.is-empty {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #breadcrumbs .crumb-label {
+    font: 600 9.5px 'Source Sans Pro', sans-serif;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(244,237,225,0.45);
+    margin-right: 2px;
   }
   #breadcrumbs .crumb {
     cursor: pointer;
-    padding: 2px 7px;
+    padding: 4px 10px;
     border: 1px solid var(--line);
-    border-radius: 11px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.025);
     transition: all 0.15s;
+    font-weight: 500;
+    /* Border-left accent matches the cluster color via inline style. */
+    border-left-width: 3px;
   }
-  #breadcrumbs .crumb:hover { color: var(--fg); border-color: #2c3850; }
-  #breadcrumbs .crumb.active { color: var(--fg); background: #182032; border-color: #2c3850; }
-  #breadcrumbs .sep { opacity: 0.4; }
+  #breadcrumbs .crumb:hover { color: var(--fg); border-color: #2c3850; background: rgba(255,255,255,0.05); }
+  #breadcrumbs .crumb.active {
+    color: var(--fg);
+    background: rgba(40,52,76,0.55);
+    border-color: #2c3850;
+    font-weight: 600;
+  }
+  #breadcrumbs .crumb.crumb-root {
+    border-left-width: 1px;
+    font-weight: 400;
+    color: rgba(244,237,225,0.55);
+  }
+  #breadcrumbs .sep { opacity: 0.5; font-size: 13px; }
 
   #nav-bars {
     position: relative;
@@ -690,8 +723,26 @@
     pointer-events: none;
     transform: translateX(6px);
   }
-  #space-hint, #shift-hint, #link-hint { pointer-events: none; }
-  #space-hint { top: 16px; }
+  #shift-hint, #link-hint { pointer-events: none; }
+  /* #space-hint is clickable — clicking the chip toggles 5 random voices
+     just like pressing the Space key. Lets the user discover the
+     affordance without knowing the keybind. */
+  #space-hint {
+    top: 16px;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity 0.18s ease, transform 0.18s ease,
+                border-color 0.15s ease, background 0.15s ease;
+  }
+  #space-hint:hover {
+    border-color: rgba(255,255,255,0.22);
+    background: rgba(20,28,42,0.92);
+  }
+  #space-hint.is-on .sh-key {
+    background: linear-gradient(180deg, #ffd166, #f1b938);
+    color: #1a1208;
+    border-color: #ffd166;
+  }
   #shift-hint { top: 54px; }
   #link-hint { top: 96px; }
   /* Clickable — sits in pointer-events:none overlay; child uses auto. */
@@ -1434,6 +1485,37 @@
     opacity: 0.6;
     animation-duration: 1.0s;
   }
+  /* Tour beat: "We started by talking to 26 people" — globe is dimmed via
+     setSpotlight; lift the P-pins so they read as the subjects of the moment.
+     Disable the per-pin focus dimming (set in globe.js _updatePinScreenPositions
+     when a cluster is highlighted) by overriding the .dimmed class too. */
+  body.tour-pin-spotlight .pin {
+    opacity: 1 !important;
+  }
+  body.tour-pin-spotlight .pin.dimmed {
+    opacity: 1 !important;
+    pointer-events: auto;
+  }
+  body.tour-pin-spotlight .pin .pin-ring {
+    opacity: 0.65;
+    animation-duration: 1.4s;
+    transform-origin: center;
+  }
+  body.tour-pin-spotlight .pin .pin-dot {
+    box-shadow:
+      0 0 0 1.5px rgba(8,10,16,0.92),
+      0 0 0 3px rgba(255,255,255,0.18),
+      0 0 12px 2px rgba(0,0,0,0.7),
+      0 0 20px currentColor;
+    transform: scale(1.2);
+  }
+  body.tour-pin-spotlight .pin .pin-id {
+    background: rgba(8,10,16,0.94);
+    border-color: rgba(255,255,255,0.32);
+    color: #fff !important;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 4px 14px rgba(0,0,0,0.5);
+  }
+
   @keyframes pin-pulse {
     0%   { transform: scale(1);   opacity: 0.35; }
     60%  { transform: scale(2.3); opacity: 0;    }
@@ -2969,27 +3051,246 @@
   .tour-btn-ghost:hover { color: #fff; border-color: rgba(244,237,225,0.6); }
   .tour-btn.hidden { display: none; }
 
-  /* ── Narration card (floats over globe during beats 1–9) ────────── */
+  /* ── Narration card (floats over globe during beats 1–9) ──────────
+     Lives at the bottom of the screen as a narration footer — keeps the
+     entire top-right column free for inspector cards (interview /
+     detail / focus / position) so the two never visually stack. The
+     card is centered horizontally over the globe area; when the nav is
+     visible it offsets to the right of the nav rail. */
   .tour-card {
     position: absolute;
-    top: 50%;
-    right: 40px;
-    transform: translateY(-50%);
-    width: 400px;
-    max-width: calc(100vw - 80px);
-    padding: 26px 28px 22px;
+    bottom: 28px;
+    left: calc(var(--nav-w, 0px) + (100vw - var(--nav-w, 0px)) / 2);
+    transform: translateX(-50%);
+    width: min(620px, calc(100vw - var(--nav-w, 0px) - 64px));
+    max-width: calc(100vw - var(--nav-w, 0px) - 64px);
+    padding: 22px 28px 18px;
     background: linear-gradient(155deg, rgba(14,13,12,0.97), rgba(8,8,7,0.97));
     border: 1px solid rgba(244,237,225,0.13);
     border-radius: 4px;
     color: #f4ede1;
     box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 2px 4px rgba(0,0,0,0.4);
     pointer-events: auto;
+    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
+                width 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  }
+  /* When the nav is hidden (chrome-off interstitials, tour-at-hero), the
+     card centres against the full viewport. */
+  body.tour-active.tour-chrome-off:not(.tour-at-hero) .tour-card,
+  body.tour-step-mode:not(.tour-step-show-nav) .tour-card {
+    left: 50vw;
+    width: min(620px, calc(100vw - 64px));
+    max-width: calc(100vw - 64px);
   }
   .tour-card.hidden { display: none; }
   .tour-card.tour-in { animation: tour-card-in 0.5s ease; }
   @keyframes tour-card-in {
-    from { opacity: 0; transform: translate(14px, -50%); }
-    to   { opacity: 1; transform: translate(0,   -50%); }
+    from { opacity: 0; transform: translate(-50%, 14px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* ─── Interactive-step mode ─────────────────────────────────────────
+     The card already sits at the bottom (base rule). Step mode just
+     tightens padding so the body fits within the constrained vertical
+     budget when the user also has globe affordances on screen. */
+  body.tour-step-mode .tour-card {
+    padding: 18px 22px 16px;
+    width: min(560px, calc(100vw - var(--nav-w, 0px) - 64px));
+  }
+  body.tour-step-mode:not(.tour-step-show-nav) .tour-card {
+    width: min(560px, calc(100vw - 64px));
+  }
+  /* The time step cues the user to click the ⏱ chip. Once they do, the
+     timeline-scrubber occupies the bottom 80px of the screen — the
+     tour-card needs to lift up so it doesn't sit on top of the
+     scrubber. The same logic applies whenever the scrubber is open
+     during any tour beat: shift the card to the top to avoid the
+     stack. */
+  body.tour-active.has-timeline-open .tour-card,
+  body.tour-step-mode.tour-step-show-time .tour-card {
+    bottom: auto;
+    top: 28px;
+    transition: top 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
+                bottom 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
+                left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
+                width 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  }
+  /* Slide the keep-out chip clear of the scrubber when both are at the
+     bottom of the globe — the chip would otherwise sit right on top of
+     the timeline. */
+  body.has-timeline-open #space-hint { top: 16px; }
+  /* Default chrome state inside step mode: HIDDEN. Each step opts in to
+     specific elements via body.tour-step-show-* classes. This keeps step 1
+     ("hover a dot") from leaking the sidebar / pins / time button before
+     they've been introduced. We toggle BOTH opacity *and* visibility so
+     that the sidebar (z-index 5, on top of the canvas) cannot peek through
+     during the fade — visibility flips after the opacity transition. */
+  body.tour-step-mode #nav,
+  body.tour-step-mode .timeline,
+  body.tour-step-mode #tl-toggle,
+  body.tour-step-mode #space-hint,
+  body.tour-step-mode #shift-hint,
+  body.tour-step-mode #link-hint,
+  body.tour-step-mode #reset-view-hint,
+  body.tour-step-mode .pin-labels {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity 0.3s ease, visibility 0s 0.3s;
+  }
+  /* Per-step affordance reveals — only the chrome the current step needs.
+     visibility flips immediately on show so the fade-in actually animates. */
+  body.tour-step-mode.tour-step-show-nav #nav {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: opacity 0.3s ease, visibility 0s 0s;
+  }
+  body.tour-step-mode.tour-step-show-pins .pin-labels {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: opacity 0.3s ease, visibility 0s 0s;
+  }
+  body.tour-step-mode.tour-step-show-pins .pin-labels .pin {
+    pointer-events: auto !important;
+  }
+  body.tour-step-mode.tour-step-show-space #space-hint {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: opacity 0.3s ease, visibility 0s 0s;
+  }
+  body.tour-step-mode.tour-step-show-time #tl-toggle,
+  body.tour-step-mode.tour-step-show-time #timeline-scrubber:not(.hidden) {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: opacity 0.3s ease, visibility 0s 0s;
+  }
+  /* Inspector cards (detail / interview / position) need to be interactive
+     during step 3 so the close × actually closes them; the broader
+     `body.tour-active .interview-card { pointer-events: none }` rule
+     above defaults them off, and this per-step opt-in re-enables them. */
+  body.tour-step-mode.tour-step-show-cards .interview-card,
+  body.tour-step-mode.tour-step-show-cards .detail-card,
+  body.tour-step-mode.tour-step-show-cards .position-card,
+  body.tour-step-mode.tour-step-show-cards .focus-card {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+  }
+  /* Tour card itself stays clickable always. */
+  body.tour-step-mode .tour-card { pointer-events: auto !important; }
+
+  /* When the sidebar isn't shown for the current step, slide the globe
+     stack left so the canvas fills the viewport edge-to-edge. Avoids the
+     "blank black strip" the user otherwise sees where the nav would be.
+     Step 2 reintroduces the nav, animating the globe back into place. */
+  body.tour-step-mode:not(.tour-step-show-nav) #globe-root {
+    left: 0 !important;
+    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  }
+  body.tour-step-mode.tour-step-show-nav #globe-root {
+    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  }
+  /* Same idea on chrome-off interstitials (e.g. "Why a sphere?", the
+     pin-spotlight beat, the outro): the nav is faded, so let the globe
+     fill the area it would otherwise occupy. Hero is excluded — it has
+     its own transform-based translation that this would fight with. */
+  body.tour-active.tour-chrome-off:not(.tour-at-hero) #globe-root {
+    left: 0 !important;
+    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  }
+
+  /* Compact the step card a notch — eyebrow and pullquote slot are tighter. */
+  body.tour-step-mode .tour-card .tour-quotes {
+    margin-top: 10px;
+    border-top: 1px dashed rgba(244,237,225,0.16);
+    padding-top: 10px;
+  }
+  body.tour-step-mode .tour-card .tour-step {
+    color: rgba(244,237,225,0.55);
+    font-size: 10px;
+    letter-spacing: 1.4px;
+  }
+  body.tour-step-mode .tour-card .tour-title {
+    font-size: 18px !important;
+    margin-bottom: 6px !important;
+  }
+  body.tour-step-mode .tour-card .tour-prose {
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+  }
+  .tour-step-hint {
+    font: 600 12px/1.3 'Source Sans Pro', sans-serif;
+    color: #ffd166;
+    letter-spacing: 0.4px;
+    text-align: center;
+  }
+  .tour-step-hint-done {
+    color: #7cf0c9;
+  }
+  /* Promoted "Continue" affordance — appears on steps with manualContinue.
+     Same Next button, just visually pulled forward so the user knows the
+     mini-lesson is complete and they can move on at their own pace. */
+  .tour-btn.tour-btn-continue {
+    background: #7cf0c9;
+    color: #0a1812;
+    border-color: #7cf0c9;
+    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+  }
+  .tour-btn.tour-btn-continue:hover {
+    background: #9bf5d6;
+    border-color: #9bf5d6;
+  }
+
+  /* Per-step affordance highlights — pulse the element the user is being
+     told to interact with so it's findable without breaking the tour card. */
+  @keyframes tour-step-pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,209,102,0); }
+    50%      { box-shadow: 0 0 0 6px rgba(255,209,102,0.32); }
+  }
+  body.tour-step-show-nav #nav {
+    box-shadow: inset 0 0 0 1px rgba(255,209,102,0.55), 0 0 24px rgba(255,209,102,0.18);
+    transition: box-shadow 0.25s ease;
+  }
+  /* Per-step pulse targets. Each `tour-pulse-*` body class lights up
+     exactly one element so the user knows where to click. They're
+     applied via the step's `pulseSelector` (see tour.js `applyStepChrome`)
+     so the same pulse animation is reused across the four drill steps
+     (cluster bar → subtopic bar → position bar → pin → button).
+     Done state (`tour-step-done`) drops the pulse so the affirmation
+     reads as a confirmed action rather than continued prompting. */
+  body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
+  body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
+  body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"] {
+    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+    outline: 2px solid rgba(255,209,102,0.55);
+    outline-offset: 2px;
+    z-index: 4;
+  }
+  /* Pin pulse — pins are <button class="pin" data-id="P2"> in the
+     #pin-labels overlay; pulse the chosen one so the click target is
+     unambiguous. */
+  body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] {
+    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+    z-index: 25;
+    outline: 2px solid rgba(255,209,102,0.7);
+    outline-offset: 4px;
+    border-radius: 50%;
+  }
+  /* Old show-* helpers retained for the time and space chips: same pulse,
+     wired through `showChrome: ['time' | 'space']`. */
+  body.tour-step-show-space:not(.tour-step-done) #space-hint {
+    border-color: rgba(255,209,102,0.7) !important;
+    box-shadow: 0 0 0 2px rgba(255,209,102,0.22), 0 0 16px rgba(255,209,102,0.32);
+    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+  }
+  body.tour-step-show-time:not(.tour-step-done) #tl-toggle {
+    border-color: rgba(255,209,102,0.7) !important;
+    box-shadow: 0 0 0 2px rgba(255,209,102,0.22), 0 0 16px rgba(255,209,102,0.32);
+    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+    opacity: 1 !important;
   }
   .tour-card .tour-step {
     font: 600 10px/1 'Source Sans Pro', sans-serif;
@@ -3107,13 +3408,40 @@
   body.tour-active .ui-topbar {
     pointer-events: none !important;
   }
-  /* Force chrome visible during drill-down beats — avoids a stuck
-     opacity transition after tour-chrome-off is removed. */
-  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) #nav,
-  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) .focus-card,
-  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off) .detail-card {
+  /* Force the SIDEBAR visible during drill-down narrative beats — the
+     left rail is what tells the user "we're now on cluster X / subtopic
+     Y," so it has to remain visible while the tour rotates the globe.
+     Critical: `:not(.tour-step-mode)` excludes interactive-step beats
+     so this rule does NOT fight the per-step show/hide rules above
+     (which hide the sidebar during the hover step). */
+  body.tour-active:not(.tour-at-hero):not(.tour-chrome-off):not(.tour-step-mode) #nav {
     opacity: 1 !important;
     visibility: visible !important;
+    transition: opacity 0.3s, visibility 0s 0s;
+  }
+  /* Focus-card and detail-card are hidden across the entire tour. The
+     tour-card carries the narrative; floating inspector cards on the
+     same right-side region just stack on top of each other and create
+     the "tour covers the pinned post" amateurish look the user
+     reported. Cards re-enable themselves only inside steps that opt in
+     via `showChrome: ['cards']` (the P-pin click step). */
+  body.tour-active .focus-card,
+  body.tour-active .detail-card,
+  body.tour-active .interview-card,
+  body.tour-active .position-card {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity 0.25s ease, visibility 0s 0.25s;
+  }
+  body.tour-active.tour-step-mode.tour-step-show-cards .focus-card,
+  body.tour-active.tour-step-mode.tour-step-show-cards .detail-card,
+  body.tour-active.tour-step-mode.tour-step-show-cards .interview-card,
+  body.tour-active.tour-step-mode.tour-step-show-cards .position-card {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: opacity 0.25s ease, visibility 0s 0s;
   }
   /* Once the tour closes entirely, snap the keyboard hints back to full
      opacity so they don't stay stuck from the transition. */
@@ -3144,7 +3472,10 @@
   }
 
   /* Non-drill beats (hero, interstitial, pin spotlight, outro) hide the
-     sidebar and other chrome entirely — the narration card is enough. */
+     sidebar and other chrome entirely — the narration card is enough.
+     Like the step-mode rule above, we flip visibility AFTER the fade so
+     the sidebar (z-index 5) can't peek through the canvas during the
+     transition or sit there as a faint silhouette. */
   body.tour-active.tour-chrome-off #nav,
   body.tour-active.tour-chrome-off .focus-card,
   body.tour-active.tour-chrome-off .interview-card,
@@ -3159,8 +3490,9 @@
   body.tour-active.tour-chrome-off #hover-halo,
   body.tour-active.tour-chrome-off #loading {
     opacity: 0 !important;
+    visibility: hidden !important;
     pointer-events: none !important;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s, visibility 0s 0.3s;
   }
 
   /* Tour launcher button (bottom-right corner) */
@@ -4012,7 +4344,7 @@
                placeholder="Search" aria-label="Search" />
         <div id="search-suggestions" class="hidden"></div>
       </div>
-      <div id="breadcrumbs" style="display:none"></div>
+      <div id="breadcrumbs"></div>
     </div>
     <div id="nav-bars">
       <div class="bar-column" id="col-l1">
@@ -4397,6 +4729,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=310"></script>
+<script type="module" src="./js/main.js?v=314"></script>
 </body>
 </html>

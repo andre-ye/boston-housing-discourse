@@ -21,7 +21,7 @@ function redditScoreInlineHtml(score) {
 function formatRedditKindLabel(_type) {
   return 'Thread';
 }
-import { NavController } from './nav.js?v=253';
+import { NavController } from './nav.js?v=255';
 import { GlobeView } from './globe.js?v=272';
 import * as THREE from 'three';
 
@@ -115,7 +115,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=279');
+    const { createTour } = await import('./tour.js?v=286');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -930,11 +930,47 @@ async function boot() {
     pointTooltip.classList.remove('visible');
     pointTooltip.classList.add('hidden');
   };
+  // ─── Cursor-over-card guard ──────────────────────────────────────
+  // Hover tooltip + halo + thread arcs all read messy when the cursor
+  // is over a floating panel: the tooltip can stack on top of the card
+  // body, the halo shows for a point the user can't actually see, and
+  // arcs flicker through the panel chrome. We track cursor position
+  // globally and gate every hover affordance on whether the cursor is
+  // currently over an opaque panel. Listener is in capture phase so
+  // panel-internal pointermoves still register.
+  const _cardSelectors = [
+    '.detail-card', '.interview-card', '.position-card', '.focus-card',
+    '#tour-overlay .tour-card', '#tour-overlay .tour-hero', '#tour-overlay .tour-outro',
+    '#bookmarks-panel', '#search-suggestions', '#nav', '.timeline',
+  ].join(', ');
+  let _cursorOverCard = false;
+  const _isOverCard = (target) => {
+    if (!target || !(target instanceof Element)) return false;
+    return !!target.closest(_cardSelectors);
+  };
+  document.addEventListener('pointermove', (e) => {
+    const overCard = _isOverCard(e.target);
+    if (overCard !== _cursorOverCard) {
+      _cursorOverCard = overCard;
+      if (overCard) {
+        hideTooltip();
+        hoverPointIdx = -1;
+        try { globe.setHoverPoint(-1); } catch {}
+        if (globe._hoverArcsActive) {
+          try { restoreFocusThreads(); } catch {}
+        }
+      }
+    }
+  }, true);
   globe.addEventListener('hover', async (ev) => {
     // Suppress the hover card entirely while SPACE is held — otherwise
     // moving the mouse around to read the sprouts keeps flashing
     // tooltips at the cursor.
     if (_spaceDown) { hideTooltip(); return; }
+    // Cursor is over a floating panel — let the panel take priority.
+    // The globe still emits hover events because the canvas sits below;
+    // we silence the affordance instead of fighting the event source.
+    if (_cursorOverCard) { hideTooltip(); return; }
     const { idx, clientX, clientY } = ev.detail;
     if (idx < 0) {
       hideTooltip();
@@ -969,6 +1005,14 @@ async function boot() {
     hideInterviewCard();
   });
   globe.addEventListener('pointclick', async (ev) => {
+    // During interactive tour steps that haven't whitelisted inspector
+    // cards (`showChrome: ['cards']`), dot clicks are disabled. Otherwise
+    // a click on the wrong dot opens a detail card before the user has
+    // even been told what a dot is, blocking the tutorial flow.
+    if (document.body.classList.contains('tour-step-mode')
+        && !document.body.classList.contains('tour-step-show-cards')) {
+      return;
+    }
     const details = await getPointDetails(App.state, ev.detail.idx);
     // Only jump to the Reddit thread if the user held cmd/ctrl. Plain
     // clicks now open the side card instead — easier to skim, doesn't
@@ -1006,6 +1050,7 @@ async function boot() {
   }
   globe.addEventListener('hover', (ev) => {
     if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
+    if (_cursorOverCard) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
     hoverPointIdx = ev?.detail?.idx ?? -1;
     globe.setHoverPoint(hoverPointIdx);
   });
@@ -1718,10 +1763,14 @@ async function boot() {
     // Expose for the global Reset button so it can unwind the time filter
     // alongside everything else.
     App._timelineClear = () => { lo = 0; hi = N - 1; applyFilter(); };
+    const syncTimelineBodyClass = () => {
+      document.body.classList.toggle('has-timeline-open', !tl.classList.contains('hidden'));
+    };
     toggle.onclick = () => {
       const wasHidden = tl.classList.contains('hidden');
       tl.classList.toggle('hidden');
       toggle.classList.toggle('active', !tl.classList.contains('hidden'));
+      syncTimelineBodyClass();
       // On first reveal (or any re-reveal), rebuild with accurate width.
       // Use setTimeout rather than rAF — more robust across paint cycles
       // when the element is transitioning from display:none.
@@ -1743,6 +1792,7 @@ async function boot() {
         queueMicrotask(() => toggle.click());
       }
     } catch {}
+    syncTimelineBodyClass();
     updateLabel();
   })();
 
@@ -2475,15 +2525,45 @@ async function boot() {
   window.App.findPointForSnippet = findPointForSnippet;
   window.App.pinPointByIndex = pinPointByIndex;
 
-  // ─── URL hash (read-only) ─────────────────────────────────────────
-  // Hash persistence / history.pushState on drill were disabled so
-  // exploration never mutates the address bar. `applyHash` still runs on
-  // load / hashchange so an explicitly pasted #cl=… link can hydrate once.
+  // ─── URL hash + browser history ──────────────────────────────────
+  // Each user-initiated focus change (cluster, subtopic, position, time
+  // range, search, subreddit pill) writes a history entry so the browser
+  // back / forward arrows step through the same exploration history.
+  // Programmatic restores set `_suppressHashWrite` so applyHash and the
+  // tour don't poison the history with their own beats.
   let _suppressHashWrite = false;
   let _pendingHashWrite = false;
+  let _lastHashWritten = '';
+  function _currentStateHash() {
+    const parts = [];
+    if (nav.focusCl != null) parts.push(`cl=${nav.focusCl}`);
+    if (nav.focusGid != null) parts.push(`gid=${nav.focusGid}`);
+    if (nav.focusPosIdx != null) parts.push(`pos=${nav.focusPosIdx}`);
+    const mr = globe._filter?.monthRange;
+    if (mr && Array.isArray(mr) && mr.length === 2) {
+      parts.push(`from=${mr[0]}`, `to=${mr[1]}`);
+    }
+    const si = document.getElementById('search-input');
+    if (si && si.value && si.value.trim()) {
+      parts.push(`q=${encodeURIComponent(si.value.trim())}`);
+    }
+    return parts.length ? '#' + parts.join('&') : '';
+  }
   function writeHash() {
     if (_suppressHashWrite) { _pendingHashWrite = true; return; }
-    // no-op: do not push/replace history or set location.hash from UI state
+    // Don't poison history with intermediate tour beats — if the user
+    // hits back during the tour they expect to leave the page, not step
+    // through the tour beats themselves.
+    if (document.body.classList.contains('tour-active')) return;
+    const next = _currentStateHash();
+    if (next === _lastHashWritten) return;
+    _lastHashWritten = next;
+    try {
+      history.pushState({ h: next }, '', next || (location.pathname + location.search));
+    } catch {
+      if (next) location.hash = next.slice(1);
+      else if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    }
   }
   function parseHash() {
     const h = location.hash.replace(/^#/, '');
@@ -2565,15 +2645,26 @@ async function boot() {
   let _lastFocusPosKey = null;
   nav.addEventListener('focus', (ev) => {
     const { cl, gid, posIdx } = ev.detail || {};
-    if (cl == null || gid == null || posIdx == null) { _lastFocusPosKey = null; return; }
+    if (cl == null || gid == null || posIdx == null) {
+      _lastFocusPosKey = null;
+      // Cluster / sub click also pushes a history entry so back / forward
+      // step through the user's drill path.
+      writeHash();
+      return;
+    }
     const key = `${cl}:${gid}:${posIdx}`;
     if (key === _lastFocusPosKey) return;
     _lastFocusPosKey = key;
     focusPosition(cl, gid, posIdx);
   });
-  // Exposed for nav search blur etc.; persistence is a no-op (URL not updated).
   App.writeHash = writeHash;
+  // popstate fires on browser back / forward. We rebuild from
+  // location.hash via the existing applyHash() which is also wired to
+  // hashchange. pushState alone does not trigger hashchange, so popstate
+  // is the only signal that captures both back/forward and direct hash
+  // typing in the address bar.
   window.addEventListener('hashchange', applyHash);
+  window.addEventListener('popstate', applyHash);
   // Initial restore if someone landed on a deep-link
   if (location.hash) setTimeout(applyHash, 300);
 
@@ -2953,6 +3044,7 @@ async function boot() {
   // street-interview pins feel like full "comments" rather than tiny
   // hover chips. The P# avatar is shown as a meta eyebrow.
   function showPinTooltip({ pin, clientX, clientY }) {
+    if (_cursorOverCard) return;
     const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id) || {};
     const cl = pin.cluster;
     const clColor = sphereColor(cl);
@@ -3920,6 +4012,45 @@ async function boot() {
     hideBookmarksCard();
     return true;
   };
+  // Tour helpers — the global Space handler short-circuits during the
+  // tour, so the interactive step needs an explicit pathway to actually
+  // toggle the sprouts when the user presses Space.
+  window.App.toggleSprouts = () => {
+    cancelSproutClearTimer();
+    _spaceDown = !_spaceDown;
+    if (_spaceDown) sproutSpawn();
+    else sproutClear();
+    const sh = document.getElementById('space-hint');
+    if (sh) sh.classList.toggle('is-on', _spaceDown);
+    return _spaceDown;
+  };
+  window.App.clearSprouts = () => {
+    cancelSproutClearTimer();
+    _spaceDown = false;
+    sproutClear();
+    const sh = document.getElementById('space-hint');
+    if (sh) sh.classList.remove('is-on');
+  };
+  // Make the floating "space" hint chip act as a clickable button — same
+  // effect as pressing Space, useful when the user hasn't discovered the
+  // keybind yet (and the only entry point during the tutorial step that
+  // explicitly tells them to click it instead of pressing keys).
+  (() => {
+    const shEl = document.getElementById('space-hint');
+    if (!shEl) return;
+    shEl.setAttribute('role', 'button');
+    shEl.setAttribute('tabindex', '0');
+    shEl.setAttribute('aria-label', 'Toggle five random voices');
+    const trigger = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      try { window.App.toggleSprouts(); } catch {}
+    };
+    shEl.addEventListener('click', trigger);
+    shEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') trigger(e);
+    });
+  })();
 
   syncBookmarksUI();
 

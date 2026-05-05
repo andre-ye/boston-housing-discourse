@@ -251,8 +251,8 @@ export class NavController extends EventTarget {
       // (the global handler used to return early for INPUT, so Esc never
       // reached help / detail / tour).
       if (e.key === 'Escape') {
-        // Priority-ordered Esc: title slide → tour → help → cards →
-        // search/paint → camera reset.
+        // Priority-ordered Esc: title slide → (tour swallows Esc) → help →
+        // cards → search/paint → camera reset.
         const presTitle = document.getElementById('presentation-title-overlay');
         if (presTitle && !presTitle.classList.contains('hidden')) {
           document.getElementById('presentation-title-continue')?.click();
@@ -263,12 +263,8 @@ export class NavController extends EventTarget {
         const tourOv = document.getElementById('tour-overlay');
         const tourUp = tourOv && !tourOv.classList.contains('hidden');
         if (tourApi?.isActive?.() || tourUp) {
-          tourApi?.close?.();
-          // If tour module failed to load, still tear down bootstrap overlay.
-          if (tourOv && !tourOv.classList.contains('hidden')) {
-            tourOv.classList.add('hidden');
-            document.body.classList.remove('tour-at-hero', 'tour-chrome-off', 'tour-morphing', 'tour-active');
-          }
+          // Tour intentionally requires the Skip button to dismiss; Esc is
+          // a no-op so it can't accidentally cut the guided experience short.
           e.preventDefault();
           return;
         }
@@ -1521,6 +1517,14 @@ export class NavController extends EventTarget {
   renderBreadcrumbs() {
     const el = this.breadcrumbs;
     el.innerHTML = '';
+    // Hide entirely when nothing is focused — at the wide-globe level
+    // there's no "current topic" to label, and an empty breadcrumb just
+    // wastes vertical space above the bars. Toggling .is-empty animates
+    // the height collapse via CSS so the layout doesn't snap.
+    const hasFocus = this.focusCl != null;
+    el.classList.toggle('is-empty', !hasFocus);
+    if (!hasFocus) return;
+
     // Mutual-hover: crumb ↔ bar segment by key. "Key" mirrors what _renderStack writes to dataset.key.
     const linkCrumb = (crumbEl, stackEl, key) => {
       if (!stackEl || key == null) return;
@@ -1533,9 +1537,17 @@ export class NavController extends EventTarget {
         if (seg) seg.classList.remove('link-hover');
       });
     };
+
+    // Leading "Exploring" label so it reads as a sentence in the header.
+    const lab = document.createElement('span');
+    lab.className = 'crumb-label';
+    lab.textContent = 'Exploring';
+    el.appendChild(lab);
+
+    // Root crumb — clicking jumps back to the whole globe.
     const all = document.createElement('div');
-    all.className = 'crumb' + (this.focusCl == null ? ' active' : '');
-    all.textContent = 'Whole globe';
+    all.className = 'crumb crumb-root';
+    all.textContent = 'All topics';
     all.onclick = () => this.focus({});
     el.appendChild(all);
 
@@ -1546,6 +1558,7 @@ export class NavController extends EventTarget {
       const c = document.createElement('div');
       c.className = 'crumb' + (this.focusGid == null ? ' active' : '');
       c.style.color = clusterColor(this.focusCl);
+      c.style.borderLeftColor = clusterColor(this.focusCl);
       c.textContent = meta ? meta.name : `Topic ${this.focusCl}`;
       c.onclick = () => this.focus({ cl: this.focusCl });
       el.appendChild(c);
@@ -1557,10 +1570,22 @@ export class NavController extends EventTarget {
       const sub = this.subGidMap.byGid[this.focusGid];
       const s = document.createElement('div');
       s.className = 'crumb' + (this.focusPosIdx == null ? ' active' : '');
+      s.style.borderLeftColor = clusterColor(this.focusCl);
       s.textContent = sub ? sub.name : `Sub ${this.focusGid}`;
       s.onclick = () => this.focus({ cl: this.focusCl, gid: this.focusGid });
       el.appendChild(s);
       if (sub) linkCrumb(s, this.stackL2, `${sub.cl}_${sub.sub}`);
+    }
+    if (this.focusPosIdx != null) {
+      const sep3 = document.createElement('span'); sep3.className = 'sep'; sep3.textContent = '›';
+      el.appendChild(sep3);
+      const posDoc = this.positionsDoc?.[String(this.focusGid)];
+      const pos = posDoc?.positions?.[this.focusPosIdx];
+      const p = document.createElement('div');
+      p.className = 'crumb active';
+      p.style.borderLeftColor = clusterColor(this.focusCl);
+      p.textContent = pos?.name || `Position ${this.focusPosIdx}`;
+      el.appendChild(p);
     }
   }
 
@@ -1956,28 +1981,16 @@ export class NavController extends EventTarget {
     if (this._hoverCloseTimer) { clearTimeout(this._hoverCloseTimer); this._hoverCloseTimer = null; }
     for (const c of document.querySelectorAll('.bar-column.narrow.open')) c.classList.remove('open');
     document.getElementById('nav')?.classList.remove('nav-narrow-open');
-    // When a level is collapsed to a narrow strip, show "Cluster: X" /
-    // "Subtopic: Y" in the rotated label so the user sees WHICH cluster /
-    // subtopic they've drilled into without expanding the column.
+    // Narrow-column titles stay as generic level labels ("Topics",
+    // "Subtopics", "Points of view"). The dynamic focused topic name —
+    // previously crammed sideways into the rotated label and hard to
+    // read — now lives in the horizontal breadcrumb above the bars
+    // (see renderBreadcrumbs).
     const t1 = document.getElementById('title-l1');
     const t2 = document.getElementById('title-l2');
     const t3 = document.getElementById('title-l3');
-    if (t1) {
-      if (cl != null) {
-        const name = this.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
-        t1.textContent = `Topic: ${name}`;
-      } else {
-        t1.textContent = t1.dataset.default || 'Topics';
-      }
-    }
-    if (t2) {
-      if (gid != null) {
-        const sub = this.subGidMap.byGid[gid];
-        t2.textContent = `Subtopic: ${sub?.name || gid}`;
-      } else {
-        t2.textContent = t2.dataset.default || 'Subtopics';
-      }
-    }
+    if (t1) t1.textContent = t1.dataset.default || 'Topics';
+    if (t2) t2.textContent = t2.dataset.default || 'Subtopics';
     if (t3) t3.textContent = t3.dataset.default || 'Points of view';
     this._applyFade();
     this.renderBreadcrumbs();
