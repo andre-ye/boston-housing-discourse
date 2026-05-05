@@ -22,7 +22,7 @@ function formatRedditKindLabel(_type) {
   return 'Thread';
 }
 import { NavController } from './nav.js?v=248';
-import { GlobeView } from './globe.js?v=270';
+import { GlobeView } from './globe.js?v=272';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -3397,11 +3397,38 @@ async function boot() {
   let _shiftEpoch = 0;
   let _priorThreadsEnabled = false;
   let _priorHighlightState = null;
+  async function relationPairsForPoint(idx) {
+    if (idx == null || idx < 0) return [];
+    const details = await getPointDetails(App.state, idx);
+    const m = (details?.permalink || '').match(/\/comments\/([a-z0-9]+)\//);
+    const postId = m ? m[1] : null;
+    if (!postId) return [];
+    const postIdx = await buildPostIndex();
+    const anchorIdx = postIdx.get(postId);
+    const siblings = await siblingsForThread(postId);
+    const anchor = anchorIdx != null && siblings.includes(anchorIdx) ? anchorIdx : idx;
+    const pairs = [];
+    for (const s of siblings) {
+      if (s !== anchor) pairs.push([anchor, s]);
+    }
+    if (anchor !== idx) pairs.push([anchor, idx]);
+    return pairs;
+  }
   async function shiftShowRelations() {
     if (_shiftActive) return;
     _shiftActive = true;
     const epoch = ++_shiftEpoch;
     _priorThreadsEnabled = globe.threadArcsEnabled;
+    const selectedIdx = pinnedPointIdx >= 0 ? pinnedPointIdx : hoverPointIdx;
+    const selectedPairs = await relationPairsForPoint(selectedIdx);
+    if (epoch !== _shiftEpoch || !_shiftActive) return;
+    if (selectedPairs.length > 0) {
+      await globe.loadThreadArcs(selectedPairs, { thin: true, opacity: 0.65 });
+      if (epoch !== _shiftEpoch || !_shiftActive) return;
+      globe.threadArcsEnabled = true;
+      if (globe.threadArcs) globe.threadArcs.visible = true;
+      return;
+    }
     const map = await ensureThreadMap();
     if (epoch !== _shiftEpoch || !_shiftActive) return;
     // Build pairs: pick up to 60 threads whose anchor point is currently
@@ -3481,7 +3508,7 @@ async function boot() {
     }
     if (anchor !== idx) pairs.push([anchor, idx]);
     if (pairs.length === 0) { restoreFocusThreads(); return; }
-    globe.loadThreadArcs(pairs.slice(0, 200));
+    globe.loadThreadArcs(pairs, { thin: true, opacity: 0.65 });
     globe._hoverArcsActive = true;
   }
 

@@ -27,6 +27,10 @@ export class GlobeView extends EventTarget {
     this.hoverIdx = -1;
     this.threadArcs = null;
     this.threadArcsEnabled = false;   // off by default — per-hover arcs still draw on demand
+    this._threadArcPairs = null;
+    this._threadArcOpts = null;
+    this._threadArcZoomBucket = null;
+    this._lastThreadArcRebuildMs = 0;
     this.surfaceEnabled = true;
     this.highlightCl = null;
     this.highlightGid = null;
@@ -338,10 +342,8 @@ export class GlobeView extends EventTarget {
     const applyScreenRotation = (dx, dy) => {
       // Drag/up-arrow moves the visible content in the same direction as
       // the cursor / arrow. Rotation speed scales with zoom distance so
-      // a given pixel of motion covers roughly the same arc-length on
-      // screen — at close zoom the globe rotates slowly, far out it
-      // rotates fast. Keeps the user from getting dizzy up close.
-      const zoomScale = Math.max(0.35, this.distanceTarget / 3.0);
+      // close-up panning stays precise instead of whipping across the globe.
+      const zoomScale = this._interactionZoomScale();
       const speed = ROT_SPEED * zoomScale;
       const qx = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0), dx * speed);
@@ -415,6 +417,17 @@ export class GlobeView extends EventTarget {
       const adjusted = 1 + (factor - 1) * k;
       this.distanceTarget = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.distanceTarget * adjusted));
     };
+  }
+
+  _interactionZoomScale() {
+    const defaultDistance = 3.0;
+    const closeT = Math.max(0, Math.min(1,
+      (this.distanceTarget - MIN_ZOOM) / (defaultDistance - MIN_ZOOM)));
+    const closeScale = 0.08 + 0.92 * Math.pow(closeT, 1.35);
+    const farScale = this.distanceTarget > defaultDistance
+      ? this.distanceTarget / defaultDistance
+      : 1;
+    return closeScale * farScale;
   }
 
   _updateHover(e) {
@@ -653,17 +666,56 @@ export class GlobeView extends EventTarget {
     // Render each post→comment pair as a lifted great-circle tube. `opts`:
     //   thin    → half the default tube radius (used for shift-preview)
     //   opacity → override material opacity (default 0.92)
+    this._threadArcPairs = pairs && pairs.length ? pairs : null;
+    this._threadArcOpts = pairs && pairs.length ? { ...opts } : null;
+    this._threadArcZoomBucket = null;
+    this._disposeThreadArcs();
+    if (!this._threadArcPairs) return;
+    this._rebuildThreadArcs();
+  }
+
+  _disposeThreadArcs() {
     if (this.threadArcs) {
       this.worldGroup.remove(this.threadArcs);
       this.threadArcs.geometry.dispose();
       this.threadArcs.material.dispose();
       this.threadArcs = null;
     }
+  }
+
+  _threadArcRadiusScale() {
+    const defaultDistance = 3.0;
+    const t = Math.max(0, Math.min(1,
+      (this.distanceTarget - MIN_ZOOM) / (defaultDistance - MIN_ZOOM)));
+    // Near the surface the same world-space tube projects much wider, so the
+    // geometry radius needs to shrink aggressively. Keep far/default zoom at
+    // the established thickness.
+    return 0.04 + 0.96 * Math.pow(t, 1.8);
+  }
+
+  _threadArcRadiusBucket() {
+    return Math.round(this._threadArcRadiusScale() / 0.03) * 0.03;
+  }
+
+  _maybeRescaleThreadArcs() {
+    if (!this._threadArcPairs || !this.threadArcs) return;
+    const bucket = this._threadArcRadiusBucket();
+    if (bucket === this._threadArcZoomBucket) return;
+    const now = performance.now();
+    if (now - this._lastThreadArcRebuildMs < 120) return;
+    this._rebuildThreadArcs();
+  }
+
+  _rebuildThreadArcs() {
+    const pairs = this._threadArcPairs;
+    const opts = this._threadArcOpts || {};
     if (!pairs || pairs.length === 0) return;
+    this._disposeThreadArcs();
 
     const st = this.state;
     const SEG = 28;
-    const TUBE_RAD = opts.thin ? 0.0022 : 0.0048;
+    const radiusBucket = this._threadArcRadiusBucket();
+    const TUBE_RAD = (opts.thin ? 0.0022 : 0.0048) * radiusBucket;
     const TUBE_FACETS = 5;  // 5-sided "tube" (cheaper than full circle, looks fine)
     const geometries = [];
 
@@ -718,6 +770,8 @@ export class GlobeView extends EventTarget {
     this.threadArcs = new THREE.Mesh(merged, mat);
     this.threadArcs.visible = this.threadArcsEnabled;
     this.worldGroup.add(this.threadArcs);
+    this._threadArcZoomBucket = radiusBucket;
+    this._lastThreadArcRebuildMs = performance.now();
   }
 
   setHoverPoint(idx) {
@@ -749,6 +803,7 @@ export class GlobeView extends EventTarget {
     const zoomRate  = tourOn ? 0.04 : 0.14;
     this.worldQuat.slerp(this.worldQuatTarget, slerpRate);
     this.distance += (this.distanceTarget - this.distance) * zoomRate;
+    this._maybeRescaleThreadArcs();
     this.worldGroup.quaternion.copy(this.worldQuat);
 
     // Globe is centred in its own panel now (the canvas itself sits between
