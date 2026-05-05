@@ -2323,6 +2323,98 @@
     color: var(--accent); text-decoration: none;
     border-bottom: 1px dashed currentColor; padding-bottom: 1px;
   }
+  /* Thread-context fisheye inside the pinned-point detail card. */
+  .dc-context {
+    margin: 4px 0 12px;
+    padding: 10px 0 4px;
+    border-top: 1px dashed rgba(255,255,255,0.10);
+  }
+  .dc-context.hidden { display: none; }
+  .dc-ctx-head {
+    font: 600 10px/1 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin: 0 0 8px;
+  }
+  .dc-ctx-loading, .dc-ctx-empty {
+    font-size: 11px; color: var(--fg-mute); font-style: italic;
+  }
+  .dc-fisheye {
+    display: block;
+    width: 100%;
+    height: 220px;
+    margin: 0 auto 10px;
+    overflow: visible;
+  }
+  .dc-fish-line {
+    transition: stroke-opacity 0.15s;
+  }
+  .dc-fish-sat {
+    transition: r 0.18s, stroke-width 0.15s;
+    cursor: pointer;
+  }
+  .dc-fish-sat:hover {
+    stroke: #fff;
+    stroke-width: 2.5;
+  }
+  .dc-fish-sat.active {
+    stroke: #fff;
+    stroke-width: 2.5;
+  }
+  .dc-fish-center {
+    pointer-events: none;
+  }
+  .dc-fish-center-label {
+    fill: #fff;
+    font: 700 9.5px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.4px;
+    pointer-events: none;
+  }
+  .dc-ctx-list {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .dc-ctx-row {
+    display: grid;
+    grid-template-columns: 10px auto 1fr;
+    gap: 8px; align-items: center;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 5px;
+    color: var(--fg-dim);
+    font: 11.5px 'Inter', system-ui, sans-serif;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .dc-ctx-row:hover, .dc-ctx-row.active {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.12);
+    color: var(--fg);
+  }
+  .dc-ctx-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  }
+  .dc-ctx-meta {
+    font-size: 10px;
+    color: var(--fg-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .dc-ctx-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dc-ctx-more {
+    font-size: 10.5px; color: var(--fg-mute);
+    font-style: italic;
+    margin-top: 6px;
+    text-align: center;
+  }
 
   #loading {
     position: absolute; inset: 0;
@@ -3815,6 +3907,7 @@
         <div class="dc-meta" id="dc-meta"></div>
         <h3 class="dc-title" id="dc-title"></h3>
         <div class="dc-body" id="dc-body"></div>
+        <div id="dc-context" class="dc-context hidden"></div>
         <a class="dc-link" id="dc-link" href="#" target="_blank" rel="noopener">Open on Reddit ↗</a>
       </div>
       <div id="interview-card" class="interview-card hidden"></div>
@@ -4107,6 +4200,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=308"></script>
+<script type="module" src="./js/main.js?v=309"></script>
 </body>
 </html>

@@ -3605,7 +3605,134 @@ async function boot() {
     if (d.permalink) { dcLink.href = d.permalink; dcLink.style.display = ''; }
     else dcLink.style.display = 'none';
     dc.classList.remove('hidden');
+    renderDetailContext(d).catch(() => {});
     scrollCardIntoView(dc);
+  }
+
+  // Fisheye: pinned post in the center, thread siblings arrayed around it.
+  // Built lazily from the existing siblingsForThread helper, so the same
+  // post-id grouping that drives Shift-relations powers the per-card view.
+  let _detailContextToken = 0;
+  async function renderDetailContext(d) {
+    const ctxEl = document.getElementById('dc-context');
+    if (!ctxEl) return;
+    const token = ++_detailContextToken;
+    ctxEl.classList.add('hidden');
+    ctxEl.innerHTML = '';
+    const m = (d?.permalink || '').match(/\/comments\/([a-z0-9]+)\//);
+    const postId = m ? m[1] : null;
+    if (!postId || d?.idx == null) return;
+    ctxEl.classList.remove('hidden');
+    ctxEl.innerHTML = `<div class="dc-ctx-head">Thread context</div><div class="dc-ctx-loading">Loading thread…</div>`;
+    let siblings;
+    try { siblings = await siblingsForThread(postId); }
+    catch { siblings = []; }
+    if (token !== _detailContextToken) return;
+    const others = siblings.filter(s => s !== d.idx);
+    if (others.length === 0) {
+      ctxEl.innerHTML = `<div class="dc-ctx-head">Thread context</div><div class="dc-ctx-empty">No other points share this thread.</div>`;
+      return;
+    }
+    const MAX = 10;
+    const shown = others.slice(0, MAX);
+    const detailsList = await Promise.all(
+      shown.map(i => getPointDetails(App.state, i).catch(() => null))
+    );
+    if (token !== _detailContextToken) return;
+
+    const W = 320, H = 220;
+    const cx = W / 2, cy = H / 2;
+    const innerR = 22;
+    const ringR = Math.min(W, H) * 0.42;
+    const centerColor = sphereColor(d.cluster);
+
+    const positions = shown.map((idx, i) => {
+      const angle = (i / shown.length) * Math.PI * 2 - Math.PI / 2;
+      return {
+        idx,
+        det: detailsList[i],
+        x: cx + Math.cos(angle) * ringR,
+        y: cy + Math.sin(angle) * ringR,
+      };
+    });
+
+    const lines = positions.map(p => {
+      const col = p.det != null ? sphereColor(p.det.cluster) : '#666';
+      return `<line class="dc-fish-line" x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${col}" stroke-opacity="0.5" stroke-width="1.5"/>`;
+    }).join('');
+
+    const sats = positions.map(p => {
+      const col = p.det != null ? sphereColor(p.det.cluster) : '#666';
+      return `<circle class="dc-fish-sat" data-idx="${p.idx}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${col}" stroke="rgba(0,0,0,0.55)" stroke-width="1"/>`;
+    }).join('');
+
+    const center =
+      `<circle class="dc-fish-center" cx="${cx}" cy="${cy}" r="${innerR}" fill="${centerColor}" stroke="#fff" stroke-width="2.5"/>` +
+      `<text class="dc-fish-center-label" x="${cx}" y="${cy + 4}" text-anchor="middle">PINNED</text>`;
+
+    const moreNote = others.length > shown.length
+      ? `<div class="dc-ctx-more">+${others.length - shown.length} more in this thread</div>`
+      : '';
+
+    const list = positions.map(p => {
+      const det = p.det;
+      const col = det != null ? sphereColor(det.cluster) : '#666';
+      const titleText = ((det?.title || det?.body || '').replace(/\s+/g, ' ').trim()) || '(no text)';
+      const meta = det
+        ? `r/${escapeHtml(det.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(det.type))}`
+        : 'unknown';
+      return `
+        <button class="dc-ctx-row" data-idx="${p.idx}" type="button">
+          <span class="dc-ctx-dot" style="background:${col}"></span>
+          <span class="dc-ctx-meta">${meta}</span>
+          <span class="dc-ctx-title">${escapeHtml(titleText.slice(0, 120))}</span>
+        </button>
+      `;
+    }).join('');
+
+    ctxEl.innerHTML = `
+      <div class="dc-ctx-head">Thread context · ${others.length} ${others.length === 1 ? 'point' : 'points'}</div>
+      <svg class="dc-fisheye" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        ${lines}${center}${sats}
+      </svg>
+      <div class="dc-ctx-list">${list}</div>
+      ${moreNote}
+    `;
+
+    const refocus = (idx) => {
+      if (idx == null || isNaN(idx)) return;
+      pinPointByIndex(idx);
+    };
+    ctxEl.querySelectorAll('.dc-ctx-row').forEach(el => {
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        refocus(+el.dataset.idx);
+      });
+      el.addEventListener('mouseenter', () => {
+        const idx = +el.dataset.idx;
+        ctxEl.querySelectorAll('.dc-fish-sat').forEach(s => {
+          s.classList.toggle('active', +s.dataset.idx === idx);
+        });
+      });
+      el.addEventListener('mouseleave', () => {
+        ctxEl.querySelectorAll('.dc-fish-sat.active').forEach(s => s.classList.remove('active'));
+      });
+    });
+    ctxEl.querySelectorAll('.dc-fish-sat').forEach(el => {
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        refocus(+el.dataset.idx);
+      });
+      el.addEventListener('mouseenter', () => {
+        const idx = +el.dataset.idx;
+        ctxEl.querySelectorAll('.dc-ctx-row').forEach(row => {
+          row.classList.toggle('active', +row.dataset.idx === idx);
+        });
+      });
+      el.addEventListener('mouseleave', () => {
+        ctxEl.querySelectorAll('.dc-ctx-row.active').forEach(row => row.classList.remove('active'));
+      });
+    });
   }
 
   // When multiple cards stack in #insp-body, scroll the newly-activated one

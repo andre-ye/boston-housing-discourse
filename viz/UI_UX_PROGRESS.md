@@ -21,3 +21,4 @@
 - Made manual search clearing use the same cleanup path, including subreddit filters created from search results.
 - Extended search clearing to unwind topic/subtopic/position focus filters as well.
 - Plain-text search now treats Enter as "search post bodies for what I typed" — runs a spotlight search instead of auto-jumping to the highest-scored suggestion. Use Arrow keys + Enter to pick a specific suggestion. Shift+Enter still paints regex/multi-kind hits.
+- Added a thread-context fisheye to the pinned-point detail card: the pinned post sits at the center of a small radial graph, with up to ten thread siblings arranged around it, color-coded by cluster and connected by edges. A clickable list under the graph mirrors the same satellites; hovering a row highlights its disc and vice versa, and clicking either re-pins the globe to that point so the card refocuses without leaving the panel.
