@@ -107,7 +107,8 @@ async function boot() {
     window.App.globe = globe;
     window.App.nav = nav;
     document.getElementById('reset-view-hint')?.addEventListener('click', () => {
-      globe?.resetCanonicalZoom?.();
+      if (window.App?.resetAll) window.App.resetAll();
+      else globe?.resetCanonicalZoom?.();
     });
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
@@ -115,7 +116,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=300');
+    const { createTour } = await import('./tour.js?v=303');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -956,6 +957,7 @@ async function boot() {
         hideTooltip();
         hoverPointIdx = -1;
         try { globe.setHoverPoint(-1); } catch {}
+        try { globe.canvas.style.cursor = ''; } catch {}
         if (globe._hoverArcsActive) {
           try { restoreFocusThreads(); } catch {}
         }
@@ -1056,10 +1058,11 @@ async function boot() {
     }
   }
   globe.addEventListener('hover', (ev) => {
-    if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
-    if (_cursorOverCard) { hoverPointIdx = -1; globe.setHoverPoint(-1); return; }
+    if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); globe.canvas.style.cursor = ''; return; }
+    if (_cursorOverCard) { hoverPointIdx = -1; globe.setHoverPoint(-1); globe.canvas.style.cursor = ''; return; }
     hoverPointIdx = ev?.detail?.idx ?? -1;
     globe.setHoverPoint(hoverPointIdx);
+    globe.canvas.style.cursor = hoverPointIdx >= 0 ? 'pointer' : '';
   });
   function updateHoverHalo() {
     if (!hoverHaloEl) return;
@@ -1075,10 +1078,10 @@ async function boot() {
     if (facing <= 0) { hoverHaloEl.classList.remove('show'); return; }
     const p = wp.clone().project(globe.camera);
     if (p.z > 1) { hoverHaloEl.classList.remove('show'); return; }
-    const w = globe.canvas.clientWidth;
-    const h = globe.canvas.clientHeight;
-    const sx = (p.x * 0.5 + 0.5) * w;
-    const sy = (-p.y * 0.5 + 0.5) * h;
+    const canvasRect = globe.canvas.getBoundingClientRect();
+    const overlayRect = hoverHaloEl.offsetParent?.getBoundingClientRect?.() || { left: 0, top: 0 };
+    const sx = canvasRect.left - overlayRect.left + (p.x * 0.5 + 0.5) * canvasRect.width;
+    const sy = canvasRect.top - overlayRect.top + (-p.y * 0.5 + 0.5) * canvasRect.height;
     const cl = App.state.cluster?.[hoverPointIdx];
     const col = cl != null ? sphereColor(cl) : '#ffffff';
     hoverHaloEl.style.left = `${sx}px`;
@@ -1098,6 +1101,7 @@ async function boot() {
   let activeSprouts = [];   // { idx, lat, lon, el, line, offX, offY, w, h }
   // Space is a toggle: first press opens a five-post spread, next press clears.
   let sproutClearTimer = null;
+  let sproutRenderToken = 0;
   function cancelSproutClearTimer() {
     if (sproutClearTimer != null) {
       clearTimeout(sproutClearTimer);
@@ -1125,7 +1129,7 @@ async function boot() {
     return { x, y };
   }
 
-  async function sproutSpawn() {
+  async function sproutSpawn(token = sproutRenderToken) {
     if (activeSprouts.length > 0) return;     // already up
     const state = App.state;
     if (!state?.coords || !state?.N) return;
@@ -1168,6 +1172,7 @@ async function boot() {
       }
     }
     if (pool.length === 0) return;
+    if (token !== sproutRenderToken) return;
 
     // 2) Pick 5 with progressive spatial diversity. Start with a generous
     //    min-distance threshold and relax if we can't fill the quota.
@@ -1204,13 +1209,16 @@ async function boot() {
     for (const k of kept) {
       try {
         const d = await getPointDetails(state, k.idx);
+        if (token !== sproutRenderToken) return;
         details.push({ k, d });
       } catch { /* skip */ }
     }
+    if (token !== sproutRenderToken) return;
 
     // Layout + render.
     activeSprouts = [];
     for (const { k, d } of details) {
+      if (token !== sproutRenderToken) return;
       if (!d) continue;
       const title = (d.title || '').trim();
       const body = (d.body || '').replace(/\s+/g, ' ').trim();
@@ -1232,7 +1240,7 @@ async function boot() {
         globe.setPinnedPoint(k.idx);
         showDetailCard(d);
         _spaceDown = false;
-        sproutClear();
+        sproutClear({ immediate: true });
       });
       // Border + thin glow in the cluster color so the caption reads as
       // belonging to the same cluster as its tether + halo.
@@ -1336,15 +1344,31 @@ async function boot() {
     sproutLinesEl.setAttribute('width', W);
     sproutLinesEl.setAttribute('height', H);
   }
-  function sproutClear() {
+  function sproutClear(opts = {}) {
+    const immediate = !!opts.immediate;
+    sproutRenderToken++;
     for (const s of activeSprouts) {
       s.el.classList.remove('show');
       s.line?.classList.remove('show');
       s.halo?.classList.remove('show');
       const el = s.el, line = s.line, halo = s.halo;
-      setTimeout(() => { el.remove(); line?.remove(); halo?.remove(); }, 240);
+      if (immediate) {
+        el.remove();
+        line?.remove();
+        halo?.remove();
+      } else {
+        setTimeout(() => { el.remove(); line?.remove(); halo?.remove(); }, 240);
+      }
     }
     activeSprouts = [];
+    if (immediate) {
+      sproutsEl.innerHTML = '';
+      slClearLinesSafe();
+    }
+  }
+  function slClearLinesSafe() {
+    if (!sproutLinesEl) return;
+    while (sproutLinesEl.firstChild) sproutLinesEl.removeChild(sproutLinesEl.firstChild);
   }
   function updateSprouts() {
     if (!activeSprouts.length) return;
@@ -1395,8 +1419,8 @@ async function boot() {
     cancelSproutClearTimer();
     e.preventDefault();
     _spaceDown = !_spaceDown;
-    if (_spaceDown) sproutSpawn();
-    else sproutClear();
+    if (_spaceDown) sproutSpawn(++sproutRenderToken);
+    else sproutClear({ immediate: true });
   });
   window.addEventListener('blur', () => {
     cancelSproutClearTimer();
@@ -1460,9 +1484,13 @@ async function boot() {
   // True reset — unwinds drill focus, subreddit filter, timeline range,
   // regex paint, text-search state, and any open overlays. A single
   // affordance that returns the viz to its fresh-load state.
-  if (btnReset) btnReset.onclick = () => {
+  function resetAll() {
     // Focus drill
     nav.focus({});
+    _spaceDown = false;
+    cancelSproutClearTimer();
+    sproutClear({ immediate: true });
+    if (_shiftActive) shiftHideRelations();
     hideInterviewCard();
     clearSelectedPoint();
     // Subreddit filter
@@ -1481,10 +1509,14 @@ async function boot() {
     const ss = document.getElementById('search-suggestions');
     ss?.classList.add('hidden');
     // Close position card if open
+    document.getElementById('detail-card')?.classList.add('hidden');
     document.getElementById('position-card')?.classList.add('hidden');
     // Clear hash last — after all state changes
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-  };
+    globe?.resetCanonicalZoom?.();
+  }
+  App.resetAll = resetAll;
+  if (btnReset) btnReset.onclick = resetAll;
 
   // ─── Share: copy the current page URL to clipboard.
   //   Button flashes "Copied!" for ~1.6s. Falls back to textarea/execCommand
@@ -1783,6 +1815,18 @@ async function boot() {
     // Expose for the global Reset button so it can unwind the time filter
     // alongside everything else.
     App._timelineClear = () => { lo = 0; hi = N - 1; applyFilter(); };
+    App._timelineResetAndClose = () => {
+      lo = 0; hi = N - 1;
+      applyFilter();
+      tl.classList.add('hidden');
+      toggle.classList.remove('active');
+      syncTimelineBodyClass();
+      try {
+        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+        p.timeline = 'off';
+        localStorage.setItem('vizPref', JSON.stringify(p));
+      } catch {}
+    };
     const syncTimelineBodyClass = () => {
       document.body.classList.toggle('has-timeline-open', !tl.classList.contains('hidden'));
     };
@@ -3500,8 +3544,8 @@ async function boot() {
 
   // ─── Hover arcs (per-point thread connections) ────────────────
   let hoverEpoch = 0;
-  // ─── Shift-to-show-relations ──────────────────────────────────
-  // Lazy build: on first shift-down, iterate every chunk and bucket points
+  // ─── Connections relation buckets ─────────────────────────────
+  // Lazy build: on first use, iterate every chunk and bucket points
   // by postId (extracted from permalink). Cached forever.
   let _threadMap = null;
   async function ensureThreadMap() {
@@ -3561,8 +3605,7 @@ async function boot() {
   //                                  the user's pin still drives.
   //   • Clearing a pin via Esc     → arcs refresh to the visible pool;
   //                                  mode stays on.
-  //   • Toggling off  → only via the explicit Shift key or clicking
-  //                     the chip. Esc no longer drops connections.
+  //   • Toggling off  → via C, the chip, or the explicit Clear affordance.
   //
   // The chip's `is-on` class mirrors `_shiftActive` exactly, so the
   // user always has a visible signal of the current mode.
@@ -3646,12 +3689,14 @@ async function boot() {
     _priorThreadsEnabled = globe.threadArcsEnabled;
     _syncShiftHint();
     await _renderConnectionArcs();
+    emphasizeDetailContextForConnections();
   }
   function shiftHideRelations() {
     if (!_shiftActive) return;
     _shiftActive = false;
     _shiftEpoch++;
     _syncShiftHint();
+    clearDetailContextEmphasis();
     globe.threadArcsEnabled = _priorThreadsEnabled;
     if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
     if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
@@ -3663,16 +3708,17 @@ async function boot() {
   };
   window.App.connectionsModeActive = () => _shiftActive;
   window.App.refreshConnections = refreshConnectionsIfActive;
+  window.App.emphasizeDetailContextForConnections = emphasizeDetailContextForConnections;
 
   window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Shift' || e.repeat) return;
+    if ((e.key || '').toLowerCase() !== 'c' || e.repeat) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     e.preventDefault();
     window.App.toggleConnectionsMode();
   });
 
-  // Make the #shift-hint chip a real button. Click toggles the mode;
+  // Make the connections chip a real button. Click toggles the mode;
   // its visual `is-on` state is owned by `_syncShiftHint()` so it
   // always agrees with `_shiftActive`.
   (() => {
@@ -3683,29 +3729,42 @@ async function boot() {
       e?.stopPropagation?.();
       window.App.toggleConnectionsMode();
     });
+    _syncShiftHint();
   })();
 
+  window.App.clearTransientModes = () => {
+    _spaceDown = false;
+    cancelSproutClearTimer();
+    window.App.clearSprouts({ immediate: true });
+    if (_shiftActive) shiftHideRelations();
+    clearSelectedPoint({ refreshRelations: false });
+    hideTooltip();
+    hideInterviewCard();
+    document.getElementById('position-card')?.classList.add('hidden');
+    document.getElementById('detail-card')?.classList.add('hidden');
+  };
   // Escape is the universal "back out of transient modes" key. Run in capture
   // so selected-node state clears before NavController hides the detail card.
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     let handled = false;
-    if (_spaceDown || activeSprouts.length) {
+    const sproutHang =
+      sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
+    const hasSprouts = _spaceDown || activeSprouts.length > 0 || !!sproutHang;
+    if (hasSprouts) {
       _spaceDown = false;
       cancelSproutClearTimer();
-      sproutClear();
+      window.App.clearSprouts({ immediate: true });
+      handled = true;
+    }
+    if (_shiftActive) {
+      shiftHideRelations();
       handled = true;
     }
     if (pinnedPointIdx >= 0) {
       clearSelectedPoint();
       handled = true;
     }
-    // Escape no longer toggles connections-mode off. The mode is
-    // a persistent VIEW choice — clearing the pin should leave it
-    // on (and refresh to the visible-pool sampler, which
-    // clearSelectedPoint already triggers via refreshConnectionsIfActive).
-    // Power users can still drop the mode with Shift or by clicking
-    // the chip.
     if (handled) {
       e.preventDefault();
       const layerOpen = [
@@ -3816,6 +3875,19 @@ async function boot() {
     scrollCardIntoView(dc);
   }
 
+  function clearDetailContextEmphasis() {
+    const ctxEl = document.getElementById('dc-context');
+    ctxEl?.classList.remove('connections-focus');
+  }
+
+  function emphasizeDetailContextForConnections() {
+    const ctxEl = document.getElementById('dc-context');
+    if (!ctxEl || ctxEl.classList.contains('hidden')) return false;
+    ctxEl.classList.add('connections-focus');
+    try { ctxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
+    return true;
+  }
+
   // Fisheye: pinned post in the center, thread siblings arrayed around it.
   // Built lazily from the existing siblingsForThread helper, so the same
   // post-id grouping that drives Shift-relations powers the per-card view.
@@ -3838,6 +3910,7 @@ async function boot() {
     const others = siblings.filter(s => s !== d.idx);
     if (others.length === 0) {
       ctxEl.innerHTML = `<div class="dc-ctx-head">Thread context</div><div class="dc-ctx-empty">No other points share this thread.</div>`;
+      if (_shiftActive) emphasizeDetailContextForConnections();
       return;
     }
     const MAX = 10;
@@ -3905,6 +3978,7 @@ async function boot() {
       <div class="dc-ctx-list">${list}</div>
       ${moreNote}
     `;
+    if (_shiftActive) emphasizeDetailContextForConnections();
 
     const refocus = (idx) => {
       if (idx == null || isNaN(idx)) return;
@@ -4123,7 +4197,7 @@ async function boot() {
   // any currently-displayed sprouts and immediately spawns a fresh
   // five (so the user can keep pressing R to see new samples without
   // first needing to press it again to clear). The R keybind and the
-  // top-right `#random-hint` chip both call this same path.
+  // bottom-dock `#random-hint` chip both call this same path.
   //
   // Legacy aliases (`App.toggleSprouts`, `App.clearSprouts`) stay
   // around so the existing Space keybind continues to work for muscle
@@ -4132,10 +4206,12 @@ async function boot() {
   window.App.sampleFiveRandom = () => {
     cancelSproutClearTimer();
     _spaceDown = false;       // legacy state — keep cleared
-    sproutClear();             // wipe any active spread
+    sproutClear({ immediate: true });  // synchronous DOM wipe — no orphaned cards
+    const token = ++sproutRenderToken;
     requestAnimationFrame(() => {
+      if (token !== sproutRenderToken) return;
       _spaceDown = true;
-      sproutSpawn();
+      sproutSpawn(token);
       // Visual ack: flash the chip's keycap so the user sees the
       // action register even when sprouts spawn off-camera.
       const ch = document.getElementById('random-hint');
@@ -4148,17 +4224,17 @@ async function boot() {
       }
     });
   };
-  window.App.clearSprouts = () => {
+  window.App.clearSprouts = (opts = {}) => {
     cancelSproutClearTimer();
     _spaceDown = false;
-    sproutClear();
+    sproutClear(opts);
   };
   // Legacy alias — retained because the existing Space keybind path
   // still calls toggleSprouts under the hood. Now treats every press
   // as "show me five fresh ones" rather than a true toggle, which
   // matches the new R semantics.
   window.App.toggleSprouts = () => {
-    if (activeSprouts.length > 0) { window.App.clearSprouts(); return false; }
+    if (activeSprouts.length > 0) { window.App.clearSprouts({ immediate: true }); return false; }
     window.App.sampleFiveRandom();
     return true;
   };
@@ -4168,7 +4244,17 @@ async function boot() {
     try { clearSelectedPoint({ refreshRelations: false }); } catch {}
   };
   window.App.clearConnectionsMode = () => {
-    try { if (_shiftActive) shiftHideRelations(); } catch {}
+    try {
+      if (_shiftActive) shiftHideRelations();
+      _shiftActive = false;
+      _priorThreadsEnabled = false;
+      _shiftEpoch++;
+      _syncShiftHint();
+      clearDetailContextEmphasis();
+      globe.threadArcsEnabled = false;
+      if (globe.threadArcs) globe.threadArcs.visible = false;
+      globe.loadThreadArcs([]);
+    } catch {}
   };
   // Make the floating chip act as a button. Resampling on each click
   // is ergonomic — the user wants new voices, not the same five.

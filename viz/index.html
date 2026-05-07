@@ -698,55 +698,55 @@
     50%      { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 26px 8px rgba(255,255,255,0.65); }
   }
 
-  /* Top-right hints — tell the user about the SHIFT shortcut + how to
-     open a Reddit thread. */
-  #random-hint, #shift-hint, #link-hint, #reset-view-hint {
+  /* Globe controls — horizontal dock so chips never stack on narrow widths. */
+  .globe-controls-dock {
     position: absolute;
-    right: 18px;
-    z-index: 8;
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 10px 6px 8px;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 10px;
+    z-index: 14;
+    max-width: calc(100% - 24px);
+    pointer-events: none;
+  }
+  .globe-controls-dock > button {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    left: auto;
+    top: auto;
+    right: auto;
+    margin: 0;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px 7px 9px;
     background: rgba(14,17,26,0.78);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 8px;
     backdrop-filter: blur(6px);
     user-select: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
-  }
-  /* When a floating card is open at top-right, fade the shortcut hints —
-     they sit under the inspector cards. Keep "Reset view" usable: it only
-     snaps zoom and must stay above the topic card (z-index) and clickable. */
-  body.has-floating-card #random-hint,
-  body.has-floating-card #shift-hint,
-  body.has-floating-card #link-hint {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateX(6px);
-  }
-  #link-hint { pointer-events: none; }
-  /* Both clickable chips share the same pill geometry. They're real
-     <button> elements; reset the browser default look so the chip
-     reads as a chip, not a raised button. */
-  #random-hint, #shift-hint {
-    appearance: none;
-    -webkit-appearance: none;
+    pointer-events: auto;
+    cursor: pointer;
     color: inherit;
     text-align: left;
     font: inherit;
-    pointer-events: auto;
-    cursor: pointer;
-    padding: 9px 14px 9px 12px;
-    gap: 10px;
     transition: opacity 0.18s ease, transform 0.18s ease,
                 border-color 0.15s ease, background 0.15s ease;
   }
-  #random-hint > *, #shift-hint > * { pointer-events: none; }
-  #random-hint:hover, #shift-hint:hover {
+  .globe-controls-dock > button > * { pointer-events: none; }
+  .globe-controls-dock > button:hover {
     border-color: rgba(255,255,255,0.32);
     background: rgba(20,28,42,0.95);
-    transform: translateX(-2px);
+    transform: translateY(-2px);
   }
-  #random-hint:focus-visible, #shift-hint:focus-visible {
+  .globe-controls-dock > button:focus-visible {
     outline: 2px solid rgba(124,240,201,0.65);
     outline-offset: 2px;
   }
@@ -772,23 +772,12 @@
     color: #0a1812;
     border-color: #7cf0c9;
   }
-  #random-hint { top: 16px; }
-  #shift-hint { top: 54px; }
-  #link-hint { top: 96px; }
-  /* Clickable — sits in pointer-events:none overlay; child uses auto. */
+  body.has-timeline-open .globe-controls-dock {
+    bottom: 104px;
+  }
   #reset-view-hint {
-    top: 138px;
-    margin: 0;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-    /* Above body > #focus-card et al. (z-index 13) so zoom reset works in-topic. */
-    z-index: 18;
-    pointer-events: auto;
-    opacity: 0.38;
-    border-color: rgba(255,255,255,0.06);
-    transition: opacity 0.2s ease, border-color 0.15s ease, background 0.15s ease;
+    opacity: 0.52;
+    border-color: rgba(255,255,255,0.08);
   }
   #reset-view-hint.rv-away {
     opacity: 1;
@@ -802,26 +791,15 @@
     background: rgba(124,240,201,0.1);
     outline: none;
   }
-  #reset-view-hint .rv-label {
-    font: 500 11px 'Inter', system-ui, sans-serif;
-    color: rgba(255,255,255,0.92);
-    letter-spacing: 0.15px;
-  }
-  #link-hint .sh-plus {
-    font: 600 11px 'Inter', system-ui, sans-serif;
-    color: rgba(255,255,255,0.45);
-    margin: 0 2px;
-  }
   #random-hint .sh-key,
   #shift-hint .sh-key,
-  #link-hint .sh-key,
   #reset-view-hint .sh-key {
     font: 600 11px 'Inter', system-ui, sans-serif;
     color: #fff;
     letter-spacing: 0.5px;
     text-transform: lowercase;
-    padding: 4px 14px;
-    min-width: 68px;
+    padding: 3px 9px;
+    min-width: 28px;
     text-align: center;
     background: linear-gradient(180deg, rgba(40,48,68,0.95), rgba(20,26,40,0.95));
     border: 1px solid rgba(255,255,255,0.15);
@@ -831,9 +809,14 @@
       0 1px 2px rgba(0,0,0,0.5);
   }
   #reset-view-hint .sh-key { min-width: 0; padding: 4px 10px; font-size: 10px; }
+  #reset-view-hint .rv-label {
+    font: 500 11px 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.15px;
+  }
   #random-hint .sh-text,
   #shift-hint .sh-text {
-    font: 500 12px 'Inter', system-ui, sans-serif;
+    font: 500 11px 'Inter', system-ui, sans-serif;
     color: #fff;
     letter-spacing: 0.2px;
   }
@@ -2442,6 +2425,34 @@
     padding: 10px 0 4px;
     border-top: 1px dashed rgba(255,255,255,0.10);
   }
+  .dc-context.connections-focus {
+    margin-top: 8px;
+    padding: 12px 10px 10px;
+    border: 1px solid rgba(124,240,201,0.58);
+    border-radius: 8px;
+    background: rgba(124,240,201,0.075);
+    box-shadow:
+      0 0 0 2px rgba(124,240,201,0.12),
+      0 0 24px rgba(124,240,201,0.18);
+    animation: dc-context-focus-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes dc-context-focus-pulse {
+    0%, 100% {
+      border-color: rgba(124,240,201,0.50);
+      box-shadow:
+        0 0 0 2px rgba(124,240,201,0.10),
+        0 0 20px rgba(124,240,201,0.14);
+    }
+    50% {
+      border-color: rgba(160,255,220,0.95);
+      box-shadow:
+        0 0 0 4px rgba(124,240,201,0.20),
+        0 0 34px rgba(124,240,201,0.30);
+    }
+  }
+  .dc-context.connections-focus .dc-ctx-head {
+    color: #7cf0c9;
+  }
   .dc-context.hidden { display: none; }
   .dc-ctx-head {
     font: 600 10px/1 'Inter', system-ui, sans-serif;
@@ -3125,6 +3136,8 @@
      tightens padding so the body fits within the constrained vertical
      budget when the user also has globe affordances on screen. */
   body.tour-step-mode .tour-card {
+    max-height: min(48vh, 380px);
+    overflow-y: auto;
     padding: 18px 22px 16px;
     width: min(560px, calc(100vw - var(--nav-w, 0px) - 64px));
   }
@@ -3138,6 +3151,8 @@
      during any tour beat: shift the card to the top to avoid the
      stack. */
   body.tour-active.has-timeline-open .tour-card,
+  body.tour-step-mode.tour-step-show-random .tour-card,
+  body.tour-step-mode.tour-step-show-shift .tour-card,
   body.tour-step-mode.tour-step-show-time .tour-card {
     bottom: auto;
     top: 28px;
@@ -3146,23 +3161,20 @@
                 left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
                 width 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
   }
-  /* Slide the keep-out chip clear of the scrubber when both are at the
-     bottom of the globe — the chip would otherwise sit right on top of
-     the timeline. */
-  body.has-timeline-open #random-hint { top: 16px; }
+  /* Bottom dock lifts above the scrubber via the base control rules. */
   /* Default chrome state inside step mode: HIDDEN. Each step opts in to
      specific elements via body.tour-step-show-* classes. This keeps step 1
      ("hover a dot") from leaking the sidebar / pins / time button before
      they've been introduced. We toggle BOTH opacity *and* visibility so
      that the sidebar (z-index 5, on top of the canvas) cannot peek through
      during the fade — visibility flips after the opacity transition. */
+  body.tour-step-mode #globe-controls-dock > button {
+    display: none !important;
+  }
   body.tour-step-mode #nav,
   body.tour-step-mode .timeline,
   body.tour-step-mode #tl-toggle,
-  body.tour-step-mode #random-hint,
-  body.tour-step-mode #shift-hint,
-  body.tour-step-mode #link-hint,
-  body.tour-step-mode #reset-view-hint,
+  body.tour-step-mode #globe-controls-dock,
   body.tour-step-mode .pin-labels {
     opacity: 0 !important;
     visibility: hidden !important;
@@ -3186,12 +3198,19 @@
   body.tour-step-mode.tour-step-show-pins .pin-labels .pin {
     pointer-events: auto !important;
   }
-  body.tour-step-mode.tour-step-show-random #random-hint,
-  body.tour-step-mode.tour-step-show-shift #shift-hint {
+  body.tour-step-mode.tour-step-show-random #globe-controls-dock,
+  body.tour-step-mode.tour-step-show-shift #globe-controls-dock {
     opacity: 1 !important;
     visibility: visible !important;
-    pointer-events: auto !important;
+    pointer-events: none !important;
     transition: opacity 0.3s ease, visibility 0s 0s;
+  }
+  body.tour-step-mode.tour-step-show-random #globe-controls-dock #random-hint,
+  body.tour-step-mode.tour-step-show-random #globe-controls-dock #reset-view-hint {
+    display: flex !important;
+  }
+  body.tour-step-mode.tour-step-show-shift #globe-controls-dock #shift-hint {
+    display: flex !important;
   }
   body.tour-step-mode.tour-step-show-time #tl-toggle,
   body.tour-step-mode.tour-step-show-time #timeline-scrubber:not(.hidden) {
@@ -3309,13 +3328,13 @@
       box-shadow:
         0 0 0 0 rgba(124,240,201,0),
         0 0 0 0 rgba(124,240,201,0),
-        0 0 12px 0 rgba(124,240,201,0.35);
+        0 0 16px 0 rgba(124,240,201,0.52);
     }
     50% {
       box-shadow:
-        0 0 0 3px rgba(124,240,201,0.55),
-        0 0 0 9px rgba(124,240,201,0.25),
-        0 0 26px 8px rgba(124,240,201,0.55);
+        0 0 0 4px rgba(124,240,201,0.78),
+        0 0 0 13px rgba(124,240,201,0.36),
+        0 0 36px 10px rgba(124,240,201,0.72);
     }
   }
   /* Outline pulse — opacity + width breathe in lockstep with the glow,
@@ -3324,12 +3343,12 @@
      selector list below. */
   @keyframes tour-step-outline-pulse {
     0%, 100% {
-      outline-color: rgba(124,240,201,0.55);
-      outline-width: 1.5px;
+      outline-color: rgba(124,240,201,0.76);
+      outline-width: 2px;
     }
     50% {
       outline-color: rgba(160,255,220,0.95);
-      outline-width: 2.5px;
+      outline-width: 3.5px;
     }
   }
   body.tour-step-show-nav #nav {
@@ -3341,9 +3360,6 @@
      consistent across drill bars, pin chips, search input, and the
      bottom-right toolbar chips. Per-target tweaks (z-index, dot
      scale-up, etc.) come after this. */
-  body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
-  body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
-  body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"],
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id,
   body.tour-pulse-search:not(.tour-step-done) #search-input,
@@ -3358,11 +3374,31 @@
     outline-style: solid;
     outline-offset: 2px;
   }
-  /* Per-target adjustments. */
+  /* Sidebar bar pulse uses inset rings instead of outline. The bar stacks
+     clip overflow-y, and outlines on absolutely-positioned segments looked
+     like missing left/right borders when clipped. Inset shadows render all
+     four sides inside the colored segment. */
   body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
   body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"] {
+    animation: tour-step-bar-pulse 1.35s ease-in-out infinite;
     z-index: 4;
+  }
+  @keyframes tour-step-bar-pulse {
+    0%, 100% {
+      box-shadow:
+        inset 0 0 0 2px rgba(124,240,201,0.72),
+        inset 0 0 0 999px rgba(124,240,201,0.06),
+        0 0 10px rgba(124,240,201,0.22);
+      filter: brightness(1.03) saturate(1.04);
+    }
+    50% {
+      box-shadow:
+        inset 0 0 0 3px rgba(160,255,220,0.98),
+        inset 0 0 0 999px rgba(124,240,201,0.20),
+        0 0 28px rgba(124,240,201,0.70);
+      filter: brightness(1.28) saturate(1.22);
+    }
   }
   /* Pin pulse — `.pin` is a 0×0 anchor; pulse the visible `.pin-id`
      chip (so outline/box-shadow render at chip dimensions) and pulse
@@ -3382,9 +3418,13 @@
   /* Toolbar chips need to stay above floating cards while pulsing so
      the user can actually find them. The base z-index of #random-hint
      etc. is 8; bump pulsing chips above the focus card stack. */
-  body.tour-pulse-random:not(.tour-step-done) #random-hint,
-  body.tour-pulse-shift:not(.tour-step-done) #shift-hint,
-  body.tour-pulse-time:not(.tour-step-done) #tl-toggle {
+  body.tour-pulse-random:not(.tour-step-done) #globe-controls-dock,
+  body.tour-pulse-shift:not(.tour-step-done) #globe-controls-dock {
+    z-index: 20;
+    opacity: 1 !important;
+  }
+  body.tour-pulse-time:not(.tour-step-done) #tl-toggle,
+  body.tour-pulse-time:not(.tour-step-done) #timeline-scrubber:not(.hidden) {
     z-index: 18;
     opacity: 1 !important;
   }
@@ -3393,13 +3433,14 @@
      the animation; placement / sizing is pure DOM. */
   .tour-spotlight-pulse {
     position: absolute;
-    width: 30px; height: 30px;
+    width: 46px; height: 46px;
     border-radius: 50%;
     pointer-events: none;
-    border: 0;
+    border: 2px solid rgba(124,240,201,0.95);
     z-index: 9;
     transform: translate(-50%, -50%);
     outline: 0 solid transparent;
+    background: radial-gradient(circle, rgba(124,240,201,0.22) 0 28%, rgba(124,240,201,0.06) 42%, transparent 70%);
   }
   .tour-spotlight-pulse[data-tag]::after {
     content: attr(data-tag);
@@ -3466,10 +3507,18 @@
   }
   .tour-card .tour-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
+    gap: 10px 14px;
+    margin-top: 10px;
+    row-gap: 10px;
+  }
+  .tour-card .tour-actions > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    margin-top: 6px;
+    justify-content: flex-end;
   }
   .tour-card-skip {
     font: 400 10px/1 'Source Sans Pro', sans-serif;
@@ -3580,9 +3629,7 @@
   }
   /* Once the tour closes entirely, snap the keyboard hints back to full
      opacity so they don't stay stuck from the transition. */
-  body:not(.tour-active) #random-hint,
-  body:not(.tour-active) #shift-hint,
-  body:not(.tour-active) #link-hint {
+  body:not(.tour-active) #globe-controls-dock > button {
     opacity: 1 !important;
   }
   /* During the hero screen, fade chrome to zero — nothing to show yet */
@@ -3618,10 +3665,7 @@
   body.tour-active.tour-chrome-off #point-tooltip,
   body.tour-active.tour-chrome-off .timeline,
   body.tour-active.tour-chrome-off .ui-topbar,
-  body.tour-active.tour-chrome-off #random-hint,
-  body.tour-active.tour-chrome-off #shift-hint,
-  body.tour-active.tour-chrome-off #link-hint,
-  body.tour-active.tour-chrome-off #reset-view-hint,
+  body.tour-active.tour-chrome-off #globe-controls-dock,
   body.tour-active.tour-chrome-off #hover-halo,
   body.tour-active.tour-chrome-off #loading {
     opacity: 0 !important;
@@ -4516,7 +4560,7 @@
             Each dot is a post or comment. Color encodes <b>topic</b>; the left nav moves from <b>topics → subtopics → points of view</b> so you can compare how different groups talk about the same issue.
           </p>
           <p class="insp-intro-analyze">
-            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, press <kbd>Space</kbd> for <b>five random posts or comments</b> from what is visible, and press <kbd>?</kbd> for the full shortcut list.
+            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, use <kbd>R</kbd> for <b>five random posts or comments</b> from what is visible—<kbd>Esc</kbd> dismisses the floating cards—and press <kbd>?</kbd> for the full shortcut list.
           </p>
           <div class="insp-intro-cluster-wrap">
             <div class="insp-intro-cluster-h">Three angles people argue about</div>
@@ -4591,23 +4635,25 @@
       <div id="hover-halo"></div>
       <div id="sprouts"></div>
       <svg id="sprout-lines" pointer-events="none"></svg>
-      <button type="button" id="random-hint" aria-keyshortcuts="R" aria-label="Sample 5 random voices on screen">
+      <div id="globe-controls-dock" class="globe-controls-dock" role="toolbar"
+           aria-label="Globe quick actions">
+      <button type="button" id="random-hint" aria-keyshortcuts="R"
+              title="Sample 5 excerpts from dots you can currently see on the sphere. Press Esc to dismiss—or click Reset."
+              aria-label="Sample 5 random posts or comments from visible dots on the sphere. Press Escape to dismiss the floating cards">
         <kbd class="sh-key">R</kbd>
-        <span class="sh-text">5 random voices on screen</span>
+        <span class="sh-text">5 random · Esc clears</span>
       </button>
-      <div id="shift-hint">
-        <kbd class="sh-key">shift</kbd>
-        <span class="sh-text">toggle relations</span>
-      </div>
-      <div id="link-hint">
-        <kbd class="sh-key">⌘</kbd><span class="sh-plus">+</span><span class="sh-text">click to open Reddit thread</span>
-      </div>
+      <button type="button" id="shift-hint" aria-keyshortcuts="C" aria-label="Toggle connections view">
+        <kbd class="sh-key">C</kbd>
+        <span class="sh-text">connections</span>
+      </button>
       <button type="button" id="reset-view-hint" aria-keyshortcuts="Escape"
-              title="Esc clears selection, search/topic filters, then restores zoom"
-              aria-label="Escape clears selection, search and topic filters, then resets globe zoom">
-        <span class="rv-label">Reset view</span>
+              title="Clears pinned cards, floating random excerpts, drill &amp; filters, timeline, zoom"
+              aria-label="Reset clears selection, random cards, drill and search filters, timeline, zoom">
+        <span class="rv-label">Reset</span>
         <kbd class="sh-key">esc</kbd>
       </button>
+      </div>
       <button type="button" id="bookmarks-toggle" class="bookmarks-toggle hidden"
               aria-pressed="false"
               title="Show saved points"
@@ -4804,9 +4850,9 @@
           <dl>
             <div><dt>Drag</dt><dd>Rotate the globe.</dd></div>
             <div><dt>Scroll</dt><dd>Zoom in / out.</dd></div>
-            <div><dt><kbd>Space</kbd> (toggle)</dt><dd>Five random posts or comments drawn from points that are on-screen and match active filters (nav drill, time range, subreddit filter, etc.). Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
-            <div><dt><kbd>Shift</kbd> (toggle)</dt><dd>Show relations. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press again or <kbd>Esc</kbd> to dismiss.</dd></div>
-            <div><dt><kbd>Esc</kbd></dt><dd>Backs out in order: transient modes or selected node, the saved-points list, search / topic filters / relation paint, then scroll zoom to the distance last chosen for your drill. Same as the <strong>Reset view</strong> chip on the right.</dd></div>
+            <div><dt><kbd>R</kbd></dt><dd>Sample five snippets from posts that are on-screen and match active filters. <kbd>Esc</kbd> dismisses the floating cards (or use <strong>Reset</strong>).</dd></div>
+            <div><dt><kbd>C</kbd> (toggle)</dt><dd>Show connections. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press <kbd>C</kbd> again or click the connections chip to dismiss.</dd></div>
+            <div><dt><kbd>Esc</kbd></dt><dd>Clears random cards, connections, pinned node, then bookmarks, search / topic filters / paint, and zoom—one layer at a time. <strong>Reset</strong> clears everything in one click.</dd></div>
             <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
             <div><dt><span class="help-icon">★</span> Bookmark</dt><dd>Pin a node, then tap the <strong>☆</strong> on its detail card to save it for later. The <strong>★ saved</strong> chip on the right opens your saved list (stored locally in this browser); click any row to jump back.</dd></div>
           </dl>
@@ -4877,6 +4923,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=320"></script>
+<script type="module" src="./js/main.js?v=323"></script>
 </body>
 </html>

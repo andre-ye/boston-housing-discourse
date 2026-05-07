@@ -10,13 +10,13 @@
 //            (Gentrification → Rent Stabilization → Shortage &
 //            Disincentive). Inside the filtered subset, the user
 //            pins a real post and we introduce CONNECTIONS MODE
-//            (the persistent thread-arc view, formerly Shift).
+//            (the persistent thread-arc view, toggled with C).
 //
-//   PART 3 — Search & time.  Type "MBTA Communities Act" to see
+//   PART 3 — Search & time.  Type "covid" to see
 //            chronologically anchored discourse paint across the
 //            sphere; open the timeline scrubber.
 //
-// Version 300.
+// Version 303.
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
 
@@ -31,36 +31,46 @@ function pickThreeDemoPoints(state) {
   const N = state.N;
   const coords = state.coords;
   const cluster = state.cluster;
-  // Try a sequence of seeds spread across the index range. First seed
-  // that yields a same-cluster sibling AND a different-cluster
-  // neighbor within a tight angular distance wins. The 17×k+991 stride
-  // touches every part of the sphere within a few hundred attempts.
-  const SEEDS_TO_TRY = 600;
-  // Tighter than before — we want the trio to be visibly close.
-  const NEAR_RAD = 0.06;       // ~3.4° on the sphere
-  for (let attempt = 0; attempt < SEEDS_TO_TRY; attempt++) {
-    const seed = ((attempt * 17 + 991) * 2654435761) % N;
+  // Sample a few thousand points deterministically, then search within
+  // that pool. The first version scanned the whole 422k corpus hundreds
+  // of times and also picked dots that were *too* close on screen. This
+  // version prefers a readable little triangle:
+  //   1 + 2: same cluster, close but separated enough to click
+  //   3:     different cluster, still nearby but visibly distinct
+  const stride = Math.max(1, Math.floor(N / 3200));
+  const pool = [];
+  for (let i = 997 % stride; i < N; i += stride) {
+    if (cluster[i] == null) continue;
+    pool.push(i);
+  }
+  if (pool.length < 3) return null;
+  const dist = (a, b) => {
+    const latA = coords[2 * a], lonA = coords[2 * a + 1];
+    const latB = coords[2 * b], lonB = coords[2 * b + 1];
+    const sLat = Math.sin((latB - latA) * 0.5);
+    const sLon = Math.sin((lonB - lonA) * 0.5);
+    const h = sLat * sLat + Math.cos(latA) * Math.cos(latB) * sLon * sLon;
+    return 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
+  const seedLimit = Math.min(pool.length, 180);
+  for (let attempt = 0; attempt < seedLimit; attempt++) {
+    const seed = pool[(attempt * 37 + 11) % pool.length];
     const cl0 = cluster[seed];
     if (cl0 == null) continue;
-    const lat0 = coords[2 * seed];
-    const lon0 = coords[2 * seed + 1];
     let sameBest = null, diffBest = null;
-    const cosLat0 = Math.cos(lat0);
-    for (let i = 0; i < N; i++) {
+    for (const i of pool) {
       if (i === seed) continue;
       const cl = cluster[i];
       if (cl == null) continue;
-      const lat = coords[2 * i];
-      const lon = coords[2 * i + 1];
-      const sLat = Math.sin((lat - lat0) * 0.5);
-      const sLon = Math.sin((lon - lon0) * 0.5);
-      const a = sLat * sLat + cosLat0 * Math.cos(lat) * sLon * sLon;
-      const d = 2 * Math.asin(Math.min(1, Math.sqrt(a)));
-      if (d > NEAR_RAD) continue;
+      const d = dist(seed, i);
       if (cl === cl0) {
-        if (!sameBest || d < sameBest.d) sameBest = { i, d, cl };
+        // 2–7°: close enough to read as related, not so close the
+        // numbered markers sit on top of each other.
+        if (d >= 0.035 && d <= 0.12 && (!sameBest || d < sameBest.d)) sameBest = { i, d, cl };
       } else {
-        if (!diffBest || d < diffBest.d) diffBest = { i, d, cl };
+        // 5–12°: nearby enough to share the same view, but distinctly
+        // separated from the same-cluster pair.
+        if (d >= 0.085 && d <= 0.20 && (!diffBest || d < diffBest.d)) diffBest = { i, d, cl };
       }
     }
     if (sameBest && diffBest) {
@@ -72,6 +82,34 @@ function pickThreeDemoPoints(state) {
     }
   }
   return null;
+}
+
+function rotateToPointSet(globe, state, idxSet, distance = 1.22) {
+  if (!state?.coords || !idxSet || idxSet.size === 0) return false;
+  const picks = [...idxSet].slice(0, 180)
+    .filter(idx => Number.isFinite(state.coords[2 * idx]) && Number.isFinite(state.coords[2 * idx + 1]));
+  if (!picks.length) return false;
+  const dist = (a, b) => {
+    const latA = state.coords[2 * a], lonA = state.coords[2 * a + 1];
+    const latB = state.coords[2 * b], lonB = state.coords[2 * b + 1];
+    const sLat = Math.sin((latB - latA) * 0.5);
+    const sLon = Math.sin((lonB - lonA) * 0.5);
+    const h = sLat * sLat + Math.cos(latA) * Math.cos(latB) * sLon * sLon;
+    return 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
+  // Rotate to the densest sampled pocket, not the global centroid. Search
+  // terms like "covid" appear across many topics; a global average can land
+  // between clusters and look like nothing happened.
+  let best = picks[0], bestScore = -1;
+  for (const a of picks) {
+    let score = 0;
+    for (const b of picks) {
+      if (dist(a, b) <= 0.18) score++;
+    }
+    if (score > bestScore) { best = a; bestScore = score; }
+  }
+  try { globe.rotateTo(state.coords[2 * best], state.coords[2 * best + 1], distance); return true; } catch {}
+  return false;
 }
 
 // ─── Spotlight markers ─────────────────────────────────────────────────────
@@ -193,6 +231,7 @@ const BEATS = [
     kind: 'interstitial',
     eyebrow: 'Part 1 of 3 — From the ground up',
     title: 'Three voices, side by side',
+    resetTourState: true,
     prose:
       'Each dot on the sphere is one Reddit post or comment. We placed them so that semantically similar voices land near each other, and unrelated ones land far apart. Up next: we\u2019ll point at three real dots and let you compare them yourself.',
   },
@@ -231,7 +270,7 @@ const BEATS = [
           const lon = (App.state.coords[2*picks[0].idx + 1]
                      + App.state.coords[2*picks[1].idx + 1]
                      + App.state.coords[2*picks[2].idx + 1]) / 3;
-          try { globe.rotateTo(lat, lon, 1.4); } catch {}
+          try { globe.rotateTo(lat, lon, 1.12); } catch {}
           // Floating numbered markers above each dot.
           const markers = attachSpotlightMarkers(globe, picks.map((p, i) => ({
             idx: p.idx,
@@ -317,24 +356,24 @@ const BEATS = [
     eyebrow: 'Part 1 of 3 \u2014 a random handful',
     title: 'Sample five voices at once',
     prose:
-      'When you want a quick read on what the sphere actually contains, sample five random voices from whatever\u2019s currently visible. Press R or click the chip in the top-right \u2014 each press resamples five new ones, so you can keep pressing for fresh handfuls.',
+      'When you want a quick read on what the sphere actually contains, sample five random voices from whatever\u2019s currently visible. Press R or tap the R chip in the bottom toolbar (\u201cR · C · Reset\u201d row). Esc dismisses floating captions; Reset clears drill, filters, timeline, zoom.',
     steps: [
       {
         heading: 'Press R (or click the R chip)',
-        body: 'Hit the R key, or click the chip labeled \u201cR\u00a05 random voices\u201d in the top-right. Five posts attached to currently-visible dots will sprout into view. Each press resamples a fresh five.',
-        hint: 'Press R, or click the R chip \u2197',
+        body: 'Hit R or tap the glowing R chip in the bottom toolbar. Five excerpts sprout beside the sphere. Esc closes those captions first; Reset is the full rewind (pinned card, drill, filters, timeline, zoom).',
+        hint: 'Press R or click below \u2022 Esc dismisses cards',
         showChrome: ['random'],
         pulseClass: 'tour-pulse-random',
         manualContinue: true,
         setup: ({ App }) => {
           // Reset any leftover view state and rotate to a wide framing
           // so the sprouts have room to spread out.
-          try { App?.clearSprouts?.(); } catch {}
+          try { App?.clearSprouts?.({ immediate: true }); } catch {}
           try {
             const ae = document.activeElement;
             if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
           } catch {}
-          return () => { try { App?.clearSprouts?.(); } catch {} };
+          return () => { try { App?.clearSprouts?.({ immediate: true }); } catch {} };
         },
         subscribe: ({ App }, advance) => {
           let fired = false;
@@ -376,6 +415,7 @@ const BEATS = [
     kind: 'interstitial',
     eyebrow: 'Part 2 of 3 \u2014 from the top down',
     title: 'Pick a topic and drill in',
+    resetTourState: true,
     prose:
       'You can also start from a topic and narrow down. The left rail is sorted by how loud each topic is. Topic 32 \u2014 \u201cGentrification & Rent Control\u201d \u2014 is the loudest fault line in Boston housing. Let\u2019s drill in.',
   },
@@ -550,29 +590,37 @@ const BEATS = [
   {
     kind: 'interstitial',
     eyebrow: 'Part 2 of 3 \u2014 see the conversation',
-    title: 'Turn on Connections',
+    title: 'Look at this post in its thread',
     prose:
-      'Every post lives inside a Reddit thread \u2014 a tree of replies. Connections mode draws thin arcs from the post you pinned to every other comment in the same thread. It stays on as you click around, so you can compare conversational neighbors.',
+      'The pinned post is only one node in a Reddit thread. The panel already has a thread-context map: the center is the pinned post, and the satellites are replies or siblings in the same conversation. Connections draws those same relationships on the globe.',
     steps: [
       {
-        heading: 'Click the \u201crelations\u201d chip',
-        body: 'In the top-right, click the \u201cshift relations\u201d chip (it\u2019s pulsing). Arcs fan out from your pinned post to its thread siblings. Click another dot \u2014 the arcs follow your selection.',
-        hint: 'Click the \u201crelations\u201d chip \u2197',
+        heading: 'Show this pinned post\u2019s connections',
+        body: 'First look at the Thread context section in the pinned-post panel: that little map is this post and its thread neighbors. Now click the bottom \u201cconnections\u201d chip to draw those same relationships as arcs from this exact pinned node on the globe.',
+        hint: 'Look at Thread context, then click \u201cconnections\u201d below',
         showChrome: ['nav', 'shift', 'cards'],
         pulseClass: 'tour-pulse-shift',
         manualContinue: true,
-        setup: () => {
+        setup: ({ App }) => {
+          // Draw attention to the panel's fisheye context first. The chip
+          // then becomes the globe-level view of the same selected node.
+          setTimeout(() => { try { App?.emphasizeDetailContextForConnections?.(); } catch {} }, 450);
           return () => {};
         },
         subscribe: ({ App }, advance) => {
           let fired = false;
-          const trigger = () => { if (!fired) { fired = true; advance(); } };
+          const trigger = () => {
+            if (fired) return;
+            fired = true;
+            setTimeout(() => { try { App?.emphasizeDetailContextForConnections?.(); } catch {} }, 250);
+            advance();
+          };
           const chip = document.getElementById('shift-hint');
           const onClick = () => trigger();
           const onKeyDown = (e) => {
             if (e.repeat) return;
-            if (e.key !== 'Shift') return;
-            // Let the global Shift handler do the work; we only listen
+            if ((e.key || '').toLowerCase() !== 'c') return;
+            // Let the global C handler do the work; we only listen
             // here so we can advance the step.
             trigger();
           };
@@ -595,20 +643,20 @@ const BEATS = [
     kind: 'interstitial',
     eyebrow: 'Part 3 of 3 \u2014 a phrase across time',
     title: 'Search for a chronological phrase',
+    resetTourState: true,
     prose:
-      'Some conversations on the sphere have a clear shape in time. The MBTA Communities Act \u2014 the 2021 zoning law that pushed dense housing near transit \u2014 paints across multiple topics and only after 2021. Search for it.',
+      'Some conversations on the sphere have a clear shape in time. Covid is a clean example: almost nothing before 2020, then a city-wide argument about housing, commutes, work, schools, nightlife, and risk. Search for it.',
     steps: [
       {
-        heading: 'Search \u201cMBTA Communities Act\u201d',
-        body: 'Click the search bar in the top-left and type \u201cMBTA Communities Act\u201d (or shorter \u2014 \u201cmbta communities\u201d works). Matching posts paint across the globe; non-matching dim. Notice how the matches cluster across multiple topics.',
+        heading: 'Search \u201ccovid\u201d',
+        body: 'Click the search bar in the top-left and type \u201ccovid\u201d. Matching posts paint across the globe, non-matching posts dim, and the camera will move to the matching region so you can actually see the results.',
         hint: '\u2196 Type into the search bar',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-search',
         manualContinue: true,
         setup: ({ App, nav }) => {
           // Drop the rent-control filter so the search runs across the
-          // whole corpus — otherwise the user sees nothing because
-          // MBTA Communities Act has nothing to do with rent control.
+          // whole corpus.
           try { App?.clearConnectionsMode?.(); } catch {}
           try { App?.clearPinnedPoint?.(); } catch {}
           try { nav.focus({}); } catch {}
@@ -620,11 +668,22 @@ const BEATS = [
           });
           return () => {};
         },
-        subscribe: (_ctx, advance) => {
+        subscribe: ({ App, globe }, advance) => {
           const input = document.getElementById('search-input');
           if (!input) { advance(); return () => {}; }
-          const onInput = () => {
-            if ((input.value || '').trim().length >= 4) advance();
+          let ran = false;
+          const onInput = async () => {
+            const q = (input.value || '').trim();
+            if (ran || !q.toLowerCase().includes('covid')) return;
+            ran = true;
+            try {
+              const set = await App?.findPointsContaining?.(q);
+              if (set && set.size > 0) {
+                try { globe.setSpotlight(set); } catch {}
+                rotateToPointSet(globe, App.state, set, 1.35);
+              }
+            } catch {}
+            advance();
           };
           input.addEventListener('input', onInput);
           return () => input.removeEventListener('input', onInput);
@@ -638,7 +697,7 @@ const BEATS = [
     eyebrow: 'Part 3 of 3 \u2014 the time dimension',
     title: 'Open the timeline',
     prose:
-      'The MBTA Communities Act passed in 2021 \u2014 mentions before then are nearly zero. Open the timeline scrubber and watch posts dim as you move the start handle past 2021.',
+      'Covid has an unmistakable chronology: almost no mentions before 2020, then a sharp change in what Boston talks about. Open the timeline scrubber and move the handles around 2020 to see that shift.',
     steps: [
       {
         heading: 'Click the \u23f1 button',
@@ -714,6 +773,30 @@ export function createTour({ globe, App, nav }) {
   const btnSkip    = overlay.querySelector('#tour-skip');
   const skipHero   = overlay.querySelector('#tour-skip-hero');
   const btnExplore = overlay.querySelector('#tour-explore');
+
+  function resetTourState({ full = false } = {}) {
+    try { App?.clearConnectionsMode?.(); } catch {}
+    try { App?.clearSprouts?.({ immediate: true }); } catch {}
+    try { App?.clearPinnedPoint?.(); } catch {}
+    try { globe.setSpotlight?.(null); } catch {}
+    document.body.classList.remove('tour-pin-spotlight');
+    ['detail-card', 'interview-card', 'position-card', 'focus-card']
+      .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+    try {
+      const input = document.getElementById('search-input');
+      if (input && input.value) {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.blur();
+      }
+    } catch {}
+    try { document.getElementById('spotlight-chip')?.remove(); } catch {}
+    if (full) {
+      try { App?._timelineResetAndClose?.(); } catch {}
+      try { nav.focus({}); } catch {}
+      try { globe.rotateTo(15, -25, 3.0); } catch {}
+    }
+  }
 
   // ── Hero spin ───────────────────────────────────────────────────────
   // We spin the real globe slowly while the hero is displayed, so the right
@@ -943,6 +1026,10 @@ export function createTour({ globe, App, nav }) {
     if (!beat?.steps || _stepIdx < 0) return false;
     const cur = _stepIdx;
     endStep();
+    // Always drop random sprout cards when leaving any step via Next /
+    // Skip / Continue. Deferred DOM removal races async sprout layout and
+    // left cards on screen across beats.
+    try { App?.clearSprouts?.({ immediate: true }); } catch (_) {}
     if (cur + 1 >= beat.steps.length) {
       next();
     } else {
@@ -956,6 +1043,7 @@ export function createTour({ globe, App, nav }) {
     if (!beat?.steps || _stepIdx <= 0) return false;
     const cur = _stepIdx;
     endStep();
+    try { App?.clearSprouts?.({ immediate: true }); } catch (_) {}
     renderStep(beat, cur - 1);
     return true;
   }
@@ -1089,6 +1177,7 @@ export function createTour({ globe, App, nav }) {
       stopPinSpin();
     }
     endStep();
+    if (beat.resetTourState) resetTourState();
 
     // Chrome visibility: hide sidebar / focus cards / timeline on
     // non-drill beats (hero, interstitial, pin spotlight, outro).
@@ -1134,6 +1223,7 @@ export function createTour({ globe, App, nav }) {
     idx = 0;
     overlay.classList.remove('hidden');
     document.body.classList.add('tour-active');
+    resetTourState({ full: true });
     render();
   }
 
@@ -1153,31 +1243,8 @@ export function createTour({ globe, App, nav }) {
     document.body.classList.remove('tour-morphing');
     document.body.classList.remove('tour-active');
     document.body.classList.remove('tour-step-mode');
-    // Clean state on exit so the user lands in a fresh sandbox: drop
-    // any thread arcs from the connections demo, drop any pinned post,
-    // clear stray sprouts, close inspector cards, and clear whatever
-    // search query the search-tutorial step left behind.
-    try { window.App?.clearConnectionsMode?.(); } catch {}
-    try { window.App?.clearPinnedPoint?.(); } catch {}
-    try { window.App?.clearSprouts?.(); } catch {}
-    ['detail-card', 'interview-card', 'position-card', 'focus-card']
-      .forEach(id => document.getElementById(id)?.classList.add('hidden'));
-    try {
-      const input = document.getElementById('search-input');
-      if (input && input.value) {
-        input.value = '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.blur();
-      }
-    } catch {}
-    try {
-      nav.focus({});
-      globe.rotateTo(15, -25, 3.0);
-    } catch {}
-    // Restore the timeline-scrubber state from localStorage now that
-    // tour-active is gone. The IIFE in main.js skipped auto-open at
-    // boot if the tour was already starting.
-    try { window.App?._timelineRestore?.(); } catch {}
+    // Leave the user in a clean sandbox when they "go forth and explore".
+    resetTourState({ full: true });
   }
 
   function next() {
@@ -1211,12 +1278,10 @@ export function createTour({ globe, App, nav }) {
   btnExplore?.addEventListener('click', close);
 
   // ── Keyboard ────────────────────────────────────────────────────────
-  // Escape during the tour: closing the tour itself requires the explicit
-  // Skip button (a no-op for Esc). But Esc should still close any
-  // inspector card the user opened during a step (e.g. interview card
-  // from a P-pin click) — otherwise they'd be stuck reading until they
-  // hunt for the ×. We handle that here directly so the tour-level Esc
-  // swallow doesn't have to defer to the global nav-side handler.
+  // Escape during the tour: closing the tour itself requires Skip. Esc still
+  // closes inspector cards and dismisses floating random sprout captions
+  // (those are handled above; otherwise this listener traps Esc before it
+  // reaches globel-level handlers registered later during boot).
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     const overlayVisible = !overlay.classList.contains('hidden');
@@ -1233,7 +1298,20 @@ export function createTour({ globe, App, nav }) {
       e.stopPropagation();
       return;
     }
-    // No card open → Esc is a true no-op while the tour is up.
+    // Random sprout captions: global Esc handler sits *after* this listener,
+    // so we must dismiss them here or Esc is swallowed below.
+    try {
+      const spr = document.getElementById('sprouts')
+        ?.querySelector?.('.sprout, .sprout-anchor');
+      if (spr && typeof App.clearSprouts === 'function') {
+        App.clearSprouts({ immediate: true });
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    } catch (_) {}
+    // No inspector cards / no sprout layer → Esc deliberately does nothing to
+    // the tour itself while the overlay is active.
     e.preventDefault();
     e.stopPropagation();
   }, true);

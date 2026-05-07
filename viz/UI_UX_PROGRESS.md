@@ -9,6 +9,27 @@ random-five action replaces the old toggle on a new R keybind, and the
 shimmer overlay is gone in favor of a clean pulsating highlight that
 matches the Continue button.
 
+### Follow-up UI cleanup
+
+- Restored hover telegraphing by anchoring the hover halo to the actual
+  canvas screen rect and switching the globe cursor to `pointer` over a
+  hittable node.
+- Removed the passive cmd-click Reddit-thread tooltip from the globe.
+- Changed Connections from the old Shift shortcut to `C`, while keeping
+  the bottom chip as the visible mode toggle.
+- Made the bottom control dock more compact (`R`, `C`, `clear`) and
+  moved the full Reset view affordance out to the lower-left.
+- Added a visible `clear` chip for transient clutter: it dismisses random
+  cards, connections mode, the selected node/detail card, and other
+  temporary overlays.
+- **`clearSprouts({ immediate: true })`** plus an extra clear on tour
+  **Skip / Continue / Back**: random cards were lingering because teardown
+  used a delayed DOM remove that raced async sprout rendering.
+- Consolidated **`clear`** and **`Reset`** into one **Reset · esc** chip in a
+  **horizontal `#globe-controls-dock`** (R · C · Reset) so buttons do not overlap.
+  **Esc** clears random captions during tour (tour Escape handler now calls
+  `clearSprouts` before trapping the key).
+
 ### Tour structure
 
 - **Part 1 — Bottom-up.** A new beat picks three real points at runtime
@@ -22,9 +43,9 @@ matches the Continue button.
   the position narrative, the user pins any of the highlighted dots
   (introducing the detail card) and turns on **Connections mode** to
   see thread arcs from their pin to the rest of the conversation.
-- **Part 3 — Search & timeline.** Type "MBTA Communities Act" to watch
-  matches paint across multiple topics, then open the timeline scrubber
-  to see how the conversation peaks after the law passes in 2021.
+- **Part 3 — Search & timeline.** Type `covid` to watch matches paint
+  across multiple topics, then open the timeline scrubber to see how
+  the conversation changes around 2020.
 
 ### Connections is now a persistent VIEW MODE, not a transient toggle
 
@@ -36,9 +57,9 @@ matches the Continue button.
   pin; no longer hide-then-show flicker.
 - Drilling cluster/sub/position refreshes the visible-pool sampler
   ~600ms after the focus settles.
-- Escape no longer drops connections-mode — the user has to either
-  press Shift again or click the chip. Cards/pins still close.
-- Both the Shift key and the chip click route through the same
+- Escape / the clear chip now drops connections-mode along with other
+  transient clutter. Cards/pins still close first.
+- Both the `C` key and the chip click route through the same
   `toggleConnectionsMode()` path, so muscle memory and click
   affordances stay consistent.
 - The chip turns green (matching the pulse-glow color) while the mode
@@ -71,6 +92,50 @@ matches the Continue button.
 - Spotlight markers (Part 1's three numbered dots) get a floating
   ::after chip that goes neutral after the user clicks each one, so
   the user can see at a glance which they've already inspected.
+
+## 2026-05-07 — tour cleanup and bottom-dock controls
+
+- Reworked the tour pulse on sidebar bars to use inset rings instead of
+  `outline`. The bar stack clips overflow, so outlines on absolutely
+  positioned subtopic/position bars looked like missing left/right
+  borders. The new `tour-step-bar-pulse` renders all four sides inside
+  the colored bar itself.
+- Moved the random, connections, and reset controls out of the
+  top-right corner into a bottom-center dock inside the globe overlay.
+  Pinned-node/detail panels can stay open without covering the controls.
+  The dock lifts above the timeline scrubber when the scrubber is open.
+- Changed the shift chip from a passive `div` into a real button and
+  simplified the label to `connections`.
+- Added tour-boundary cleanup. Starting Part 1, moving into Part 2,
+  moving into Part 3, and leaving via "go forth and explore" now clear
+  random sprouts, connections mode, pinned points, spotlight chips, and
+  floating inspector cards. Final exit also closes and clears the
+  timeline instead of restoring whatever was left in localStorage.
+- Connections are explicitly disabled at tour start and whenever the
+  tour calls the cleanup helper. `App.clearConnectionsMode()` now forces
+  thread arcs off even if the mode flag itself was already false.
+- Switched the search demo from "MBTA Communities Act" to `covid`, which
+  is a denser chronological example. The tour now waits until the user
+  types `covid`, runs the same post-body search as the nav, spotlights
+  the matching set, and rotates the globe to the result centroid before
+  allowing Continue.
+- Improved the bottom-up point picker. It now samples deterministically
+  from the corpus, prefers a readable triangle (same-cluster pair close
+  but not overlapping; different-cluster point nearby but separated),
+  zooms closer, and uses larger numbered markers.
+- Lifted the tour card to the top of the screen during bottom-dock
+  control steps (`R`, connections, timeline) so the instruction card no
+  longer occludes the controls it is asking the user to click.
+- Fixed random-sprout cleanup after the R step by adding a render token.
+  `clearSprouts()` now cancels any in-flight async sprout render, so
+  clicking Continue cannot clear the cards and then have them reappear
+  when detail fetches finish.
+- Made tour highlights louder without reintroducing shimmer: stronger
+  teal glow, wider outline pulse, faster/brighter bar pulse.
+- Reworked the connections tutorial copy and visual emphasis around the
+  pinned node. The step now first highlights the detail panel's Thread
+  context fisheye, then asks the user to turn on the bottom `connections`
+  chip as the globe-level view of that exact pinned post's thread.
 
 ## 2026-05-04
 
