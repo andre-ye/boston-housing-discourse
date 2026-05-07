@@ -115,7 +115,7 @@ async function boot() {
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
   try {
-    const { createTour } = await import('./tour.js?v=287');
+    const { createTour } = await import('./tour.js?v=300');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
@@ -1025,6 +1025,10 @@ async function boot() {
       pinnedPointIdx = ev.detail.idx;
       globe.setPinnedPoint(pinnedPointIdx);
       showDetailCard(details);
+      // Connections mode: smoothly redraw arcs around the new pin so
+      // the user can pin → see context → pin a different post → see
+      // new context, without ever leaving "view threads" mode.
+      if (_shiftActive) refreshConnectionsIfActive();
     }
   });
   globe.addEventListener('pinhover', (ev) => {
@@ -1043,9 +1047,12 @@ async function boot() {
     hoverPointIdx = -1;
     globe.setPinnedPoint(-1);
     globe.setHoverPoint(-1);
+    // Smooth refresh: when the user clears a pin while in connections
+    // mode, slide the arc set to "visible-pool sample" rather than
+    // hide-then-show (which flickered the arcs through empty for a
+    // frame). The new render path is idempotent.
     if (hadPinned && refreshRelations && _shiftActive) {
-      shiftHideRelations();
-      shiftShowRelations();
+      refreshConnectionsIfActive();
     }
   }
   globe.addEventListener('hover', (ev) => {
@@ -3478,6 +3485,15 @@ async function boot() {
     }
   }, 160);
   nav.addEventListener('focus', () => { setTimeout(refreshCaptions, 650); });
+  // Connections mode redraws on focus change so the visible-pool
+  // sampler stays in sync with whatever filter is now active. Wait
+  // for the dim buffer to settle before re-sampling (focus changes
+  // are animated; the dim attribute updates in the same RAF tick but
+  // the user-perceptible "settle" includes the camera).
+  nav.addEventListener('focus', () => {
+    if (!_shiftActive) return;
+    setTimeout(() => { try { refreshConnectionsIfActive(); } catch {} }, 600);
+  });
   refreshCaptions();
   // Expose for debugging from the console.
   window.App.refreshCaptions = refreshCaptions;
@@ -3532,30 +3548,56 @@ async function boot() {
     if (anchor !== idx) pairs.push([anchor, idx]);
     return pairs;
   }
-  async function shiftShowRelations() {
-    if (_shiftActive) return;
-    _shiftActive = true;
+  // ─── Connections mode (formerly shift-to-show) ───────────────────
+  // Now a persistent VIEW MODE rather than a transient toggle.
+  //
+  //   • Toggling on  → arcs render for whatever's currently pinned
+  //                    (or, if nothing pinned, a sample of visible
+  //                    threads from the current filter).
+  //   • Pinning a different post   → arcs SMOOTHLY refresh to that
+  //                                  post's thread.
+  //   • Drilling cluster/sub/pos   → if no pin, arcs refresh to the
+  //                                  newly visible pool. With a pin,
+  //                                  the user's pin still drives.
+  //   • Clearing a pin via Esc     → arcs refresh to the visible pool;
+  //                                  mode stays on.
+  //   • Toggling off  → only via the explicit Shift key or clicking
+  //                     the chip. Esc no longer drops connections.
+  //
+  // The chip's `is-on` class mirrors `_shiftActive` exactly, so the
+  // user always has a visible signal of the current mode.
+  function _syncShiftHint() {
+    const sh = document.getElementById('shift-hint');
+    if (sh) sh.classList.toggle('is-on', _shiftActive);
+  }
+
+  // Internal: actually compute and load the arcs for the current
+  // selected/visible state. `epoch` is captured once per call so a
+  // later refresh aborts an earlier in-flight render. Safe to call
+  // back-to-back during user actions.
+  async function _renderConnectionArcs() {
+    if (!_shiftActive) return;
     const epoch = ++_shiftEpoch;
-    _priorThreadsEnabled = globe.threadArcsEnabled;
     const selectedIdx = pinnedPointIdx >= 0 ? pinnedPointIdx : hoverPointIdx;
-    const selectedPairs = await relationPairsForPoint(selectedIdx);
-    if (epoch !== _shiftEpoch || !_shiftActive) return;
-    if (selectedPairs.length > 0) {
-      await globe.loadThreadArcs(selectedPairs, { thin: true, opacity: 0.65 });
+    if (selectedIdx >= 0) {
+      const selectedPairs = await relationPairsForPoint(selectedIdx);
       if (epoch !== _shiftEpoch || !_shiftActive) return;
-      globe.threadArcsEnabled = true;
-      if (globe.threadArcs) globe.threadArcs.visible = true;
-      return;
+      if (selectedPairs.length > 0) {
+        await globe.loadThreadArcs(selectedPairs, { thin: true, opacity: 0.7 });
+        if (epoch !== _shiftEpoch || !_shiftActive) return;
+        globe.threadArcsEnabled = true;
+        if (globe.threadArcs) globe.threadArcs.visible = true;
+        return;
+      }
+      // pinned point isn't a Reddit thread (or has no siblings) →
+      // fall through to the visible-pool sampler.
     }
     const map = await ensureThreadMap();
     if (epoch !== _shiftEpoch || !_shiftActive) return;
-    // Build pairs: pick up to 60 threads whose anchor point is currently
-    // "colored" (dim > 0.5), prefer threads with more members.
     const dimArr = globe.pointGeom?.attributes?.dim?.array;
     const candidates = [];
     for (const [id, idxs] of map) {
       if (idxs.length < 2) continue;
-      // Does at least one point pass the filter?
       let visible = false;
       for (const pi of idxs) {
         if (!dimArr || dimArr[pi] > 0.5) { visible = true; break; }
@@ -3563,11 +3605,15 @@ async function boot() {
       if (!visible) continue;
       candidates.push({ id, idxs, n: idxs.length });
     }
-    if (candidates.length === 0) { _shiftActive = false; return; }
+    if (candidates.length === 0) {
+      // No visible threads under current filter — keep the mode on
+      // but draw nothing. (Don't flip _shiftActive off; that would
+      // surprise the user and desync the chip.)
+      await globe.loadThreadArcs([], { thin: true, opacity: 0.55 });
+      return;
+    }
     candidates.sort(() => Math.random() - 0.5);
     const picks = candidates.slice(0, 60);
-    // Build a post-index so we can pick the POST itself as each thread's
-    // anchor — makes the arcs radiate from the submission outward.
     const postIndex = await buildPostIndex();
     const pairs = [];
     for (const c of picks) {
@@ -3586,22 +3632,58 @@ async function boot() {
     globe.threadArcsEnabled = true;
     if (globe.threadArcs) globe.threadArcs.visible = true;
   }
+
+  // Public refresh hook — called from `clearSelectedPoint` and the
+  // nav focus listener. Cheap when the mode is off.
+  async function refreshConnectionsIfActive() {
+    if (!_shiftActive) return;
+    await _renderConnectionArcs();
+  }
+
+  async function shiftShowRelations() {
+    if (_shiftActive) return;
+    _shiftActive = true;
+    _priorThreadsEnabled = globe.threadArcsEnabled;
+    _syncShiftHint();
+    await _renderConnectionArcs();
+  }
   function shiftHideRelations() {
     if (!_shiftActive) return;
     _shiftActive = false;
     _shiftEpoch++;
+    _syncShiftHint();
     globe.threadArcsEnabled = _priorThreadsEnabled;
     if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
     if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
   }
+  window.App.toggleConnectionsMode = () => {
+    if (_shiftActive) shiftHideRelations();
+    else shiftShowRelations();
+    return _shiftActive;
+  };
+  window.App.connectionsModeActive = () => _shiftActive;
+  window.App.refreshConnections = refreshConnectionsIfActive;
+
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Shift' || e.repeat) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     e.preventDefault();
-    if (_shiftActive) shiftHideRelations();
-    else shiftShowRelations();
+    window.App.toggleConnectionsMode();
   });
+
+  // Make the #shift-hint chip a real button. Click toggles the mode;
+  // its visual `is-on` state is owned by `_syncShiftHint()` so it
+  // always agrees with `_shiftActive`.
+  (() => {
+    const chip = document.getElementById('shift-hint');
+    if (!chip) return;
+    chip.addEventListener('click', (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      window.App.toggleConnectionsMode();
+    });
+  })();
 
   // Escape is the universal "back out of transient modes" key. Run in capture
   // so selected-node state clears before NavController hides the detail card.
@@ -3618,10 +3700,12 @@ async function boot() {
       clearSelectedPoint();
       handled = true;
     }
-    if (_shiftActive) {
-      shiftHideRelations();
-      handled = true;
-    }
+    // Escape no longer toggles connections-mode off. The mode is
+    // a persistent VIEW choice — clearing the pin should leave it
+    // on (and refresh to the visible-pool sampler, which
+    // clearSelectedPoint already triggers via refreshConnectionsIfActive).
+    // Power users can still drop the mode with Shift or by clicking
+    // the chip.
     if (handled) {
       e.preventDefault();
       const layerOpen = [
@@ -4034,45 +4118,78 @@ async function boot() {
     hideBookmarksCard();
     return true;
   };
-  // Tour helpers — the global Space handler short-circuits during the
-  // tour, so the interactive step needs an explicit pathway to actually
-  // toggle the sprouts when the user presses Space.
-  window.App.toggleSprouts = () => {
+  // ─── Random-five action ──────────────────────────────────────────
+  // Random-sample is now an *action*, not a toggle: each fire clears
+  // any currently-displayed sprouts and immediately spawns a fresh
+  // five (so the user can keep pressing R to see new samples without
+  // first needing to press it again to clear). The R keybind and the
+  // top-right `#random-hint` chip both call this same path.
+  //
+  // Legacy aliases (`App.toggleSprouts`, `App.clearSprouts`) stay
+  // around so the existing Space keybind continues to work for muscle
+  // memory; their semantics shift to "always end up with sprouts on
+  // screen" / "always end up with no sprouts".
+  window.App.sampleFiveRandom = () => {
     cancelSproutClearTimer();
-    _spaceDown = !_spaceDown;
-    if (_spaceDown) sproutSpawn();
-    else sproutClear();
-    const sh = document.getElementById('space-hint');
-    if (sh) sh.classList.toggle('is-on', _spaceDown);
-    return _spaceDown;
+    _spaceDown = false;       // legacy state — keep cleared
+    sproutClear();             // wipe any active spread
+    requestAnimationFrame(() => {
+      _spaceDown = true;
+      sproutSpawn();
+      // Visual ack: flash the chip's keycap so the user sees the
+      // action register even when sprouts spawn off-camera.
+      const ch = document.getElementById('random-hint');
+      if (ch) {
+        ch.classList.remove('flash');
+        // force a reflow so the same animation can replay.
+        void ch.offsetWidth;
+        ch.classList.add('flash');
+        setTimeout(() => ch.classList.remove('flash'), 360);
+      }
+    });
   };
   window.App.clearSprouts = () => {
     cancelSproutClearTimer();
     _spaceDown = false;
     sproutClear();
-    const sh = document.getElementById('space-hint');
-    if (sh) sh.classList.remove('is-on');
   };
-  // Make the floating "space" hint chip act as a clickable button — same
-  // effect as pressing Space, useful when the user hasn't discovered the
-  // keybind yet (and the only entry point during the tutorial step that
-  // explicitly tells them to click it instead of pressing keys).
+  // Legacy alias — retained because the existing Space keybind path
+  // still calls toggleSprouts under the hood. Now treats every press
+  // as "show me five fresh ones" rather than a true toggle, which
+  // matches the new R semantics.
+  window.App.toggleSprouts = () => {
+    if (activeSprouts.length > 0) { window.App.clearSprouts(); return false; }
+    window.App.sampleFiveRandom();
+    return true;
+  };
+  // Tour helpers — used by `tour.close()` to leave the user in a
+  // clean state when they exit the tour.
+  window.App.clearPinnedPoint = () => {
+    try { clearSelectedPoint({ refreshRelations: false }); } catch {}
+  };
+  window.App.clearConnectionsMode = () => {
+    try { if (_shiftActive) shiftHideRelations(); } catch {}
+  };
+  // Make the floating chip act as a button. Resampling on each click
+  // is ergonomic — the user wants new voices, not the same five.
   (() => {
-    const shEl = document.getElementById('space-hint');
-    if (!shEl) return;
-    shEl.setAttribute('role', 'button');
-    shEl.setAttribute('tabindex', '0');
-    shEl.setAttribute('aria-label', 'Toggle five random voices');
-    const trigger = (e) => {
+    const chip = document.getElementById('random-hint');
+    if (!chip) return;
+    chip.addEventListener('click', (e) => {
       e?.preventDefault?.();
       e?.stopPropagation?.();
-      try { window.App.toggleSprouts(); } catch {}
-    };
-    shEl.addEventListener('click', trigger);
-    shEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') trigger(e);
+      window.App.sampleFiveRandom();
     });
   })();
+  // R keybind. Same gating as Space (skip while typing in inputs / on
+  // the title slide / inside an active tour step that hasn't opted in).
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'r' && e.key !== 'R') return;
+    if (e.repeat) return;
+    if (!_sproutSpaceAllowed(e)) return;
+    e.preventDefault();
+    window.App.sampleFiveRandom();
+  });
 
   syncBookmarksUI();
 

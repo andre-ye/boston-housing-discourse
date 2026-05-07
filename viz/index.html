@@ -700,7 +700,7 @@
 
   /* Top-right hints — tell the user about the SHIFT shortcut + how to
      open a Reddit thread. */
-  #space-hint, #shift-hint, #link-hint, #reset-view-hint {
+  #random-hint, #shift-hint, #link-hint, #reset-view-hint {
     position: absolute;
     right: 18px;
     z-index: 8;
@@ -716,46 +716,63 @@
   /* When a floating card is open at top-right, fade the shortcut hints —
      they sit under the inspector cards. Keep "Reset view" usable: it only
      snaps zoom and must stay above the topic card (z-index) and clickable. */
-  body.has-floating-card #space-hint,
+  body.has-floating-card #random-hint,
   body.has-floating-card #shift-hint,
   body.has-floating-card #link-hint {
     opacity: 0;
     pointer-events: none;
     transform: translateX(6px);
   }
-  #shift-hint, #link-hint { pointer-events: none; }
-  /* #space-hint is clickable — clicking the chip toggles 5 random voices
-     just like pressing the Space key. Hitbox is generous (the whole
-     pill, including the space-key glyph and the surrounding label) so
-     users don't have to aim at a 12px text run; the chip uses a button
-     reset so the entire bounding box catches clicks. */
-  #space-hint {
-    top: 16px;
+  #link-hint { pointer-events: none; }
+  /* Both clickable chips share the same pill geometry. They're real
+     <button> elements; reset the browser default look so the chip
+     reads as a chip, not a raised button. */
+  #random-hint, #shift-hint {
+    appearance: none;
+    -webkit-appearance: none;
+    color: inherit;
+    text-align: left;
+    font: inherit;
     pointer-events: auto;
     cursor: pointer;
-    /* Widen the hit-target without visually inflating the chip. */
     padding: 9px 14px 9px 12px;
     gap: 10px;
     transition: opacity 0.18s ease, transform 0.18s ease,
                 border-color 0.15s ease, background 0.15s ease;
   }
-  /* Each child element opts back in to mouse — the parent has a single
-     click handler in JS, so children just need to forward events. */
-  #space-hint > * { pointer-events: none; }
-  #space-hint:hover {
+  #random-hint > *, #shift-hint > * { pointer-events: none; }
+  #random-hint:hover, #shift-hint:hover {
     border-color: rgba(255,255,255,0.32);
     background: rgba(20,28,42,0.95);
     transform: translateX(-2px);
   }
-  #space-hint:focus-visible {
-    outline: 2px solid rgba(255,209,102,0.55);
+  #random-hint:focus-visible, #shift-hint:focus-visible {
+    outline: 2px solid rgba(124,240,201,0.65);
     outline-offset: 2px;
   }
-  #space-hint.is-on .sh-key {
-    background: linear-gradient(180deg, #ffd166, #f1b938);
-    color: #1a1208;
-    border-color: #ffd166;
+  /* `#random-hint` is an action button (no persistent on state). It
+     flashes briefly each time R / click fires so the user sees their
+     action register; class is added in main.js and removed via
+     animation end. */
+  #random-hint.flash .sh-key {
+    background: linear-gradient(180deg, #7cf0c9, #54d3a9);
+    color: #0a1812;
+    border-color: #7cf0c9;
+    transition: background 0.18s, color 0.18s, border-color 0.18s;
   }
+  /* `#shift-hint` is a true mode toggle. It stays lit while
+     connections-mode is active so the user always knows whether
+     they're looking at thread arcs. */
+  #shift-hint.is-on {
+    border-color: rgba(124,240,201,0.55);
+    background: rgba(14,32,28,0.92);
+  }
+  #shift-hint.is-on .sh-key {
+    background: linear-gradient(180deg, #7cf0c9, #54d3a9);
+    color: #0a1812;
+    border-color: #7cf0c9;
+  }
+  #random-hint { top: 16px; }
   #shift-hint { top: 54px; }
   #link-hint { top: 96px; }
   /* Clickable — sits in pointer-events:none overlay; child uses auto. */
@@ -795,7 +812,7 @@
     color: rgba(255,255,255,0.45);
     margin: 0 2px;
   }
-  #space-hint .sh-key,
+  #random-hint .sh-key,
   #shift-hint .sh-key,
   #link-hint .sh-key,
   #reset-view-hint .sh-key {
@@ -814,7 +831,8 @@
       0 1px 2px rgba(0,0,0,0.5);
   }
   #reset-view-hint .sh-key { min-width: 0; padding: 4px 10px; font-size: 10px; }
-  #space-hint .sh-text {
+  #random-hint .sh-text,
+  #shift-hint .sh-text {
     font: 500 12px 'Inter', system-ui, sans-serif;
     color: #fff;
     letter-spacing: 0.2px;
@@ -3131,7 +3149,7 @@
   /* Slide the keep-out chip clear of the scrubber when both are at the
      bottom of the globe — the chip would otherwise sit right on top of
      the timeline. */
-  body.has-timeline-open #space-hint { top: 16px; }
+  body.has-timeline-open #random-hint { top: 16px; }
   /* Default chrome state inside step mode: HIDDEN. Each step opts in to
      specific elements via body.tour-step-show-* classes. This keeps step 1
      ("hover a dot") from leaking the sidebar / pins / time button before
@@ -3141,7 +3159,7 @@
   body.tour-step-mode #nav,
   body.tour-step-mode .timeline,
   body.tour-step-mode #tl-toggle,
-  body.tour-step-mode #space-hint,
+  body.tour-step-mode #random-hint,
   body.tour-step-mode #shift-hint,
   body.tour-step-mode #link-hint,
   body.tour-step-mode #reset-view-hint,
@@ -3168,7 +3186,8 @@
   body.tour-step-mode.tour-step-show-pins .pin-labels .pin {
     pointer-events: auto !important;
   }
-  body.tour-step-mode.tour-step-show-space #space-hint {
+  body.tour-step-mode.tour-step-show-random #random-hint,
+  body.tour-step-mode.tour-step-show-shift #shift-hint {
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
@@ -3275,62 +3294,138 @@
     border-color: #9bf5d6;
   }
 
-  /* Per-step affordance highlights — pulse the element the user is being
-     told to interact with so it's findable without breaking the tour card. */
+  /* Per-step affordance highlights — pulse the element the user is
+     being told to interact with so it's findable without breaking the
+     tour card. Same family of motion as the Continue button (which
+     uses `tour-step-pulse-glow` directly): a quiet breathing glow that
+     reads as "this is the next step", paired with an outline pulse so
+     the click target's perimeter is clear at every phase of the cycle.
+     No shimmer streak — that effect's borders never matched the host
+     element's silhouette (rounded chips, narrow pin labels, bar
+     segments with rotated/clipped backgrounds), so it always read as
+     bleeding outside the highlight target. */
   @keyframes tour-step-pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255,209,102,0); }
-    50%      { box-shadow: 0 0 0 6px rgba(255,209,102,0.32); }
+    0%, 100% {
+      box-shadow:
+        0 0 0 0 rgba(124,240,201,0),
+        0 0 0 0 rgba(124,240,201,0),
+        0 0 12px 0 rgba(124,240,201,0.35);
+    }
+    50% {
+      box-shadow:
+        0 0 0 3px rgba(124,240,201,0.55),
+        0 0 0 9px rgba(124,240,201,0.25),
+        0 0 26px 8px rgba(124,240,201,0.55);
+    }
+  }
+  /* Outline pulse — opacity + width breathe in lockstep with the glow,
+     so even at the dimmest part of the cycle the click target's edge
+     is visible. Applied to the same set of targets via a single
+     selector list below. */
+  @keyframes tour-step-outline-pulse {
+    0%, 100% {
+      outline-color: rgba(124,240,201,0.55);
+      outline-width: 1.5px;
+    }
+    50% {
+      outline-color: rgba(160,255,220,0.95);
+      outline-width: 2.5px;
+    }
   }
   body.tour-step-show-nav #nav {
-    box-shadow: inset 0 0 0 1px rgba(255,209,102,0.55), 0 0 24px rgba(255,209,102,0.18);
+    box-shadow: inset 0 0 0 1px rgba(124,240,201,0.55), 0 0 24px rgba(124,240,201,0.18);
     transition: box-shadow 0.25s ease;
   }
-  /* Per-step pulse targets. Each `tour-pulse-*` body class lights up
-     exactly one element so the user knows where to click. They're
-     applied via the step's `pulseSelector` (see tour.js `applyStepChrome`)
-     so the same pulse animation is reused across the four drill steps
-     (cluster bar → subtopic bar → position bar → pin → button).
-     Done state (`tour-step-done`) drops the pulse so the affirmation
-     reads as a confirmed action rather than continued prompting. */
+  /* Shared pulse rule — every per-step pulse target shares the same
+     glow + outline-pulse animation so the visual vocabulary is
+     consistent across drill bars, pin chips, search input, and the
+     bottom-right toolbar chips. Per-target tweaks (z-index, dot
+     scale-up, etc.) come after this. */
+  body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
+  body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
+  body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"],
+  body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
+  body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id,
+  body.tour-pulse-search:not(.tour-step-done) #search-input,
+  body.tour-pulse-random:not(.tour-step-done) #random-hint,
+  body.tour-pulse-shift:not(.tour-step-done) #shift-hint,
+  body.tour-pulse-time:not(.tour-step-done) #tl-toggle,
+  body.tour-pulse-time:not(.tour-step-done) #timeline-scrubber:not(.hidden),
+  body.tour-pulse-spotlight:not(.tour-step-done) .tour-spotlight-pulse {
+    animation:
+      tour-step-pulse-glow 1.6s ease-in-out infinite,
+      tour-step-outline-pulse 1.6s ease-in-out infinite;
+    outline-style: solid;
+    outline-offset: 2px;
+  }
+  /* Per-target adjustments. */
   body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
   body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"] {
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
-    outline: 2px solid rgba(255,209,102,0.55);
-    outline-offset: 2px;
     z-index: 4;
   }
-  /* Pin pulse — pins are <button class="pin" data-id="P2"> in the
-     #pin-labels overlay; pulse the chosen one so the click target is
-     unambiguous. Same rule applies to P18 in the bike-lanes step. */
-  body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"],
-  body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] {
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+  /* Pin pulse — `.pin` is a 0×0 anchor; pulse the visible `.pin-id`
+     chip (so outline/box-shadow render at chip dimensions) and pulse
+     the `.pin-dot` next to it for visibility from a distance. */
+  body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
+  body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id {
+    outline-offset: 3px;
+    position: absolute;
     z-index: 25;
-    outline: 2px solid rgba(255,209,102,0.7);
-    outline-offset: 4px;
-    border-radius: 50%;
   }
-  /* Search-bar pulse — highlights the input so the user sees where to
-     type. The input lives inside #nav-header at the top of the
-     sidebar, so this rule depends on `tour-step-show-nav` being on. */
-  body.tour-pulse-search:not(.tour-step-done) #search-input {
-    border-color: rgba(255,209,102,0.85) !important;
-    box-shadow: 0 0 0 2px rgba(255,209,102,0.22), 0 0 18px rgba(255,209,102,0.32);
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+  body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-dot,
+  body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-dot {
+    animation:
+      tour-step-pulse-glow 1.6s ease-in-out infinite;
+    transform: scale(1.35);
   }
-  /* Old show-* helpers retained for the time and space chips: same pulse,
-     wired through `showChrome: ['time' | 'space']`. */
-  body.tour-step-show-space:not(.tour-step-done) #space-hint {
-    border-color: rgba(255,209,102,0.7) !important;
-    box-shadow: 0 0 0 2px rgba(255,209,102,0.22), 0 0 16px rgba(255,209,102,0.32);
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
-  }
-  body.tour-step-show-time:not(.tour-step-done) #tl-toggle {
-    border-color: rgba(255,209,102,0.7) !important;
-    box-shadow: 0 0 0 2px rgba(255,209,102,0.22), 0 0 16px rgba(255,209,102,0.32);
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+  /* Toolbar chips need to stay above floating cards while pulsing so
+     the user can actually find them. The base z-index of #random-hint
+     etc. is 8; bump pulsing chips above the focus card stack. */
+  body.tour-pulse-random:not(.tour-step-done) #random-hint,
+  body.tour-pulse-shift:not(.tour-step-done) #shift-hint,
+  body.tour-pulse-time:not(.tour-step-done) #tl-toggle {
+    z-index: 18;
     opacity: 1 !important;
+  }
+  /* Spotlight on globe points — a free-floating ::after halo we attach
+     to the .pin-anchor surrogate created in main.js. The CSS just owns
+     the animation; placement / sizing is pure DOM. */
+  .tour-spotlight-pulse {
+    position: absolute;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    pointer-events: none;
+    border: 0;
+    z-index: 9;
+    transform: translate(-50%, -50%);
+    outline: 0 solid transparent;
+  }
+  .tour-spotlight-pulse[data-tag]::after {
+    content: attr(data-tag);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    font: 600 11px 'Inter', system-ui, sans-serif;
+    color: #0a1812;
+    background: #7cf0c9;
+    border: 1px solid #7cf0c9;
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  }
+  /* When the spotlight is "consumed" (user already clicked it) — drop
+     the pulse, dim the chip. */
+  .tour-spotlight-pulse.consumed[data-tag]::after {
+    background: rgba(20,28,42,0.85);
+    color: rgba(255,255,255,0.75);
+    border-color: rgba(255,255,255,0.18);
+  }
+  .tour-spotlight-pulse.consumed {
+    animation: none !important;
+    box-shadow: none !important;
   }
   .tour-card .tour-step {
     font: 600 10px/1 'Source Sans Pro', sans-serif;
@@ -3485,7 +3580,7 @@
   }
   /* Once the tour closes entirely, snap the keyboard hints back to full
      opacity so they don't stay stuck from the transition. */
-  body:not(.tour-active) #space-hint,
+  body:not(.tour-active) #random-hint,
   body:not(.tour-active) #shift-hint,
   body:not(.tour-active) #link-hint {
     opacity: 1 !important;
@@ -3523,7 +3618,7 @@
   body.tour-active.tour-chrome-off #point-tooltip,
   body.tour-active.tour-chrome-off .timeline,
   body.tour-active.tour-chrome-off .ui-topbar,
-  body.tour-active.tour-chrome-off #space-hint,
+  body.tour-active.tour-chrome-off #random-hint,
   body.tour-active.tour-chrome-off #shift-hint,
   body.tour-active.tour-chrome-off #link-hint,
   body.tour-active.tour-chrome-off #reset-view-hint,
@@ -4496,10 +4591,10 @@
       <div id="hover-halo"></div>
       <div id="sprouts"></div>
       <svg id="sprout-lines" pointer-events="none"></svg>
-      <div id="space-hint">
-        <kbd class="sh-key">space</kbd>
-        <span class="sh-text">toggle 5 random posts / comments</span>
-      </div>
+      <button type="button" id="random-hint" aria-keyshortcuts="R" aria-label="Sample 5 random voices on screen">
+        <kbd class="sh-key">R</kbd>
+        <span class="sh-text">5 random voices on screen</span>
+      </button>
       <div id="shift-hint">
         <kbd class="sh-key">shift</kbd>
         <span class="sh-text">toggle relations</span>
@@ -4782,6 +4877,6 @@
     }, true);
   })();
 </script>
-<script type="module" src="./js/main.js?v=315"></script>
+<script type="module" src="./js/main.js?v=320"></script>
 </body>
 </html>

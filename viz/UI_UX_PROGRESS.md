@@ -1,5 +1,77 @@
 # UI/UX Progress
 
+## 2026-05-07 — three-part tour rewrite + connections-mode + pulse highlight
+
+The interactive tour is now organized into three distinct parts that
+each teach one mode of exploration. Connections (formerly the
+Shift-to-show-relations toggle) is now a persistent **view mode**, the
+random-five action replaces the old toggle on a new R keybind, and the
+shimmer overlay is gone in favor of a clean pulsating highlight that
+matches the Continue button.
+
+### Tour structure
+
+- **Part 1 — Bottom-up.** A new beat picks three real points at runtime
+  (two in the same cluster, one in a neighboring cluster, all within
+  ~3.4° on the sphere) and spotlights them with floating numbered
+  markers. The user is asked to click each in turn; the step advances
+  only after all three have been pinned. They then meet an interview
+  voice (P2) and learn the new R-key/chip random-sample action.
+- **Part 2 — Top-down.** The existing Gentrification → Rent
+  Stabilization → Shortage & Disincentive drill is preserved. After
+  the position narrative, the user pins any of the highlighted dots
+  (introducing the detail card) and turns on **Connections mode** to
+  see thread arcs from their pin to the rest of the conversation.
+- **Part 3 — Search & timeline.** Type "MBTA Communities Act" to watch
+  matches paint across multiple topics, then open the timeline scrubber
+  to see how the conversation peaks after the law passes in 2021.
+
+### Connections is now a persistent VIEW MODE, not a transient toggle
+
+- New API: `App.toggleConnectionsMode()`, `App.connectionsModeActive()`,
+  `App.refreshConnections()`. The chip's `is-on` state always mirrors
+  `_shiftActive` exactly (synced from a single `_syncShiftHint()`
+  helper).
+- Pinning a different post **smoothly refreshes** the arcs to the new
+  pin; no longer hide-then-show flicker.
+- Drilling cluster/sub/position refreshes the visible-pool sampler
+  ~600ms after the focus settles.
+- Escape no longer drops connections-mode — the user has to either
+  press Shift again or click the chip. Cards/pins still close.
+- Both the Shift key and the chip click route through the same
+  `toggleConnectionsMode()` path, so muscle memory and click
+  affordances stay consistent.
+- The chip turns green (matching the pulse-glow color) while the mode
+  is on, so there's a persistent visual signal of what view you're in.
+
+### Random-five is an action, on R, not a toggle on Space
+
+- Old `#space-hint` chip renamed to `#random-hint`, retitled "5 random
+  voices on screen", keycap shows "R". Chip is a real `<button>`.
+- `App.sampleFiveRandom()` clears any current spread and spawns a fresh
+  five each call, so the user can keep pressing R for new handfuls.
+- Space is still wired (legacy alias) but flips between "five fresh
+  voices" and "clear" rather than being a true toggle. The chip
+  flashes briefly each time the action fires so the keystroke / click
+  registers visually.
+
+### Pulse highlight replaces the shimmer overlay
+
+- Removed `@keyframes tour-step-shimmer-sweep` and every `::before`
+  pseudo-element that sprayed a diagonal gradient across pulse
+  targets. The shimmer's borders never matched the host element's
+  silhouette (rounded chips, narrow pin labels, bar segments with
+  rotated/clipped backgrounds), so it always read as bleeding outside
+  the highlight target.
+- New `tour-step-pulse-glow` is a tighter multi-layer green/teal
+  box-shadow breathing on a 1.6s cycle — same family of motion as the
+  Continue button (which already used the keyframe directly).
+- Added `tour-step-outline-pulse` so even at the dimmest part of the
+  cycle there's a visible perimeter on the click target.
+- Spotlight markers (Part 1's three numbered dots) get a floating
+  ::after chip that goes neutral after the user clicks each one, so
+  the user can see at a glance which they've already inspected.
+
 ## 2026-05-04
 
 - Started UI/UX tweak pass.
@@ -61,3 +133,11 @@
 - **Space-chip hitbox enlarged.** The `#space-hint` pill had `padding: 6px 10px 6px 8px` and `gap: 8px`, leaving a tiny click target. Raised to `padding: 9px 14px 9px 12px` and `gap: 10px`, plus `#space-hint > * { pointer-events: none }` so the entire pill bounding-box catches the click instead of having to land on text. Added a hover translateX nudge, focus-visible outline, and kept the existing `is-on` state.
 - **Timeline-scrubber × actually closes.** The toggle button (`#tl-toggle`) is `display: none` while the scrubber is open, so the only visible "close" affordance was the × inside the scrubber — but its handler only reset the date range, leaving the panel open. Pressing `t` was the sole mouseless escape. The × handler now also flips `.hidden` on the scrubber, drops `.active` on the toggle, syncs `body.has-timeline-open`, and persists `timeline=off` to localStorage. Behaviour now matches both the visual cue and the comment that's been there the whole time.
 - **`Take the tour` launcher no longer covers the `⏱` toggle.** The launcher (~100×30, `bottom:14 right:14`) and the timeline toggle (38×38, `bottom:18 right:22`) shared the bottom-right corner and overlapped — the launcher's pill ran straight across the toggle's hit-target. Moved the launcher to `bottom: 64`, leaving an ~8px gap above the toggle, so they stack vertically. When the scrubber is open (`body.has-timeline-open`) the launcher fades to `opacity: 0` since it would otherwise sit on top of the scrubber's controls.
+
+## 2026-05-07 — louder click hints (shimmer + concentric pulse)
+
+- **The interaction highlight was too subtle to find.** Old `tour-step-pulse-glow` was a single `0 0 0 6px rgba(255,209,102,0.32)` box-shadow that swelled by ~6px every 1.6s. Against the dark canvas and through the user's peripheral vision, that's basically a quiet fade. Step hints failed at their one job: telling the user where to click.
+- **Concentric pulse is now multi-layered.** Three stacked box-shadows: a tight 4px gold ring, a softer 11px gold ring, and a wide 28px atmospheric glow that breathes from off → bright once per 1.4s. Outline brightened from `rgba(255,209,102,0.55)` to `rgba(255,233,160,0.85–0.95)` so the perimeter is unambiguous even when the glow is at its dimmest. Cycle shortened from 1.6s → 1.4s for a more urgent rhythm.
+- **Shimmer streak walks across the target.** New `tour-step-shimmer-sweep` keyframes animate `background-position` of a 250%-wide diagonal gradient (transparent → white → gold → white → transparent at 115°) so a bright glint sweeps left-to-right across the element, then rests off-screen for a beat before repeating. Painted via `::before` overlay on every supported pulse target — the three drill bar segments, the P2 / P18 pin chips, the space chip, the time chip (and the future shift chip). `mix-blend-mode: screen` lightens the chip's surface without obscuring the text or icon, and `border-radius: inherit` keeps the gradient inside the element's rounded silhouette.
+- **Pin tutorial got a real anchor.** Previously the pulse selector was `.pin[data-id="P2"]` — but `.pin` itself is `width:0; height:0` (just a coordinate anchor), so the box-shadow rendered out from a single point and the outline wrapped a 4-pixel-offset zero rectangle. The pulse now targets `.pin[data-id="…"] .pin-id` (the visible chip) for the glow + shimmer, and `.pin[data-id="…"] .pin-dot` separately gets the same glow plus a `transform: scale(1.35)` so the dot brightens and inflates beside the chip. Both P2 and P18 share the rules.
+- **Search input keeps the glow without shimmer.** `<input>` can't host pseudo-elements, so the search step relies entirely on the loud multi-layer glow + the brighter outline. Strong enough on its own that the eye lands on the search bar without needing a streak too.

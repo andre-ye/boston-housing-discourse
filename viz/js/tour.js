@@ -1,14 +1,126 @@
-// Guided tour — Atlantic-style narrative opener + deep drill-down
-// across three clusters, each entering cluster → sub → point-of-view tier.
-// Version 287 — Stops 2 and 3 each pick up a new affordance.
-// Tenant Rights ends with a SEARCH tutorial (type a phrase, watch the
-// globe paint matches across the whole corpus). Bike Lanes ends with a
-// P18 click tutorial (a second specific pin, in a different topical
-// context — reinforces that pins live across the sphere). Pin beats no
-// longer call nav.focus on entry, eliminating the camera-swing where
-// the globe rotated out to the cluster anchor and back to the pin.
+// Guided tour — three-part exploration:
+//
+//   PART 1 — Bottom-up.  We spotlight three real points (two in the
+//            same cluster, one in a neighboring cluster), explain
+//            what proximity means, and have the user click each to
+//            compare. Then they meet an interview pin and learn the
+//            "5 random voices" action (R key / chip click).
+//
+//   PART 2 — Top-down.   Drill cluster → subtopic → point-of-view
+//            (Gentrification → Rent Stabilization → Shortage &
+//            Disincentive). Inside the filtered subset, the user
+//            pins a real post and we introduce CONNECTIONS MODE
+//            (the persistent thread-arc view, formerly Shift).
+//
+//   PART 3 — Search & time.  Type "MBTA Communities Act" to see
+//            chronologically anchored discourse paint across the
+//            sphere; open the timeline scrubber.
+//
+// Version 300.
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
+
+// ─── Demo-point picker ─────────────────────────────────────────────────────
+// Part 1 needs three live points: two in the same cluster (semantically
+// similar, spatially close on the sphere) and one in a different cluster
+// that's still spatially nearby. We compute this at runtime so it adapts
+// to whatever data load is in play. Deterministic order so re-running
+// the tour shows the same trio.
+function pickThreeDemoPoints(state) {
+  if (!state?.coords || !state?.cluster || !state?.N) return null;
+  const N = state.N;
+  const coords = state.coords;
+  const cluster = state.cluster;
+  // Try a sequence of seeds spread across the index range. First seed
+  // that yields a same-cluster sibling AND a different-cluster
+  // neighbor within a tight angular distance wins. The 17×k+991 stride
+  // touches every part of the sphere within a few hundred attempts.
+  const SEEDS_TO_TRY = 600;
+  // Tighter than before — we want the trio to be visibly close.
+  const NEAR_RAD = 0.06;       // ~3.4° on the sphere
+  for (let attempt = 0; attempt < SEEDS_TO_TRY; attempt++) {
+    const seed = ((attempt * 17 + 991) * 2654435761) % N;
+    const cl0 = cluster[seed];
+    if (cl0 == null) continue;
+    const lat0 = coords[2 * seed];
+    const lon0 = coords[2 * seed + 1];
+    let sameBest = null, diffBest = null;
+    const cosLat0 = Math.cos(lat0);
+    for (let i = 0; i < N; i++) {
+      if (i === seed) continue;
+      const cl = cluster[i];
+      if (cl == null) continue;
+      const lat = coords[2 * i];
+      const lon = coords[2 * i + 1];
+      const sLat = Math.sin((lat - lat0) * 0.5);
+      const sLon = Math.sin((lon - lon0) * 0.5);
+      const a = sLat * sLat + cosLat0 * Math.cos(lat) * sLon * sLon;
+      const d = 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+      if (d > NEAR_RAD) continue;
+      if (cl === cl0) {
+        if (!sameBest || d < sameBest.d) sameBest = { i, d, cl };
+      } else {
+        if (!diffBest || d < diffBest.d) diffBest = { i, d, cl };
+      }
+    }
+    if (sameBest && diffBest) {
+      return [
+        { idx: seed,        cluster: cl0,        role: 'A1' },
+        { idx: sameBest.i,  cluster: cl0,        role: 'A2' },
+        { idx: diffBest.i,  cluster: diffBest.cl, role: 'B'  },
+      ];
+    }
+  }
+  return null;
+}
+
+// ─── Spotlight markers ─────────────────────────────────────────────────────
+// Three.js doesn't emit per-frame events we can hook for screen-space DOM
+// markers, so we run our own RAF loop and project lat/lon to the canvas
+// every frame. Cheap (3 points) and self-cancelling on teardown.
+function attachSpotlightMarkers(globe, points) {
+  const markers = points.map((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'tour-spotlight-pulse';
+    el.dataset.tag = p.tag != null ? String(p.tag) : String(i + 1);
+    el.style.position = 'fixed';
+    document.body.appendChild(el);
+    return { ...p, el, _consumed: false };
+  });
+  let raf = 0;
+  const tick = () => {
+    const rect = globe.canvas.getBoundingClientRect();
+    const camPos = globe.camera.position;
+    for (const m of markers) {
+      const wp = globe.worldPositionOf(m.lat, m.lon, 1.012);
+      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
+      if (facing <= 0.02) { m.el.style.opacity = '0'; continue; }
+      const proj = wp.clone().project(globe.camera);
+      if (proj.z > 1) { m.el.style.opacity = '0'; continue; }
+      const x = rect.left + (proj.x * 0.5 + 0.5) * rect.width;
+      const y = rect.top + (-proj.y * 0.5 + 0.5) * rect.height;
+      m.el.style.opacity = '1';
+      m.el.style.left = `${x}px`;
+      m.el.style.top = `${y}px`;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return {
+    consume(idx) {
+      const m = markers.find(mm => mm.idx === idx);
+      if (m && !m._consumed) {
+        m._consumed = true;
+        m.el.classList.add('consumed');
+      }
+    },
+    has(idx) { return markers.some(mm => mm.idx === idx); },
+    teardown() {
+      cancelAnimationFrame(raf);
+      for (const m of markers) m.el.remove();
+    },
+  };
+}
 
 // ─── Beat definitions ──────────────────────────────────────────────────────
 //
@@ -72,78 +184,218 @@ const BEATS = [
       'There is no center or edges so no discourse is cornered to a particular realm. A sphere also links related threads in space so browsing feels more serendipitous.',
   },
 
-  // ── Tutorial: HOVER — "What is anyone actually saying?" ─────────────
-  // First interactive moment. Sidebar is hidden — only the globe + the
-  // narration card. We pin a sample point so there is always a glowing
-  // target near the cursor; the hover handler in main.js suppresses
-  // tooltips while the cursor is over the narration card itself, so
-  // moving the mouse around freely never flashes the tour card.
+  // ════════════════════════════════════════════════════════════════════
+  //   PART 1 — BOTTOM-UP EXPLORATION
+  // ════════════════════════════════════════════════════════════════════
+
+  // Part 1 intro: explain what a dot is and what proximity means.
   {
     kind: 'interstitial',
-    eyebrow: 'What is anyone actually saying?',
-    title: 'Each dot is one voice',
+    eyebrow: 'Part 1 of 3 — From the ground up',
+    title: 'Three voices, side by side',
     prose:
-      'A single point on the sphere is one Reddit post or comment. Color is its topic. Hover any glowing dot to peek at the actual text.',
+      'Each dot on the sphere is one Reddit post or comment. We placed them so that semantically similar voices land near each other, and unrelated ones land far apart. Up next: we\u2019ll point at three real dots and let you compare them yourself.',
+  },
+
+  // Part 1, Step 1: spotlight 3 dots, ask the user to click each.
+  {
+    kind: 'interstitial',
+    eyebrow: 'Part 1 of 3 \u2014 close vs. far apart',
+    title: 'Click each glowing dot',
+    prose:
+      'We picked three dots near each other on the sphere. Two are in the same topical neighborhood \u2014 you should hear them echo each other. The third sits right next to them but belongs to a different conversation entirely. Click each one, read the post, then come back.',
     steps: [
       {
-        heading: 'Hover any dot to read the post',
-        body: 'Find a glowing point on the sphere and rest your cursor on it — the post text appears in a tooltip. When you\'ve hovered a few, click Continue.',
-        hint: 'Hover any dot — the tooltip will appear ↗',
-        showChrome: [],
+        heading: 'Compare three voices',
+        body: 'Click each of the three glowing markers (1, 2, 3). Two should sound like they belong to the same thread; one should feel like it\u2019s about a different question. The detail card on the right shows you the actual post text.',
+        hint: 'Click each glowing marker \u2014 1, 2, 3',
+        showChrome: ['cards'],
+        pulseClass: 'tour-pulse-spotlight',
         manualContinue: true,
-        setup: ({ globe, nav, App }) => {
-          try { nav.focus({}); } catch {}
-          const placements = App?.state?.interviewPins?.placements || [];
-          const sample = placements[Math.floor(placements.length / 2)] || placements[0];
-          if (sample) {
-            try { globe.rotateTo(sample.lat, sample.lon, 1.55); } catch {}
-            if (Number.isFinite(sample.idx)) {
-              try { globe.setPinnedPoint(sample.idx); } catch {}
-            }
+        setup: (ctx) => {
+          const { globe, App } = ctx;
+          const picks = pickThreeDemoPoints(App.state);
+          if (!picks) {
+            // Fallback: rotate to a generic interesting region.
+            try { globe.rotateTo(0.2, 1.5, 1.6); } catch {}
+            return () => {};
           }
-          return () => { try { globe.setPinnedPoint(-1); } catch {} };
+          // Spotlight only the three; everything else fades.
+          const idxSet = new Set(picks.map(p => p.idx));
+          try { globe.setSpotlight(idxSet); } catch {}
+          document.body.classList.add('tour-pin-spotlight');
+          // Rotate to the centroid (average of the three coordinates).
+          const lat = (App.state.coords[2*picks[0].idx]
+                     + App.state.coords[2*picks[1].idx]
+                     + App.state.coords[2*picks[2].idx]) / 3;
+          const lon = (App.state.coords[2*picks[0].idx + 1]
+                     + App.state.coords[2*picks[1].idx + 1]
+                     + App.state.coords[2*picks[2].idx + 1]) / 3;
+          try { globe.rotateTo(lat, lon, 1.4); } catch {}
+          // Floating numbered markers above each dot.
+          const markers = attachSpotlightMarkers(globe, picks.map((p, i) => ({
+            idx: p.idx,
+            lat: App.state.coords[2 * p.idx],
+            lon: App.state.coords[2 * p.idx + 1],
+            tag: String(i + 1),
+          })));
+          // Park state on ctx so subscribe can read it.
+          ctx._part1Picks = picks;
+          ctx._part1Markers = markers;
+          ctx._part1Clicked = new Set();
+          return () => {
+            try { globe.setSpotlight(null); } catch {}
+            document.body.classList.remove('tour-pin-spotlight');
+            markers.teardown();
+            document.getElementById('detail-card')?.classList.add('hidden');
+          };
+        },
+        subscribe: (ctx, advance) => {
+          const { globe } = ctx;
+          const valid = new Set((ctx._part1Picks || []).map(p => p.idx));
+          const onClick = (ev) => {
+            const i = ev?.detail?.idx;
+            if (i == null || !valid.has(i)) return;
+            ctx._part1Clicked.add(i);
+            ctx._part1Markers?.consume?.(i);
+            if (ctx._part1Clicked.size >= 3) advance();
+          };
+          globe.addEventListener('pointclick', onClick);
+          return () => globe.removeEventListener('pointclick', onClick);
+        },
+      },
+    ],
+  },
+
+  // Part 1, Step 2: meet an interview pin (P2) — qualitative voice.
+  {
+    kind: 'interstitial',
+    eyebrow: 'Part 1 of 3 \u2014 voices we met in person',
+    title: 'Click P2 \u2014 a ferry commuter',
+    prose:
+      'Eighteen of the twenty-six people we interviewed are pinned next to topics they discussed. P2 talked about a multimodal commute and a calm ferry leg \u2014 they\u2019re anchored where transit voices cluster. Click P2 to read what they said.',
+    steps: [
+      {
+        heading: 'Click the P2 pin',
+        body: 'Find the floating P2 pin (it\u2019s pulsing) and click it. A panel pops up with their paraphrased quotes \u2014 their words, not Reddit\u2019s. When you\u2019re done reading, hit Continue.',
+        hint: 'Click the glowing P2 pin \u2192',
+        showChrome: ['pins', 'cards'],
+        pulseClass: 'tour-pulse-pin-P2',
+        manualContinue: true,
+        setup: ({ globe, App }) => {
+          const placements = App?.state?.interviewPins?.placements || [];
+          const p2 = placements.find(p => p.id === 'P2');
+          const idxSet = new Set(
+            placements.filter(p => p.id === 'P2')
+              .map(p => p.idx).filter(i => Number.isFinite(i))
+          );
+          try { if (idxSet.size > 0) globe.setSpotlight(idxSet); } catch {}
+          document.body.classList.add('tour-pin-spotlight');
+          if (p2) { try { globe.rotateTo(p2.lat, p2.lon, 1.9); } catch {} }
+          else    { try { globe.rotateTo(20, -30, 2.4); } catch {} }
+          return () => {
+            try { globe.setSpotlight(null); } catch {}
+            document.body.classList.remove('tour-pin-spotlight');
+            document.getElementById('interview-card')?.classList.add('hidden');
+            document.getElementById('detail-card')?.classList.add('hidden');
+          };
         },
         subscribe: ({ globe }, advance) => {
-          const onHover = (ev) => { if (ev?.detail?.idx >= 0) advance(); };
-          const onMove  = (ev) => { if (ev?.detail?.idx >= 0) advance(); };
-          globe.addEventListener('hover', onHover);
-          globe.addEventListener('hovermove', onMove);
+          const onPinClick = (ev) => {
+            if (ev?.detail?.pin?.id === 'P2') advance();
+          };
+          globe.addEventListener('pinclick', onPinClick);
+          return () => globe.removeEventListener('pinclick', onPinClick);
+        },
+      },
+    ],
+  },
+
+  // Part 1, Step 3: random-five action.
+  {
+    kind: 'interstitial',
+    eyebrow: 'Part 1 of 3 \u2014 a random handful',
+    title: 'Sample five voices at once',
+    prose:
+      'When you want a quick read on what the sphere actually contains, sample five random voices from whatever\u2019s currently visible. Press R or click the chip in the top-right \u2014 each press resamples five new ones, so you can keep pressing for fresh handfuls.',
+    steps: [
+      {
+        heading: 'Press R (or click the R chip)',
+        body: 'Hit the R key, or click the chip labeled \u201cR\u00a05 random voices\u201d in the top-right. Five posts attached to currently-visible dots will sprout into view. Each press resamples a fresh five.',
+        hint: 'Press R, or click the R chip \u2197',
+        showChrome: ['random'],
+        pulseClass: 'tour-pulse-random',
+        manualContinue: true,
+        setup: ({ App }) => {
+          // Reset any leftover view state and rotate to a wide framing
+          // so the sprouts have room to spread out.
+          try { App?.clearSprouts?.(); } catch {}
+          try {
+            const ae = document.activeElement;
+            if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
+          } catch {}
+          return () => { try { App?.clearSprouts?.(); } catch {} };
+        },
+        subscribe: ({ App }, advance) => {
+          let fired = false;
+          const trigger = () => {
+            if (fired) return;
+            fired = true;
+            advance();
+          };
+          const chip = document.getElementById('random-hint');
+          const onClick = () => trigger();
+          const onKeyDown = (e) => {
+            if (e.repeat) return;
+            if (e.key !== 'r' && e.key !== 'R') return;
+            // Don't double-fire — let the global handler spawn sprouts;
+            // we just listen for the keystroke to advance. But the
+            // global handler is gated on `!tour.isActive()`, so we
+            // also need to fire the action ourselves.
+            e.preventDefault();
+            e.stopPropagation();
+            try { App?.sampleFiveRandom?.(); } catch {}
+            trigger();
+          };
+          chip?.addEventListener('click', onClick);
+          window.addEventListener('keydown', onKeyDown, true);
           return () => {
-            globe.removeEventListener('hover', onHover);
-            globe.removeEventListener('hovermove', onMove);
+            chip?.removeEventListener('click', onClick);
+            window.removeEventListener('keydown', onKeyDown, true);
           };
         },
       },
     ],
   },
 
-  // ── Step 1 of 3: Gentrification (interactive cluster click) ─────────
-  // The user is taught the drill pattern HERE rather than in a separate
-  // tutorial beat. Clicking the cluster bar advances; the prose explains
-  // what they just selected. No more "click any topic", no more
-  // separate "click Gentrification" beat — one beat, one click, one
-  // narrated arrival.
+  // ════════════════════════════════════════════════════════════════════
+  //   PART 2 — TOP-DOWN EXPLORATION (Rent Control drill)
+  // ════════════════════════════════════════════════════════════════════
+
   {
     kind: 'interstitial',
-    eyebrow: 'Stop 1 of 3 — Who gets to live here',
-    title: 'Drill into Gentrification & Rent Control',
+    eyebrow: 'Part 2 of 3 \u2014 from the top down',
+    title: 'Pick a topic and drill in',
     prose:
-      'The left rail stacks every topic in the corpus by how loud the conversation is. Topic 32, "Gentrification & Rent Control," is the biggest fault line in Boston housing — a decade of argument about rent stabilization, zoning, and supply. Click it.',
+      'You can also start from a topic and narrow down. The left rail is sorted by how loud each topic is. Topic 32 \u2014 \u201cGentrification & Rent Control\u201d \u2014 is the loudest fault line in Boston housing. Let\u2019s drill in.',
+  },
+
+  {
+    kind: 'interstitial',
+    eyebrow: 'Part 2 of 3 \u2014 the topic level',
+    title: 'Click \u201cGentrification & Rent Control\u201d',
+    prose:
+      'The left rail stacks every topic in the corpus. Click the highlighted topic to zoom in.',
     steps: [
       {
-        heading: 'Click "Gentrification & Rent Control"',
-        body: 'Find "Gentrification & Rent Control" near the top of the left rail and click it — the globe will rotate the topic into view.',
-        hint: '← Click "Gentrification & Rent Control"',
+        heading: 'Click \u201cGentrification & Rent Control\u201d',
+        body: 'Find \u201cGentrification & Rent Control\u201d near the top of the left rail and click it. The globe rotates the topic into view.',
+        hint: '\u2190 Click \u201cGentrification & Rent Control\u201d',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-l1-32',
         manualContinue: true,
         setup: ({ globe, nav }) => {
           try { globe.setPinnedPoint(-1); } catch {}
-          // Step is idempotent: re-rendering (Back from the next beat)
-          // starts the user at "no focus" so a click on cl=32 actually
-          // means *drill in* rather than *toggle off* (a click on the
-          // already-focused cluster zooms back out per nav.focus's own
-          // toggle behaviour).
           try { nav.focus({}); } catch {}
           return () => {};
         },
@@ -160,38 +412,34 @@ const BEATS = [
   {
     kind: 'cluster',
     cl: 32,
-    step: 'Stop 1 of 3 — topic',
+    step: 'Part 2 of 3 \u2014 topic',
     eyebrow: 'Who gets to live here',
     title: 'Rent control, zoning, and housing supply',
     prose:
-      'Topic 32 — "Gentrification & Rent Control" — holds a decade of argument ' +
-      'about what Boston\'s housing crisis actually is. Neighboring dots are posts or comments on the same fault line.',
+      'Topic 32 \u2014 \u201cGentrification & Rent Control\u201d \u2014 holds a decade of argument ' +
+      'about what Boston\u2019s housing crisis actually is. Neighboring dots are posts or comments on the same fault line.',
     pullquotes: [
-      'Market supply can\'t match demand here.',
+      'Market supply can\u2019t match demand here.',
       'Rent control is good for incumbents and bad for newcomers.',
-      'It\'s the zoning that made this mess.',
+      'It\u2019s the zoning that made this mess.',
     ],
   },
 
-  // ── Step 1 of 3: drill into the rent-stabilization subtopic ─────────
   {
     kind: 'interstitial',
-    eyebrow: 'Stop 1 of 3 — narrowing the question',
-    title: 'Drill into "Rent Stabilization Ideas"',
+    eyebrow: 'Part 2 of 3 \u2014 narrowing the question',
+    title: 'Click \u201cRent Stabilization Ideas\u201d',
     prose:
-      'The middle column splits the topic into subtopics. The biggest one inside Gentrification is "Rent Stabilization Ideas" — the actual rent-control argument. Click it to keep narrowing.',
+      'The middle column splits the topic into subtopics. The biggest one inside Gentrification is \u201cRent Stabilization Ideas\u201d \u2014 the actual rent-control argument. Click it.',
     steps: [
       {
-        heading: 'Click "Rent Stabilization Ideas"',
-        body: 'In the middle (subtopic) column, find "Rent Stabilization Ideas" near the top and click it. The globe will zoom into that subtopic\'s pocket of points.',
-        hint: '← Click "Rent Stabilization Ideas"',
+        heading: 'Click \u201cRent Stabilization Ideas\u201d',
+        body: 'In the middle (subtopic) column, find \u201cRent Stabilization Ideas\u201d near the top and click it. The globe will zoom into that subtopic\u2019s pocket of points.',
+        hint: '\u2190 Click \u201cRent Stabilization Ideas\u201d',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-l2-32_4',
         manualContinue: true,
         setup: ({ nav }) => {
-          // Reset to cluster-level focus so the L2 column is populated
-          // and a click on Rent Stab actually drills (rather than
-          // toggling off if the user landed here with gid already set).
           try { nav.focus({ cl: 32 }); } catch {}
           return () => {};
         },
@@ -209,37 +457,32 @@ const BEATS = [
     kind: 'sub',
     cl: 32,
     gid: 131,
-    step: 'Stop 1 of 3 — subtopic',
+    step: 'Part 2 of 3 \u2014 subtopic',
     eyebrow: 'Subtopic: Rent Stabilization Ideas',
     title: 'The rent control fault line',
     prose:
-      'You\'re now inside "Rent Stabilization Ideas." Each point is a post or comment taking a side: for rent control, against it, or threading some nuanced middle path. Hover one to read the thread.',
+      'You\u2019re now inside \u201cRent Stabilization Ideas.\u201d Each point is a post or comment taking a side: for rent control, against it, or threading some nuanced middle path. Hover one to read the thread.',
     pullquotes: [
       'Rent control is good for incumbents and bad for newcomers.',
       'You need both stabilization and new construction.',
     ],
   },
 
-  // ── Step 1 of 3: drill into the "Shortage & Disincentive" position ──
   {
     kind: 'interstitial',
-    eyebrow: 'Stop 1 of 3 — pin a stance',
-    title: 'Drill into "Shortage & Disincentive"',
+    eyebrow: 'Part 2 of 3 \u2014 pin a stance',
+    title: 'Click \u201cShortage & Disincentive\u201d',
     prose:
-      'The right column lists points of view inside this subtopic — actual stances people take. The largest one, "Shortage & Disincentive," argues rent control shrinks supply. Click it.',
+      'The right column lists points of view inside this subtopic \u2014 actual stances people take. The largest one, \u201cShortage & Disincentive,\u201d argues rent control shrinks supply. Click it.',
     steps: [
       {
-        heading: 'Click "Shortage & Disincentive"',
-        body: 'In the right column, click "Shortage & Disincentive" — 756 posts argue this stance. The globe will spotlight every post tagged with that exact argument.',
-        hint: '← Click "Shortage & Disincentive"',
+        heading: 'Click \u201cShortage & Disincentive\u201d',
+        body: 'In the right column, click \u201cShortage & Disincentive\u201d \u2014 756 posts argue this stance. The globe spotlights every post tagged with that exact argument.',
+        hint: '\u2190 Click \u201cShortage & Disincentive\u201d',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-l3-131_2',
         manualContinue: true,
         setup: ({ nav }) => {
-          // Reset to subtopic-level focus so the L3 column is populated
-          // and a click on Shortage actually drills (rather than
-          // unfocusing the position if the user landed here with one
-          // already selected).
           try { nav.focus({ cl: 32, gid: 131 }); } catch {}
           return () => {};
         },
@@ -258,187 +501,130 @@ const BEATS = [
     cl: 32,
     gid: 131,
     posIdx: 2,
-    step: 'Stop 1 of 3 — point of view',
+    step: 'Part 2 of 3 \u2014 point of view',
     eyebrow: 'Point of view: Shortage & Disincentive',
     title: 'Rent control makes the shortage worse',
     prose:
-      'This stance — 756 posts — argues rent control shrinks supply ' +
+      'This stance \u2014 756 posts \u2014 argues rent control shrinks supply ' +
       'by disincentivizing construction and causing landlords to convert or neglect ' +
       'units. The highlighted points are every post the model tagged with exactly ' +
-      'this argument. You just learned the drill: topic → subtopic → point of view.',
+      'this argument.',
     pullquotes: [
       '"Rent control keeps prices low for current tenants but kills the stock ' +
        'available for everyone else."',
     ],
   },
 
-  // ── Tutorial: P-PINS — click P2 specifically ────────────────────────
-  // After the Reddit drill, ask the user to switch from corpus to street.
-  // P-pins are anchored next to the topic regions each interviewee
-  // discussed. P2 is anchored near transit topics — they described a
-  // calm water commute. Spotlight P2 only so the click target is
-  // unambiguous.
+  // Part 2, Step pin-a-post: with the subset filtered, click any dot.
   {
     kind: 'interstitial',
-    eyebrow: 'What did real people on the ground say?',
-    title: 'Click P2 — a ferry commuter',
+    eyebrow: 'Part 2 of 3 \u2014 pin a single voice',
+    title: 'Pin one of the highlighted posts',
     prose:
-      'Eighteen of the twenty-six people we interviewed are anchored as P-pins next to the topics they discussed. P2 talked about a multimodal commute and a calm ferry leg — they\'re pinned where transit voices cluster. Click P2.',
+      'Now that you\u2019ve narrowed to a single stance, every glowing dot is a post making this exact argument. Click any one to pin it \u2014 a panel on the right shows the full text.',
     steps: [
       {
-        heading: 'Click the P2 pin',
-        body: 'Find the floating "P2" pin and click it — a panel appears with a short paraphrase of what they said. Read it, then hit Continue.',
-        hint: 'Click the glowing P2 pin →',
-        showChrome: ['pins', 'cards'],
-        pulseClass: 'tour-pulse-pin-P2',
+        heading: 'Click any glowing dot',
+        body: 'Pick a glowing dot \u2014 each is one rent-control post arguing the supply position. Click it; the detail card pops up with the post body and a link to the original Reddit thread.',
+        hint: 'Click any glowing dot \u2192',
+        showChrome: ['nav', 'cards'],
         manualContinue: true,
-        setup: ({ globe, App }) => {
-          // Don't touch nav.focus here — calling it would fire a focus
-          // listener that rotates the globe to (0,0) (when cleared) or
-          // to the cluster anchor, then we'd rotateTo P2 right after.
-          // That double-hop reads as a swing. Just rotate directly.
-          const placements = App?.state?.interviewPins?.placements || [];
-          const p2 = placements.find(p => p.id === 'P2');
-          const idxSet = new Set(
-            placements.filter(p => p.id === 'P2')
-              .map(p => p.idx).filter(i => Number.isFinite(i))
-          );
-          try { if (idxSet.size > 0) globe.setSpotlight(idxSet); } catch {}
-          document.body.classList.add('tour-pin-spotlight');
-          if (p2) {
-            try { globe.rotateTo(p2.lat, p2.lon, 1.9); } catch {}
-          } else {
-            try { globe.rotateTo(20, -30, 2.4); } catch {}
-          }
-          return () => {
-            try { globe.setSpotlight(null); } catch {}
-            document.body.classList.remove('tour-pin-spotlight');
-            document.getElementById('interview-card')?.classList.add('hidden');
-            document.getElementById('detail-card')?.classList.add('hidden');
-            document.getElementById('position-card')?.classList.add('hidden');
-          };
+        setup: ({ App }) => {
+          try { App?.clearPinnedPoint?.(); } catch {}
+          ['focus-card', 'position-card', 'interview-card', 'detail-card']
+            .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+          return () => {};
         },
         subscribe: ({ globe }, advance) => {
-          // Only P2 counts. Clicking another pin still opens that pin's
-          // card (the user hasn't been told they CAN'T explore), but
-          // the tour stays on this step until they pick P2.
-          const onPinClick = (ev) => {
-            if (ev?.detail?.pin?.id === 'P2') advance();
+          const onClick = (ev) => {
+            if (ev?.detail?.idx >= 0) advance();
           };
-          globe.addEventListener('pinclick', onPinClick);
-          return () => globe.removeEventListener('pinclick', onPinClick);
+          globe.addEventListener('pointclick', onClick);
+          return () => globe.removeEventListener('pointclick', onClick);
         },
       },
     ],
   },
-  {
-    kind: 'pin',
-    pinId: 'P2',
-    eyebrow: 'One of the interviews',
-    title: 'A calm commute on the water.',
-    prose:
-      'P2 described a multimodal commute where the water leg felt calmer than the rest. We pinned them and seventeen other voices ' +
-      'next to the topic regions related to what they discussed.',
-    pullquotes: [
-      'The water commute feels like the calm part of the day.',
-    ],
-  },
 
-  // ── Step 2 of 3: Tenant Rights — auto drill, no clicks ──────────────
-  // The user has already drilled cluster→sub→position once. The second
-  // arc just narrates while the camera does the work — the drill pattern
-  // is now muscle memory. We do bookend Stop 2 with a NEW tutorial
-  // moment (the time filter) so each arc still teaches one new thing.
-  {
-    kind: 'cluster',
-    cl: 8,
-    step: 'Stop 2 of 3 — topic',
-    eyebrow: 'Once you\'re inside the door',
-    title: 'Heating, repairs, and landlord obligations',
-    prose:
-      'The globe swings to topic 8 — "Tenant Rights & Landlords." ' +
-      'The day-to-day texture of renting in Boston: what counts as an ' +
-      'emergency, how cold the apartment has to get before you can call the city, ' +
-      'and the quiet infrastructure of who owes what.',
-    pullquotes: [
-      '98°F with no AC — is that uninhabitable?',
-      'Landlord hasn\'t fixed the boiler in three weeks.',
-      'Mass tenant rights actually do cover this.',
-    ],
-  },
-  {
-    kind: 'sub',
-    cl: 8,
-    gid: 30,
-    step: 'Stop 2 of 3 — subtopic',
-    eyebrow: 'Subtopic: Utilities & Heat Disputes',
-    title: 'When the heat goes out',
-    prose:
-      'Drilling automatically into "Utilities & Heat Disputes." These posts group together ' +
-      'because they share the same legal question: does the landlord have to act, ' +
-      'and by when?',
-    pullquotes: [
-      'Landlord hasn\'t fixed the boiler in three weeks.',
-      'There\'s a city hotline for this. They actually respond.',
-    ],
-  },
-  {
-    kind: 'position',
-    cl: 8,
-    gid: 30,
-    posIdx: 5,
-    step: 'Stop 2 of 3 — point of view',
-    eyebrow: 'Point of view: Heating System Issues & Repairs',
-    title: 'Heat must be provided in winter',
-    prose:
-      '309 posts assert a simple legal fact: during winter, Massachusetts law ' +
-      'requires landlords to maintain heat above a threshold. These are the posts ' +
-      'that spell it out, argue about the exact thresholds, and report what happened ' +
-      'when the boiler failed for the third time.',
-    pullquotes: [
-      '"Heat has to be at least 68°F between 7 AM and 11 PM under Mass law."',
-    ],
-  },
-
-  // ── Tutorial: SEARCH — type a phrase ────────────────────────────────
-  // After the heating narrative, the user has a concrete word in mind
-  // ("boiler", "heat", "leak"). Pull it through the search bar so they
-  // see the cross-cutting paint pattern — the same word shows up in
-  // multiple topics, and the highlighted dots reveal that overlap.
+  // Part 2, Step connections-mode: introduce thread-arc view.
   {
     kind: 'interstitial',
-    eyebrow: 'Stop 2 of 3 — find specific words',
-    title: 'Search the entire corpus',
+    eyebrow: 'Part 2 of 3 \u2014 see the conversation',
+    title: 'Turn on Connections',
     prose:
-      'The search bar in the top-left finds posts and comments by phrase across all 422k voices. Paints every match on the globe — useful when the same word ("boiler", "rent", "ghost bike") cuts across multiple topics.',
+      'Every post lives inside a Reddit thread \u2014 a tree of replies. Connections mode draws thin arcs from the post you pinned to every other comment in the same thread. It stays on as you click around, so you can compare conversational neighbors.',
     steps: [
       {
-        heading: 'Type a word into the search bar',
-        body: 'Click the search bar in the top-left of the sidebar and type a phrase — try "boiler", "leak", or anything you\'re curious about. Matching posts highlight on the globe; non-matching dim. Hit Continue when you\'ve seen the spread.',
-        hint: '↖ Type into the search bar',
+        heading: 'Click the \u201crelations\u201d chip',
+        body: 'In the top-right, click the \u201cshift relations\u201d chip (it\u2019s pulsing). Arcs fan out from your pinned post to its thread siblings. Click another dot \u2014 the arcs follow your selection.',
+        hint: 'Click the \u201crelations\u201d chip \u2197',
+        showChrome: ['nav', 'shift', 'cards'],
+        pulseClass: 'tour-pulse-shift',
+        manualContinue: true,
+        setup: () => {
+          return () => {};
+        },
+        subscribe: ({ App }, advance) => {
+          let fired = false;
+          const trigger = () => { if (!fired) { fired = true; advance(); } };
+          const chip = document.getElementById('shift-hint');
+          const onClick = () => trigger();
+          const onKeyDown = (e) => {
+            if (e.repeat) return;
+            if (e.key !== 'Shift') return;
+            // Let the global Shift handler do the work; we only listen
+            // here so we can advance the step.
+            trigger();
+          };
+          chip?.addEventListener('click', onClick);
+          window.addEventListener('keydown', onKeyDown, true);
+          return () => {
+            chip?.removeEventListener('click', onClick);
+            window.removeEventListener('keydown', onKeyDown, true);
+          };
+        },
+      },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════════════
+  //   PART 3 — SEARCH & TIMELINE
+  // ════════════════════════════════════════════════════════════════════
+
+  {
+    kind: 'interstitial',
+    eyebrow: 'Part 3 of 3 \u2014 a phrase across time',
+    title: 'Search for a chronological phrase',
+    prose:
+      'Some conversations on the sphere have a clear shape in time. The MBTA Communities Act \u2014 the 2021 zoning law that pushed dense housing near transit \u2014 paints across multiple topics and only after 2021. Search for it.',
+    steps: [
+      {
+        heading: 'Search \u201cMBTA Communities Act\u201d',
+        body: 'Click the search bar in the top-left and type \u201cMBTA Communities Act\u201d (or shorter \u2014 \u201cmbta communities\u201d works). Matching posts paint across the globe; non-matching dim. Notice how the matches cluster across multiple topics.',
+        hint: '\u2196 Type into the search bar',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-search',
         manualContinue: true,
-        setup: ({ nav }) => {
-          // Don't change nav.focus — the user is on Heating, the search
-          // runs across the whole corpus from here. Auto-focus the
-          // search input so a single keystroke starts the search.
+        setup: ({ App, nav }) => {
+          // Drop the rent-control filter so the search runs across the
+          // whole corpus — otherwise the user sees nothing because
+          // MBTA Communities Act has nothing to do with rent control.
+          try { App?.clearConnectionsMode?.(); } catch {}
+          try { App?.clearPinnedPoint?.(); } catch {}
+          try { nav.focus({}); } catch {}
           requestAnimationFrame(() => {
             try {
               const input = document.getElementById('search-input');
               input?.focus();
             } catch {}
           });
-          return () => {
-            // Leave the user's search query alone — the next beat
-            // (time tutorial) doesn't depend on it being cleared.
-          };
+          return () => {};
         },
         subscribe: (_ctx, advance) => {
           const input = document.getElementById('search-input');
           if (!input) { advance(); return () => {}; }
           const onInput = () => {
-            if ((input.value || '').trim().length >= 2) advance();
+            if ((input.value || '').trim().length >= 4) advance();
           };
           input.addEventListener('input', onInput);
           return () => input.removeEventListener('input', onInput);
@@ -447,35 +633,21 @@ const BEATS = [
     ],
   },
 
-  // ── Tutorial: TIME — click the ⏱ button ─────────────────────────────
-  // Heating gripes are seasonal — perfect place to teach the time
-  // filter. We instruct a button click rather than a keybind so the
-  // affordance is visible: pulse the bottom-right ⏱ button via the
-  // `tour-step-show-time` class.
   {
     kind: 'interstitial',
-    eyebrow: 'Stop 2 of 3 — when did this peak?',
-    title: 'Filter by time',
+    eyebrow: 'Part 3 of 3 \u2014 the time dimension',
+    title: 'Open the timeline',
     prose:
-      'Heating complaints look seasonal. The clock button in the bottom-right opens a month-range slider — drag to dim posts outside the period you care about.',
+      'The MBTA Communities Act passed in 2021 \u2014 mentions before then are nearly zero. Open the timeline scrubber and watch posts dim as you move the start handle past 2021.',
     steps: [
       {
-        heading: 'Click the ⏱ button',
-        body: 'Find the ⏱ clock button in the bottom-right of the globe (it\'s pulsing) and click it. A timeline scrubber will appear — drag the handles to filter the visible posts to a date range.',
-        hint: 'Click the ⏱ button ↘',
+        heading: 'Click the \u23f1 button',
+        body: 'Find the \u23f1 clock button in the bottom-right of the globe (it\u2019s pulsing) and click it. Drag the handles of the timeline scrubber to filter posts to a specific date range.',
+        hint: 'Click the \u23f1 button \u2198',
         showChrome: ['time'],
+        pulseClass: 'tour-pulse-time',
         manualContinue: true,
         setup: () => {
-          // Clear any leftover search from the previous step so the
-          // time-filter demo starts with a clean dataset.
-          try {
-            const input = document.getElementById('search-input');
-            if (input && input.value) {
-              input.value = '';
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.blur();
-            }
-          } catch {}
           return () => {};
         },
         subscribe: (_ctx, advance) => {
@@ -489,191 +661,10 @@ const BEATS = [
     ],
   },
 
-  // ── Step 3 of 3: Bike Lanes — auto drill, no clicks ─────────────────
-  {
-    kind: 'cluster',
-    cl: 41,
-    step: 'Stop 3 of 3 — topic',
-    eyebrow: 'The unexpected argument',
-    title: 'Where the loudest fights are about bike lanes',
-    prose:
-      'The third topic is a surprise. Nothing polarizes Boston Reddit quite ' +
-      'like a white stripe painted on Commonwealth Ave. The globe has crossed to ' +
-      'a completely different region — topic 41, "Pedestrian & Cyclist Safety." ' +
-      'Who kills whom. Who runs red lights. Ghost bikes, Vision Zero, right-hooks ' +
-      'at Porter.',
-    pullquotes: [
-      'Drivers kill far more people than cyclists do.',
-      'Cyclists roll through stops constantly.',
-      'Protected lanes aren\'t optional — they\'re the only thing that works.',
-    ],
-  },
-  {
-    kind: 'sub',
-    cl: 41,
-    gid: 170,
-    step: 'Stop 3 of 3 — subtopic',
-    eyebrow: 'Subtopic: Pedestrian Deaths & Blame',
-    title: 'Who is responsible for traffic deaths',
-    prose:
-      'Drilling into "Pedestrian Deaths & Blame." Specific crashes, specific streets, and a recurring argument about whether the ' +
-      'problem is individual behavior or how the city built the road.',
-    pullquotes: [
-      'A ghost bike appeared on Mass Ave last week.',
-      'Vision Zero said zero. It\'s nowhere near zero.',
-    ],
-  },
-  {
-    kind: 'position',
-    cl: 41,
-    gid: 170,
-    posIdx: 3,
-    step: 'Stop 3 of 3 — point of view',
-    eyebrow: 'Point of view: Cyclists Unfairly Blamed',
-    title: 'Society scapegoats cyclists',
-    prose:
-      '570 posts push back against the framing that cyclists are the problem. ' +
-      'They cite statistics, ghost bike memorials, and a persistent asymmetry: ' +
-      'cars cause vastly more death and injury, yet cultural blame lands on the ' +
-      'person in the bike lane.',
-    pullquotes: [
-      '"Every cyclist death gets blamed on the cyclist. ' +
-       'Every driver death gets blamed on the road."',
-    ],
-  },
-
-  // ── Tutorial: PIN-FOCUS — click P18 to hear the cyclist voice ───────
-  // The user already learned to click pins from P2. P18 gives them a
-  // second pin in a different topical context (bike lanes), reinforcing
-  // that pins live across the whole sphere and any of them can be
-  // focused on individually. Spotlight only P18 so the click target is
-  // unambiguous.
-  {
-    kind: 'interstitial',
-    eyebrow: 'Stop 3 of 3 — focus on a single voice',
-    title: 'Click P18 — a cyclist',
-    prose:
-      'P18 is one of the people we interviewed who actually rides a bike in Boston. They\'re anchored where bike-lane voices cluster. Click P18 — the camera will rotate and a panel pops up with their paraphrased quotes.',
-    steps: [
-      {
-        heading: 'Click the P18 pin',
-        body: 'Find the floating P18 pin (it\'s pulsing) and click it. The globe focuses on that single voice and a panel appears with their take on blocked bike lanes and street design. Hit Continue once you\'ve read it.',
-        hint: 'Click the P18 pin →',
-        showChrome: ['pins', 'cards'],
-        pulseClass: 'tour-pulse-pin-P18',
-        manualContinue: true,
-        setup: ({ globe, App }) => {
-          // Spotlight only P18's anchor point so the surrounding sphere
-          // doesn't compete for attention. Keep the cluster context
-          // (Bike Lanes) so the breadcrumbs still make sense.
-          const placements = App?.state?.interviewPins?.placements || [];
-          const p18 = placements.find(p => p.id === 'P18');
-          const idxSet = new Set(
-            placements.filter(p => p.id === 'P18')
-              .map(p => p.idx).filter(i => Number.isFinite(i))
-          );
-          try { if (idxSet.size > 0) globe.setSpotlight(idxSet); } catch {}
-          document.body.classList.add('tour-pin-spotlight');
-          if (p18) {
-            try { globe.rotateTo(p18.lat, p18.lon, 1.9); } catch {}
-          } else {
-            try { globe.rotateTo(20, -30, 2.4); } catch {}
-          }
-          return () => {
-            try { globe.setSpotlight(null); } catch {}
-            document.body.classList.remove('tour-pin-spotlight');
-            document.getElementById('interview-card')?.classList.add('hidden');
-            document.getElementById('detail-card')?.classList.add('hidden');
-            document.getElementById('position-card')?.classList.add('hidden');
-          };
-        },
-        subscribe: ({ globe }, advance) => {
-          const onPinClick = (ev) => {
-            if (ev?.detail?.pin?.id === 'P18') advance();
-          };
-          globe.addEventListener('pinclick', onPinClick);
-          return () => globe.removeEventListener('pinclick', onPinClick);
-        },
-      },
-    ],
-  },
-  {
-    kind: 'pin',
-    pinId: 'P18',
-    eyebrow: 'A second voice',
-    title: 'A cyclist who documents blocked lanes',
-    prose:
-      'P18 told us about photographing blocked bike lanes — drivers parking on them, repeat offenders, and the conversation between cyclists and drivers about whether enforcement or design is the actual fix.',
-    pullquotes: [
-      'Blocked bike lanes are documented like crime scenes: photos, maps, and repeat offenders.',
-      'Separated lanes show up as the rare thing both sides sometimes agree could reduce conflict.',
-    ],
-  },
-
-  // ── Tutorial: SPACE — click the space chip ──────────────────────────
-  // Last tutorial moment. The chip in the top-right is now a button —
-  // clicking it (or pressing Space) toggles five random posts into
-  // view, useful for sanity-checking whatever's currently filtered.
-  {
-    kind: 'interstitial',
-    eyebrow: 'A random handful',
-    title: 'Five random voices',
-    prose:
-      'Want a quick sampling of whatever\'s currently on the sphere? Click the "space" chip in the top-right (or press Space) to surface five random posts. Click it again to clear them.',
-    steps: [
-      {
-        heading: 'Click the "space" chip',
-        body: 'In the top-right, click the chip labeled "space toggle 5 random posts / comments" (it\'s pulsing). Five random posts attached to currently-visible voices will sprout into view — short snippets you can read at a glance.',
-        hint: 'Click the "space" chip ↗',
-        showChrome: ['space'],
-        manualContinue: true,
-        setup: ({ App }) => {
-          // Move focus off the tour-card buttons so a stray Enter / Space
-          // doesn't activate Continue before the user clicks the chip.
-          try {
-            const ae = document.activeElement;
-            if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
-          } catch {}
-          return () => { try { App?.clearSprouts?.(); } catch {} };
-        },
-        subscribe: ({ App }, advance) => {
-          let toggled = false;
-          const trigger = () => {
-            if (toggled) return;
-            toggled = true;
-            advance();
-          };
-          // Either path counts: clicking the chip (now a real button)
-          // OR pressing Space directly. The chip's own click handler
-          // already calls toggleSprouts; we just listen for the click
-          // here so we can advance the step.
-          const sh = document.getElementById('space-hint');
-          const onClick = () => trigger();
-          const onKeyDown = (e) => {
-            if (e.repeat) return;
-            if (e.key !== ' ' && e.code !== 'Space') return;
-            // Don't double-fire: toggle here, then advance. Block the
-            // event from reaching focused tour-card buttons.
-            e.preventDefault();
-            e.stopPropagation();
-            try { App?.toggleSprouts?.(); } catch {}
-            trigger();
-          };
-          sh?.addEventListener('click', onClick);
-          window.addEventListener('keydown', onKeyDown, true);
-          return () => {
-            sh?.removeEventListener('click', onClick);
-            window.removeEventListener('keydown', onKeyDown, true);
-          };
-        },
-      },
-    ],
-  },
-
   // ── Outro ────────────────────────────────────────────────────────────
   {
     kind: 'outro',
-    eyebrow: 'Now it\'s your turn',
+    eyebrow: 'Now it\u2019s your turn',
     title: 'Go forth and explore',
     prose:
       'The sphere holds 422k voices (posts and comments) from 2015 to 2025. ' +
@@ -802,7 +793,8 @@ export function createTour({ globe, App, nav }) {
   const STEP_CHROME_CLASSES = [
     'tour-step-show-nav',
     'tour-step-show-pins',
-    'tour-step-show-space',
+    'tour-step-show-random',
+    'tour-step-show-shift',
     'tour-step-show-time',
     'tour-step-show-cards',
   ];
@@ -840,11 +832,12 @@ export function createTour({ globe, App, nav }) {
     const list = Array.isArray(showChrome) ? showChrome : [];
     for (const key of list) {
       switch (key) {
-        case 'nav':   document.body.classList.add('tour-step-show-nav'); break;
-        case 'pins':  document.body.classList.add('tour-step-show-pins'); break;
-        case 'space': document.body.classList.add('tour-step-show-space'); break;
-        case 'time':  document.body.classList.add('tour-step-show-time'); break;
-        case 'cards': document.body.classList.add('tour-step-show-cards'); break;
+        case 'nav':    document.body.classList.add('tour-step-show-nav'); break;
+        case 'pins':   document.body.classList.add('tour-step-show-pins'); break;
+        case 'random': document.body.classList.add('tour-step-show-random'); break;
+        case 'shift':  document.body.classList.add('tour-step-show-shift'); break;
+        case 'time':   document.body.classList.add('tour-step-show-time'); break;
+        case 'cards':  document.body.classList.add('tour-step-show-cards'); break;
       }
     }
     if (typeof pulseClass === 'string' && pulseClass) {
@@ -1160,6 +1153,23 @@ export function createTour({ globe, App, nav }) {
     document.body.classList.remove('tour-morphing');
     document.body.classList.remove('tour-active');
     document.body.classList.remove('tour-step-mode');
+    // Clean state on exit so the user lands in a fresh sandbox: drop
+    // any thread arcs from the connections demo, drop any pinned post,
+    // clear stray sprouts, close inspector cards, and clear whatever
+    // search query the search-tutorial step left behind.
+    try { window.App?.clearConnectionsMode?.(); } catch {}
+    try { window.App?.clearPinnedPoint?.(); } catch {}
+    try { window.App?.clearSprouts?.(); } catch {}
+    ['detail-card', 'interview-card', 'position-card', 'focus-card']
+      .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+    try {
+      const input = document.getElementById('search-input');
+      if (input && input.value) {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.blur();
+      }
+    } catch {}
     try {
       nav.focus({});
       globe.rotateTo(15, -25, 3.0);
