@@ -27,3 +27,23 @@ export const TOUR_SAME_CLUSTER_MAX_RAD = 0.12;
 export const TOUR_DIFF_CLUSTER_MIN_RAD = 0.085;
 export const TOUR_DIFF_CLUSTER_MAX_RAD = 0.20;
 export const TOUR_SEARCH_DENSITY_RAD = 0.18;
+
+// ── Nav bar layout (#31 — text-floor minimum height) ─────────────────────
+// Floor height for a stacked bar segment: single label line (11.5px @ 1.22 ≈
+// 14px) + minimal vertical padding (top/bottom 3px) = 20px. Below this height
+// labels can't render legibly, so every segment is clamped to this minimum
+// and the remaining column space is distributed proportionally to each
+// segment's pct share. Larger topics still look bigger; tiny ones stay
+// readable instead of vanishing as 1-pixel slivers.
+export const BAR_SEG_FLOOR_PX = 20;
+// Below this rendered span, the segment shows no label (just title attr).
+// Set just under the floor so a segment exactly at the floor still labels.
+export const BAR_SEG_LABEL_MIN_PX = 14;
+// Two-line label kicks in at this height (allows the longer cluster names).
+export const BAR_SEG_TWO_LINE_PX = 32;
+// Gap between adjacent stacked segments.
+export const BAR_SEG_GAP_PX = 1;
+// Max bonus added to the floor when distributing leftover column space —
+// applies in the overflow path (when even MIN total exceeds container, we
+// fall back to a log-scale rank instead of strict proportional).
+export const BAR_SEG_PROPORTIONAL_BONUS_PX = 34;

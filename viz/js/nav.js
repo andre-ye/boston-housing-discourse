@@ -6,15 +6,23 @@ import { storage } from './core/storage.js';
 import { keys } from './core/keys.js?v=1';
 import { overlayManager } from './core/overlays.js';
 import { store } from './core/store.js';
+import {
+  BAR_SEG_FLOOR_PX,
+  BAR_SEG_LABEL_MIN_PX,
+  BAR_SEG_TWO_LINE_PX,
+  BAR_SEG_GAP_PX,
+  BAR_SEG_PROPORTIONAL_BONUS_PX,
+} from './core/constants.js';
 
-// Each segment must be tall enough for a 2-line label. We use a readable
-// floor (30px) rather than the old 3px — the bar grows vertically and
-// scrolls when it exceeds the container. This trades a bit of "glanceable
-// proportion" for actually-readable cluster names.
-const MIN_SEG_PX = 30;
-const MIN_LABEL_PX = 14;
-const GAP_PX = 1;       // gap between segments
-const PROPORTIONAL_BONUS_PX = 34;   // extra height large clusters get
+// Stacked-bar geometry comes from constants.js (#31): every segment is at
+// least BAR_SEG_FLOOR_PX tall (one label line + tiny margins) so labels
+// stay legible, and the remainder of the column is distributed
+// proportionally to each segment's pct share. Topics with bigger %
+// genuinely look bigger; tiny ones don't disappear.
+const MIN_SEG_PX = BAR_SEG_FLOOR_PX;
+const MIN_LABEL_PX = BAR_SEG_LABEL_MIN_PX;
+const GAP_PX = BAR_SEG_GAP_PX;
+const PROPORTIONAL_BONUS_PX = BAR_SEG_PROPORTIONAL_BONUS_PX;
 
 // Largest-remainder rounding so the percentages we paint on a stack add
 // up to exactly 100%. Without this the display can round to 99% or 101%
@@ -2028,7 +2036,7 @@ export class NavController extends EventTarget {
         seg.appendChild(bg);
         if (span >= MIN_LABEL_PX) {
           const label = document.createElement('div');
-          label.className = 'label' + (span >= 36 ? ' two-line' : '');
+          label.className = 'label' + (span >= BAR_SEG_TWO_LINE_PX ? ' two-line' : '');
           label.textContent = info.label;
           seg.appendChild(label);
           const pct = document.createElement('div');
@@ -2045,7 +2053,7 @@ export class NavController extends EventTarget {
         // Update the two-line class + pct text in place so label-height
         // changes don't reset inner DOM.
         const labelEl = seg.querySelector('.label');
-        if (labelEl) labelEl.classList.toggle('two-line', span >= 36);
+        if (labelEl) labelEl.classList.toggle('two-line', span >= BAR_SEG_TWO_LINE_PX);
         const pctEl = seg.querySelector('.pct');
         if (pctEl && info.pct != null) {
           pctEl.textContent = pctDisplay;
