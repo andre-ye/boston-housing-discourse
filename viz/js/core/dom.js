@@ -20,7 +20,6 @@ const KNOWN = {
   sprouts: 'sprouts',
   sproutLines: 'sprout-lines',
   ribbonsOverlay: 'ribbons-overlay',
-  captionLines: 'caption-lines',
 
   // ── nav / sidebar ──────────────────────────────────────────────────
   nav: 'nav',
@@ -64,12 +63,6 @@ const KNOWN = {
   bmClose: 'bm-close',
 
   // ── cards ──────────────────────────────────────────────────────────
-  detail: 'detail',
-  detailKind: 'detail-kind',
-  detailTitle: 'detail-title',
-  detailDesc: 'detail-desc',
-  detailMeta: 'detail-meta',
-  detailList: 'detail-list',
   // pinned-view (B1: pinned-comment surface lives in nav, not floating)
   pinnedView: 'pinned-view',
   pvBack: 'pv-back',
@@ -122,7 +115,6 @@ const KNOWN = {
   helpFilterHot: 'help-filter-hot',
 
   // ── misc ───────────────────────────────────────────────────────────
-  zoomCaptions: 'zoom-captions',
   layoutToggle: 'layout-toggle',
 };
 

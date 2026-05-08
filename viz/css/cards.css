@@ -1098,8 +1098,6 @@
   }
 
   /* ─── Bookmarks: list card, floating chip ─── */
-  /* (Old .detail-card / .dc-* rules removed: pinned post lives in
-     viz/css/pinned.css inside the nav as #pinned-view.) */
 
   .bookmarks-card {
     position: relative;
