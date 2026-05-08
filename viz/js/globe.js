@@ -46,9 +46,8 @@ export class GlobeView extends EventTarget {
   }
 
   _initPins() {
-    // Pins live in their own group above the sphere surface, with custom
-    // picking that runs *before* point picking. Each pin is a small
-    // billboarded sprite (inner disc + outer pulse ring).
+    // DOM pins (richer than sprites) projected each frame to the same radius as
+    // the point cloud (see _updatePinScreenPositions).
     this.pinsGroup = new THREE.Group();
     this.pinsEnabled = true;
     this.worldGroup.add(this.pinsGroup);
@@ -114,7 +113,9 @@ export class GlobeView extends EventTarget {
     const _v = new THREE.Vector3();
     const focusCl = this.highlightCl;   // set by setHighlight when a cluster is focused
     for (const p of this.pins) {
-      const wp = this.worldPositionOf(p.lat, p.lon, POINT_RADIUS * 1.04);
+      // Same shell as the point cloud (POINT_RADIUS) so pins sit on the globe,
+      // not radially in front of it (the old *1.04 read as visibly "floating").
+      const wp = this.worldPositionOf(p.lat, p.lon, POINT_RADIUS);
       const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
       if (!this.pinsEnabled || facing <= 0) {
         p.el.style.opacity = '0';

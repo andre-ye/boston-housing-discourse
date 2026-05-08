@@ -1412,6 +1412,19 @@ async function boot() {
     if (window.App?.tour?.isActive?.()) return false;
     return true;
   }
+  /** R / random-five: same as Space except tour may be active and a focused
+   *  tour button must not block (R does not activate buttons the way Space does). */
+  function _sproutRandomKeyAllowed(e) {
+    if (e.defaultPrevented) return false;
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    const ae = document.activeElement;
+    const t = ae?.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return false;
+    if (ae?.isContentEditable) return false;
+    const pres = document.getElementById('presentation-title-overlay');
+    if (pres && !pres.classList.contains('hidden')) return false;
+    return true;
+  }
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' && e.key !== ' ') return;
     if (e.repeat) return;
@@ -4267,12 +4280,11 @@ async function boot() {
       window.App.sampleFiveRandom();
     });
   })();
-  // R keybind. Same gating as Space (skip while typing in inputs / on
-  // the title slide / inside an active tour step that hasn't opted in).
+  // R keybind. Allowed during the guided tour (Space stays gated there).
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'r' && e.key !== 'R') return;
     if (e.repeat) return;
-    if (!_sproutSpaceAllowed(e)) return;
+    if (!_sproutRandomKeyAllowed(e)) return;
     e.preventDefault();
     window.App.sampleFiveRandom();
   });

@@ -60,7 +60,7 @@
   #nav > #nav-bars {
     padding: 0;
     margin: 0;
-    flex: 1 1 52%;
+    flex: 1 1 0;
     min-height: 0;
   }
   /* Right-side detail panel — shows what the current focus (cluster /
@@ -369,7 +369,10 @@
     border-radius: 6px;
     overflow-y: auto;
     overflow-x: hidden;
-    background: rgba(255,255,255,0.02);
+    /* Transparent so any space inside the stack that isn't covered by a
+       bar-seg blends with the surrounding nav gradient instead of
+       reading as a separate dark "black bar" rectangle. */
+    background: transparent;
     min-height: 0;
   }
   /* Scroll-mode: segments live in an absolutely-positioned layer. The ::before
@@ -3045,11 +3048,7 @@
     color: #f4ede1;
   }
   .tour-hero .tour-eyebrow {
-    font: 400 11px/1.2 'Source Sans Pro', sans-serif;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: rgba(244,237,225,0.5);
-    margin-bottom: 20px;
+    display: none;
   }
   .tour-hero .tour-headline {
     font: 400 38px/1.22 'Source Serif Pro', Georgia, serif;
@@ -3058,7 +3057,7 @@
     letter-spacing: -0.4px;
   }
   .tour-hero .tour-lede {
-    font: 400 15px/1.65 'Source Serif Pro', Georgia, serif;
+    font: 400 15px/1.65 'Source Sans Pro', system-ui, sans-serif;
     color: rgba(244,237,225,0.75);
     margin: 0 0 36px;
   }
@@ -3475,11 +3474,11 @@
     color: rgba(244,237,225,0.38);
     margin-bottom: 14px;
   }
+  .tour-card .tour-step:empty {
+    display: none;
+  }
   .tour-card .tour-eyebrow {
-    font: 400 12px/1.2 'Source Serif Pro', Georgia, serif;
-    font-style: italic;
-    color: rgba(244,237,225,0.55);
-    margin-bottom: 5px;
+    display: none;
   }
   .tour-card .tour-title {
     font: 400 24px/1.24 'Source Serif Pro', Georgia, serif;
@@ -3488,7 +3487,7 @@
     letter-spacing: -0.2px;
   }
   .tour-card .tour-prose {
-    font: 400 13.5px/1.62 'Source Serif Pro', Georgia, serif;
+    font: 400 13.5px/1.62 'Source Sans Pro', system-ui, sans-serif;
     color: rgba(244,237,225,0.8);
     margin: 0 0 14px;
   }
@@ -3551,11 +3550,7 @@
     color: #f4ede1;
   }
   .tour-outro .tour-eyebrow {
-    font: 400 11px/1.2 'Source Sans Pro', sans-serif;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: rgba(244,237,225,0.5);
-    margin-bottom: 18px;
+    display: none;
   }
   .tour-outro .tour-title {
     font: 400 48px/1.12 'Source Serif Pro', Georgia, serif;
@@ -3564,7 +3559,7 @@
     letter-spacing: -0.5px;
   }
   .tour-outro .tour-prose {
-    font: 400 15px/1.65 'Source Serif Pro', Georgia, serif;
+    font: 400 15px/1.65 'Source Sans Pro', system-ui, sans-serif;
     color: rgba(244,237,225,0.75);
     margin: 0 0 32px;
   }
@@ -3958,13 +3953,24 @@
     padding: 4px 0;
   }
   #nav #insp-empty-main {
-    flex: 1 1 auto;
+    /* Only as tall as the intro / empty-state copy — do not flex-grow or
+       a tall empty band appears below the topic stacks (reads as a black
+       bar over the lower topics). #nav-bars keeps flex growth instead.
+       Capped at 38vh so first-time visitors (intro shown) can't squash
+       the bar-stack to 0px when the viewport is short. */
+    flex: 0 1 auto;
     min-height: 0;
+    max-height: 38vh;
     overflow-x: hidden;
     overflow-y: auto;
     padding: 8px 12px 14px;
     -webkit-overflow-scrolling: touch;
   }
+  /* In compact mode the intro panel is empty — the only thing it would
+     contribute is its own padding, which renders as a small dark strip
+     under the bar-stack. Collapse it entirely so the bar-stack reaches
+     the bottom of the sidebar and there is no residual band. */
+  #nav #insp-empty-main.compact { display: none; }
   .insp-empty--main {
     text-align: left;
     margin-top: 4px;
@@ -4528,9 +4534,9 @@
 <div id="app">
   <aside id="nav">
     <div id="nav-header">
-      <h1>The Boston Social Sphere Discourse of Reddit</h1>
+      <h1>The Boston Social Sphere<br />Discourse of Reddit</h1>
       <div class="sub">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</div>
-      <div class="sub-stats">422 k voices &middot; 49 topics &middot; 194 subtopics &middot; 1.2 k points of view</div>
+      <div class="sub-stats">422 k voices &middot; 49 topics &middot; 194 subtopics</div>
       <div id="search-wrap">
         <input id="search-input" type="text" inputmode="search" autocomplete="off" spellcheck="false"
                placeholder="Search" aria-label="Search" />
@@ -4720,8 +4726,7 @@
     <div class="tour-hero">
       <div class="tour-hero-left">
         <div class="tour-hero-inner">
-          <div class="tour-eyebrow">A Social Sphere of Boston Discourse</div>
-          <h1 class="tour-headline">The Boston Social Sphere Discourse of Reddit</h1>
+          <h1 class="tour-headline">The Boston Social Sphere<br />Discourse of Reddit</h1>
           <p class="tour-lede">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</p>
           <div class="tour-hero-actions">
             <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>

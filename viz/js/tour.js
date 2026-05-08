@@ -184,8 +184,7 @@ const BEATS = [
   // ── Hero ─────────────────────────────────────────────────────────────
   {
     kind: 'hero',
-    eyebrow: 'A Social Sphere of Boston Discourse',
-    headline: 'The Boston Social Sphere Discourse of Reddit',
+    headline: 'The Boston Social Sphere\nDiscourse of Reddit',
     lede:
       'Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015\u20132025, grouped by topics and points of view',
   },
@@ -193,7 +192,6 @@ const BEATS = [
   // ── Methodology part 1 — interview pins spotlight ───────────────────
   {
     kind: 'interstitial',
-    eyebrow: 'A dash of qualitative: Touching grass and talking to people',
     title: 'We started by talking to 26 people',
     prose:
       'We stood at MBTA stops, commuter rail platforms, and on sidewalks around the ' +
@@ -205,7 +203,6 @@ const BEATS = [
   // ── Methodology part 2 — Reddit corpus ───────────────────────────────
   {
     kind: 'interstitial',
-    eyebrow: 'A bucket of quantitative: Scraping a decade of Reddit discourse',
     title: 'We then gathered 422k+ voices on Reddit',
     prose:
       'To see how the conversations we had matched up with what was being said online, we scraped 422,000+ Reddit posts and comments from 2015 to ' +
@@ -216,7 +213,6 @@ const BEATS = [
   // ── Why a sphere? — geometric framing ────────────────────────────────
   {
     kind: 'interstitial',
-    eyebrow: 'No center, no edges',
     title: 'Why a sphere?',
     prose:
       'There is no center or edges so no discourse is cornered to a particular realm. A sphere also links related threads in space so browsing feels more serendipitous.',
@@ -226,21 +222,11 @@ const BEATS = [
   //   PART 1 — BOTTOM-UP EXPLORATION
   // ════════════════════════════════════════════════════════════════════
 
-  // Part 1 intro: explain what a dot is and what proximity means.
-  {
-    kind: 'interstitial',
-    eyebrow: 'Part 1 of 3 — From the ground up',
-    title: 'Three voices, side by side',
-    resetTourState: true,
-    prose:
-      'Each dot on the sphere is one Reddit post or comment. We placed them so that semantically similar voices land near each other, and unrelated ones land far apart. Up next: we\u2019ll point at three real dots and let you compare them yourself.',
-  },
-
   // Part 1, Step 1: spotlight 3 dots, ask the user to click each.
   {
     kind: 'interstitial',
-    eyebrow: 'Part 1 of 3 \u2014 close vs. far apart',
     title: 'Click each glowing dot',
+    resetTourState: true,
     prose:
       'We picked three dots near each other on the sphere. Two are in the same topical neighborhood \u2014 you should hear them echo each other. The third sits right next to them but belongs to a different conversation entirely. Click each one, read the post, then come back.',
     steps: [
@@ -309,7 +295,6 @@ const BEATS = [
   // Part 1, Step 2: meet an interview pin (P2) — qualitative voice.
   {
     kind: 'interstitial',
-    eyebrow: 'Part 1 of 3 \u2014 voices we met in person',
     title: 'Click P2 \u2014 a ferry commuter',
     prose:
       'Eighteen of the twenty-six people we interviewed are pinned next to topics they discussed. P2 talked about a multimodal commute and a calm ferry leg \u2014 they\u2019re anchored where transit voices cluster. Click P2 to read what they said.',
@@ -353,7 +338,6 @@ const BEATS = [
   // Part 1, Step 3: random-five action.
   {
     kind: 'interstitial',
-    eyebrow: 'Part 1 of 3 \u2014 a random handful',
     title: 'Sample five voices at once',
     prose:
       'When you want a quick read on what the sphere actually contains, sample five random voices from whatever\u2019s currently visible. Press R or tap the R chip in the bottom toolbar (\u201cR · C · Reset\u201d row). Esc dismisses floating captions; Reset clears drill, filters, timeline, zoom.',
@@ -373,34 +357,52 @@ const BEATS = [
             const ae = document.activeElement;
             if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
           } catch {}
-          return () => { try { App?.clearSprouts?.({ immediate: true }); } catch {} };
+          // Animated retract on step exit so sprouts visibly "pull back in"
+          // when the user goes Back / Continues. The 240 ms fade matches the
+          // sproutClear non-immediate path (CSS .show transition).
+          return () => { try { App?.clearSprouts?.({ immediate: false }); } catch {} };
         },
         subscribe: ({ App }, advance) => {
           let fired = false;
+          // After the user has triggered the action, give them ~2.5 s to
+          // read the five sprouts, then auto-retract them so the floating
+          // cards don't linger beside the "Continue" button. The cleanup
+          // path (Continue / Back) clears them too, but most users want
+          // a hands-off collapse once they've completed the step.
+          let collapseTimer = null;
+          const startCollapseTimer = () => {
+            if (collapseTimer != null) return;
+            collapseTimer = setTimeout(() => {
+              try { App?.clearSprouts?.({ immediate: false }); } catch {}
+            }, 2500);
+          };
           const trigger = () => {
             if (fired) return;
             fired = true;
             advance();
+            startCollapseTimer();
           };
           const chip = document.getElementById('random-hint');
-          const onClick = () => trigger();
-          const onKeyDown = (e) => {
-            if (e.repeat) return;
-            if (e.key !== 'r' && e.key !== 'R') return;
-            // Don't double-fire — let the global handler spawn sprouts;
-            // we just listen for the keystroke to advance. But the
-            // global handler is gated on `!tour.isActive()`, so we
-            // also need to fire the action ourselves.
-            e.preventDefault();
-            e.stopPropagation();
+          const onChipClick = () => {
             try { App?.sampleFiveRandom?.(); } catch {}
             trigger();
           };
-          chip?.addEventListener('click', onClick);
-          window.addEventListener('keydown', onKeyDown, true);
+          // sampleFiveRandom is handled by main.js on R; we only advance once
+          // per step (bubble runs after main's listener on the same keydown).
+          const onKeyDown = (e) => {
+            if (e.repeat) return;
+            if (e.key !== 'r' && e.key !== 'R') return;
+            trigger();
+          };
+          chip?.addEventListener('click', onChipClick);
+          window.addEventListener('keydown', onKeyDown, false);
           return () => {
-            chip?.removeEventListener('click', onClick);
-            window.removeEventListener('keydown', onKeyDown, true);
+            chip?.removeEventListener('click', onChipClick);
+            window.removeEventListener('keydown', onKeyDown, false);
+            if (collapseTimer != null) {
+              clearTimeout(collapseTimer);
+              collapseTimer = null;
+            }
           };
         },
       },
@@ -413,16 +415,15 @@ const BEATS = [
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 from the top down',
     title: 'Pick a topic and drill in',
     resetTourState: true,
+    keepChrome: true,
     prose:
       'You can also start from a topic and narrow down. The left rail is sorted by how loud each topic is. Topic 32 \u2014 \u201cGentrification & Rent Control\u201d \u2014 is the loudest fault line in Boston housing. Let\u2019s drill in.',
   },
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 the topic level',
     title: 'Click \u201cGentrification & Rent Control\u201d',
     prose:
       'The left rail stacks every topic in the corpus. Click the highlighted topic to zoom in.',
@@ -452,8 +453,6 @@ const BEATS = [
   {
     kind: 'cluster',
     cl: 32,
-    step: 'Part 2 of 3 \u2014 topic',
-    eyebrow: 'Who gets to live here',
     title: 'Rent control, zoning, and housing supply',
     prose:
       'Topic 32 \u2014 \u201cGentrification & Rent Control\u201d \u2014 holds a decade of argument ' +
@@ -467,7 +466,6 @@ const BEATS = [
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 narrowing the question',
     title: 'Click \u201cRent Stabilization Ideas\u201d',
     prose:
       'The middle column splits the topic into subtopics. The biggest one inside Gentrification is \u201cRent Stabilization Ideas\u201d \u2014 the actual rent-control argument. Click it.',
@@ -497,8 +495,6 @@ const BEATS = [
     kind: 'sub',
     cl: 32,
     gid: 131,
-    step: 'Part 2 of 3 \u2014 subtopic',
-    eyebrow: 'Subtopic: Rent Stabilization Ideas',
     title: 'The rent control fault line',
     prose:
       'You\u2019re now inside \u201cRent Stabilization Ideas.\u201d Each point is a post or comment taking a side: for rent control, against it, or threading some nuanced middle path. Hover one to read the thread.',
@@ -510,7 +506,6 @@ const BEATS = [
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 pin a stance',
     title: 'Click \u201cShortage & Disincentive\u201d',
     prose:
       'The right column lists points of view inside this subtopic \u2014 actual stances people take. The largest one, \u201cShortage & Disincentive,\u201d argues rent control shrinks supply. Click it.',
@@ -541,8 +536,6 @@ const BEATS = [
     cl: 32,
     gid: 131,
     posIdx: 2,
-    step: 'Part 2 of 3 \u2014 point of view',
-    eyebrow: 'Point of view: Shortage & Disincentive',
     title: 'Rent control makes the shortage worse',
     prose:
       'This stance \u2014 756 posts \u2014 argues rent control shrinks supply ' +
@@ -558,7 +551,6 @@ const BEATS = [
   // Part 2, Step pin-a-post: with the subset filtered, click any dot.
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 pin a single voice',
     title: 'Pin one of the highlighted posts',
     prose:
       'Now that you\u2019ve narrowed to a single stance, every glowing dot is a post making this exact argument. Click any one to pin it \u2014 a panel on the right shows the full text.',
@@ -589,7 +581,6 @@ const BEATS = [
   // Part 2, Step connections-mode: introduce thread-arc view.
   {
     kind: 'interstitial',
-    eyebrow: 'Part 2 of 3 \u2014 see the conversation',
     title: 'Look at this post in its thread',
     prose:
       'The pinned post is only one node in a Reddit thread. The panel already has a thread-context map: the center is the pinned post, and the satellites are replies or siblings in the same conversation. Connections draws those same relationships on the globe.',
@@ -641,15 +632,14 @@ const BEATS = [
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 3 of 3 \u2014 a phrase across time',
     title: 'Search for a chronological phrase',
     resetTourState: true,
     prose:
       'Some conversations on the sphere have a clear shape in time. Covid is a clean example: almost nothing before 2020, then a city-wide argument about housing, commutes, work, schools, nightlife, and risk. Search for it.',
     steps: [
       {
-        heading: 'Search \u201ccovid\u201d',
-        body: 'Click the search bar in the top-left and type \u201ccovid\u201d. Matching posts paint across the globe, non-matching posts dim, and the camera will move to the matching region so you can actually see the results.',
+        heading: 'Search \u201cCovid\u201d',
+        body: 'Click the search bar in the top-left and type \u201cCovid\u201d. Matching posts paint across the globe, non-matching posts dim, and the camera will move to the matching region so you can actually see the results.',
         hint: '\u2196 Type into the search bar',
         showChrome: ['nav'],
         pulseClass: 'tour-pulse-search',
@@ -694,7 +684,6 @@ const BEATS = [
 
   {
     kind: 'interstitial',
-    eyebrow: 'Part 3 of 3 \u2014 the time dimension',
     title: 'Open the timeline',
     prose:
       'Covid has an unmistakable chronology: almost no mentions before 2020, then a sharp change in what Boston talks about. Open the timeline scrubber and move the handles around 2020 to see that shift.',
@@ -723,7 +712,6 @@ const BEATS = [
   // ── Outro ────────────────────────────────────────────────────────────
   {
     kind: 'outro',
-    eyebrow: 'Now it\u2019s your turn',
     title: 'Go forth and explore',
     prose:
       'The sphere holds 422k voices (posts and comments) from 2015 to 2025. ' +
@@ -946,13 +934,13 @@ export function createTour({ globe, App, nav }) {
     showOnly('card');
 
     const stepEl  = cardEl.querySelector('.tour-step');
-    const eyEl    = cardEl.querySelector('.tour-eyebrow');
     const titEl   = cardEl.querySelector('.tour-title');
     const proEl   = cardEl.querySelector('.tour-prose');
     const quotesEl = cardEl.querySelector('.tour-quotes');
 
-    if (stepEl)  stepEl.textContent = `Step ${sIdx + 1} of ${beat.steps.length}`;
-    if (eyEl)    eyEl.textContent   = beat.eyebrow || '';
+    if (stepEl)  stepEl.textContent = beat.steps.length > 1
+      ? `Step ${sIdx + 1} of ${beat.steps.length}`
+      : '';
     if (titEl)   titEl.textContent  = step.heading || beat.title || '';
     if (proEl)   proEl.textContent  = step.body || '';
     if (quotesEl) {
@@ -1026,10 +1014,6 @@ export function createTour({ globe, App, nav }) {
     if (!beat?.steps || _stepIdx < 0) return false;
     const cur = _stepIdx;
     endStep();
-    // Always drop random sprout cards when leaving any step via Next /
-    // Skip / Continue. Deferred DOM removal races async sprout layout and
-    // left cards on screen across beats.
-    try { App?.clearSprouts?.({ immediate: true }); } catch (_) {}
     if (cur + 1 >= beat.steps.length) {
       next();
     } else {
@@ -1043,7 +1027,6 @@ export function createTour({ globe, App, nav }) {
     if (!beat?.steps || _stepIdx <= 0) return false;
     const cur = _stepIdx;
     endStep();
-    try { App?.clearSprouts?.({ immediate: true }); } catch (_) {}
     renderStep(beat, cur - 1);
     return true;
   }
@@ -1061,11 +1044,14 @@ export function createTour({ globe, App, nav }) {
     document.body.classList.add('tour-at-hero');
     document.body.classList.add('tour-chrome-off');
 
-    const heroEyebrowEl = heroEl?.querySelector('.tour-eyebrow');
     const heroHeadlineEl = heroEl?.querySelector('.tour-headline');
     const heroLedeEl = heroEl?.querySelector('.tour-lede');
-    if (heroEyebrowEl) heroEyebrowEl.textContent = beat?.eyebrow || '';
-    if (heroHeadlineEl) heroHeadlineEl.textContent = beat?.headline || '';
+    if (heroHeadlineEl) {
+      const raw = beat?.headline || '';
+      heroHeadlineEl.innerHTML = raw
+        ? raw.split('\n').map((line) => esc(line.trim())).join('<br>')
+        : '';
+    }
     if (heroLedeEl) heroLedeEl.textContent = beat?.lede || '';
 
     globe.rotateTo(15, -25, 3.0);
@@ -1078,13 +1064,11 @@ export function createTour({ globe, App, nav }) {
     showOnly('card');
 
     const stepEl  = cardEl.querySelector('.tour-step');
-    const eyEl    = cardEl.querySelector('.tour-eyebrow');
     const titEl   = cardEl.querySelector('.tour-title');
     const proEl   = cardEl.querySelector('.tour-prose');
     const quotesEl = cardEl.querySelector('.tour-quotes');
 
     if (stepEl)   stepEl.textContent = beat.step || '';
-    if (eyEl)     eyEl.textContent   = beat.eyebrow || '';
     if (titEl)    titEl.textContent  = beat.title || '';
     if (proEl)    proEl.textContent  = beat.prose || '';
     if (quotesEl) {
@@ -1111,10 +1095,8 @@ export function createTour({ globe, App, nav }) {
     document.body.classList.remove('tour-at-hero');
     showOnly('outro');
 
-    const eyEl  = outroEl?.querySelector('.tour-eyebrow');
     const titEl = outroEl?.querySelector('.tour-title');
     const proEl = outroEl?.querySelector('.tour-prose');
-    if (eyEl)  eyEl.textContent  = beat.eyebrow || '';
     if (titEl) titEl.textContent = beat.title || '';
     if (proEl) proEl.textContent = beat.prose || '';
   }
@@ -1183,7 +1165,7 @@ export function createTour({ globe, App, nav }) {
     // non-drill beats (hero, interstitial, pin spotlight, outro).
     // Beats with interactive `steps` need the chrome visible because the
     // user is being asked to actually interact with it.
-    const chromeOff = !beat.steps && (beat.kind === 'hero'
+    const chromeOff = !beat.steps && !beat.keepChrome && (beat.kind === 'hero'
       || beat.kind === 'interstitial'
       || beat.kind === 'pin'
       || beat.kind === 'outro');
@@ -1325,6 +1307,20 @@ export function createTour({ globe, App, nav }) {
     } else if (e.key === 'ArrowLeft') {
       if (prevCurrentStep()) { e.preventDefault(); return; }
       prev();
+      e.preventDefault();
+    } else if (e.key === 'Enter') {
+      if (e.repeat) return;
+      const ae = document.activeElement;
+      const tag = ae?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Let real tour buttons handle their own Enter (avoids double next / back).
+      const obId = ae?.closest?.('#tour-overlay') ? ae?.id : null;
+      if (obId === 'tour-begin' || obId === 'tour-next' || obId === 'tour-prev'
+          || obId === 'tour-skip-hero' || obId === 'tour-skip' || obId === 'tour-explore') {
+        return;
+      }
+      if (skipCurrentStep()) { e.preventDefault(); return; }
+      next();
       e.preventDefault();
     }
   });
