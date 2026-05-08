@@ -33,6 +33,15 @@ export const TOUR_DIFF_CLUSTER_MIN_RAD = 0.085;
 export const TOUR_DIFF_CLUSTER_MAX_RAD = 0.20;
 export const TOUR_SEARCH_DENSITY_RAD = 0.18;
 
+// ── Cluster 3 framing (Cycling & Bike Lanes — search + time beats) ───────
+// Centroid from tutorial-content.md § Cluster 3 (cl=5, ~13,381 points).
+// Framing distance is between TOPIC_FRAMING and HERO_FRAMING — close enough
+// that the cluster reads as the subject, wide enough that the search paint
+// has room to land.
+export const CLUSTER3_CENTROID_LAT = 0.918;
+export const CLUSTER3_CENTROID_LON = 0.905;
+export const CLUSTER3_FRAMING = 2.1;
+
 // ── Nav bar layout (#31 — text-floor minimum height) ─────────────────────
 // Floor height for a stacked bar segment: single label line (11.5px @ 1.22 ≈
 // 14px) + minimal vertical padding (top/bottom 3px) = 20px. Below this height
