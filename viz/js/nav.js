@@ -1435,7 +1435,7 @@ export class NavController extends EventTarget {
         while ((m = re.exec(label)) !== null) {
           if (m[0].length === 0) { re.lastIndex++; continue; }
           out += this._escHtml(label.slice(last, m.index));
-          out += `<b style="color:var(--fg); font-weight:600; background:rgba(124,240,201,0.18); padding:0 2px; border-radius:2px;">${this._escHtml(m[0])}</b>`;
+          out += `<b class="search-hit">${this._escHtml(m[0])}</b>`;
           last = m.index + m[0].length;
         }
         out += this._escHtml(label.slice(last));
@@ -1447,7 +1447,7 @@ export class NavController extends EventTarget {
     const i = label.toLowerCase().indexOf(ql);
     if (i < 0) return this._escHtml(label);
     return this._escHtml(label.slice(0, i)) +
-      '<b style="color:var(--fg); font-weight:600;">' +
+      '<b class="search-hit">' +
       this._escHtml(label.slice(i, i + ql.length)) + '</b>' +
       this._escHtml(label.slice(i + ql.length));
   }
