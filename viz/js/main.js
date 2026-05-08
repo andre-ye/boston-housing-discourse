@@ -133,6 +133,14 @@ async function boot() {
     });
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
+  // Build interview P-pins eagerly — they're needed by tour beat 2
+  // ("interview-pins") which can be reached as soon as the user clicks
+  // Begin on the hero. The richer voices list + click handlers below
+  // still wire up later in boot.
+  try {
+    globe.setInterviewPins(App.state.interviewPins?.placements || [], App.state.interviews);
+  } catch (e) { console.warn('setInterviewPins (early) failed:', e); }
+
   // Guided tour — Atlantic-style opener + three cluster beats. Launcher
   // button is always visible; auto-open on every visit unless the URL
   // carries a non-empty hash (so deep-links still land where expected).
@@ -1892,8 +1900,9 @@ async function boot() {
   globe._onFrame = () => {
     const rvHint = document.getElementById('reset-view-hint');
     if (rvHint) rvHint.classList.toggle('rv-away', !!globe.isZoomedAwayFromCanonical?.());
-    // Drive pins + position flags every frame.
-    globe._updatePinScreenPositions?.();
+    // Pin DOM projection is owned by globe._tick now (runs immediately
+    // after the camera tween updates), so we only drive the auxiliary
+    // overlays from the per-frame hook.
     updatePositionFlags?.();
     updateFocusCompass?.();
     updateHoverHalo?.();
@@ -2064,7 +2073,9 @@ async function boot() {
   }
 
   // ─── Interview pins ───────────────────────────────────────────
-  globe.setInterviewPins(App.state.interviewPins?.placements || [], App.state.interviews);
+  // (Pins themselves are built earlier in boot, right after GlobeView, so
+  // they exist before tour beat 2 can reference them. The voices-list and
+  // pin click wiring below depends only on App.state, not on pin DOM.)
 
   // Build voices list: 18 interviews grouped by cluster, each with a
   // quote excerpt so the user can scan for what interests them.

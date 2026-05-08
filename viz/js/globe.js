@@ -69,18 +69,45 @@ export class GlobeView extends EventTarget {
   setInterviewPins(placements, _interviewsDoc) {
     // Build one DOM pin per placement. Positioned every frame by
     // _updatePinScreenPositions() below.
+    //
+    // The pin's lat/lon stored in pin_placements.json was computed against
+    // a specific sphere layout. When the active layout changes (e.g. the
+    // user is on PyMDE while the placements file was generated against the
+    // t-SNE-3D + Lloyd build), the saved lat/lon points off the surface of
+    // the *current* point cloud — pins read as "floating in space" or
+    // "anywhere in the viewport" rather than anchored to their post.
+    //
+    // Fix: anchor every pin to the live coordinate of its source post
+    // (state.coords[2*idx]) whenever idx is finite. The placement file's
+    // lat/lon is only used when no idx is recorded.
+    const stCoords = this.state?.coords;
+    const stCluster = this.state?.cluster;
     this.pinLayer.innerHTML = '';
     this.pins = [];
     for (const pl of placements || []) {
-      const cl = pl.cluster;
+      // Resolve live lat/lon + cluster from the point index when available
+      // so pins track whatever sphere layout the corpus is currently using.
+      let lat = pl.lat, lon = pl.lon, cl = pl.cluster;
+      if (Number.isFinite(pl.idx) && stCoords && pl.idx * 2 + 1 < stCoords.length) {
+        lat = stCoords[2 * pl.idx];
+        lon = stCoords[2 * pl.idx + 1];
+      }
+      if (Number.isFinite(pl.idx) && stCluster && pl.idx < stCluster.length) {
+        cl = stCluster[pl.idx];
+      }
       const color = sphereColor(cl);
       const clMeta = this.state.clusterMeta?.[String(cl)];
       const data = {
         ...pl,
+        lat, lon, cluster: cl,
         cluster_name: clMeta?.name,
       };
       const el = document.createElement('button');
       el.className = 'pin';
+      // Hidden until _updatePinScreenPositions() places it; otherwise the
+      // pin briefly sits at top:0,left:0 (the .pin CSS default) before the
+      // first frame projects it to the right spot.
+      el.style.opacity = '0';
       el.innerHTML = `
         <span class="pin-ring" style="background:${color}"></span>
         <span class="pin-dot" style="background:${color}"></span>
@@ -103,7 +130,7 @@ export class GlobeView extends EventTarget {
         this.dispatchEvent(new CustomEvent('pinclick', { detail: { pin: data } }));
       };
       this.pinLayer.appendChild(el);
-      this.pins.push({ data, el, lat: pl.lat, lon: pl.lon });
+      this.pins.push({ data, el, lat, lon });
     }
   }
 
@@ -835,6 +862,11 @@ export class GlobeView extends EventTarget {
     this.camera.lookAt(0, 0, 0);
     this.camera.up.set(0, 1, 0);
 
+    // Pin DOM markers are owned by the globe — project them directly here
+    // (after camera state is settled this frame) so they're never a tick
+    // behind the underlying point cloud during a tween. Other per-frame
+    // overlays (labels, sprouts, halos, …) still go through _onFrame.
+    this._updatePinScreenPositions();
     if (this._onFrame) this._onFrame();
     this.renderer.render(this.scene, this.camera);
   }
