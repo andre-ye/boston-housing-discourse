@@ -6,6 +6,7 @@ import { storage } from './core/storage.js';
 import { keys } from './core/keys.js?v=1';
 import { overlayManager } from './core/overlays.js';
 import { store } from './core/store.js';
+import { highlightSearchHits } from './features/html-utils.js';
 import {
   BAR_SEG_FLOOR_PX,
   BAR_SEG_LABEL_MIN_PX,
@@ -1564,38 +1565,15 @@ export class NavController extends EventTarget {
   }
 
   _highlight(label, parsed) {
-    if (!parsed || !parsed.includes || !parsed.includes.length) return this._escHtml(label);
-    // Build one combined regex from all non-field include terms so every
-    // matched token lights up — lets users see which parts of the label
-    // hit which part of their query.
-    const sources = [];
-    for (const t of parsed.includes) {
-      if (t.field) continue;
-      if (t.re) sources.push(t.re.source);
-      else if (t.low) sources.push(t.low.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    // Shared helper renders matched substrings as <b class="search-hit">.
+    // Same logic now lives in features/html-utils.js so the pinned view
+    // (post body + thread context) can reuse the exact same markup (#4).
+    if (parsed && (!parsed.includes || !parsed.includes.length) && parsed.low) {
+      // Legacy fallback for callers that pass a parsed query without an
+      // `includes` array — synthesize one so the shared helper sees it.
+      parsed = { includes: [{ low: parsed.low }] };
     }
-    if (sources.length) {
-      try {
-        const re = new RegExp('(' + sources.join('|') + ')', 'gi');
-        let out = '', last = 0, m;
-        while ((m = re.exec(label)) !== null) {
-          if (m[0].length === 0) { re.lastIndex++; continue; }
-          out += this._escHtml(label.slice(last, m.index));
-          out += `<b class="search-hit">${this._escHtml(m[0])}</b>`;
-          last = m.index + m[0].length;
-        }
-        out += this._escHtml(label.slice(last));
-        return out || this._escHtml(label);
-      } catch (e) { return this._escHtml(label); }
-    }
-    const ql = parsed.low || '';
-    if (!ql) return this._escHtml(label);
-    const i = label.toLowerCase().indexOf(ql);
-    if (i < 0) return this._escHtml(label);
-    return this._escHtml(label.slice(0, i)) +
-      '<b class="search-hit">' +
-      this._escHtml(label.slice(i, i + ql.length)) + '</b>' +
-      this._escHtml(label.slice(i + ql.length));
+    return highlightSearchHits(label, parsed);
   }
 
   _applySearchHit(hit, input) {

@@ -13,7 +13,7 @@ import {
   TOPIC_FRAMING, SUB_FRAMING, STANCE_FRAMING, CLOSE_FRAMING, ZOOM_TO_POINT_FRAMING,
 } from './core/constants.js';
 import * as THREE from 'three';
-import { escapeHtml, redditScoreInlineHtml, formatRedditKindLabel } from './features/html-utils.js';
+import { escapeHtml, redditScoreInlineHtml, formatRedditKindLabel, highlightSearchHits, getActiveSearchParsed } from './features/html-utils.js';
 import {
   renderSparklineBySeries, renderSubSparkline, renderClusterSparkline,
   updateSparklineBands, initSparklineHover,
@@ -2774,8 +2774,11 @@ async function boot() {
       const left = `r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}`;
       pvMeta.innerHTML = `<span class="pv-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
     }
-    pvPostTitle.textContent = (d.title || '').trim();
-    pvPostBody.textContent = (d.body || '').slice(0, 1600);
+    // Highlight active search query inside the pinned post (#4). The
+    // helper escapes everything, so it's safe to drop into innerHTML.
+    const _parsedQ = getActiveSearchParsed();
+    pvPostTitle.innerHTML = highlightSearchHits((d.title || '').trim(), _parsedQ);
+    pvPostBody.innerHTML = highlightSearchHits((d.body || '').slice(0, 1600), _parsedQ);
     if (d.permalink) { pvPostLink.href = d.permalink; pvPostLink.style.display = ''; }
     else pvPostLink.style.display = 'none';
     _currentDetailPin = d;
@@ -2829,6 +2832,8 @@ async function boot() {
     );
     if (token !== _detailContextToken) return;
 
+    // Highlight matches inside thread-context entry titles (#4).
+    const _parsedQctx = getActiveSearchParsed();
     const rowHtml = shown.map((idx, i) => {
       const det = detailsList[i];
       const col = det != null ? sphereColor(det.cluster) : '#666';
@@ -2841,7 +2846,7 @@ async function boot() {
           <button class="pv-thread-row" data-idx="${idx}" type="button">
             <span class="pv-thread-dot" style="background:${col}"></span>
             <span class="pv-thread-meta">${meta}</span>
-            <span class="pv-thread-title">${escapeHtml(titleText.slice(0, 120))}</span>
+            <span class="pv-thread-title">${highlightSearchHits(titleText.slice(0, 120), _parsedQctx)}</span>
           </button>
         </li>
       `;

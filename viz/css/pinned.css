@@ -190,6 +190,17 @@
   text-align: center;
 }
 
+/* Search-hit highlighting inside the pinned-view (#4). Reuses the
+   .search-hit class shared with the search suggestions list. Hovering
+   anywhere over the pinned card strengthens the highlight, matching the
+   suggestion-row hover behavior the user already learned there. */
+.pinned-view:hover .search-hit,
+.pv-thread-row:hover .search-hit {
+  background: rgba(124,240,201,0.55);
+  color: #0a0c12;
+  box-shadow: none;
+}
+
 /* <details> chrome when thread has >3 items */
 .pv-thread details > summary {
   list-style: none;
