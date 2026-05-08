@@ -13,6 +13,8 @@
 //
 // Public API: { start, close, next, prev, isActive(), index() }
 
+import { store } from '../core/store.js';
+
 const STEP_CHROME_CLASSES = [
   'tour-step-show-nav',
   'tour-step-show-pins',
@@ -130,6 +132,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     if (_active) return;
     _active = true;
     _idx = 0;
+    try { store.set({ tour: { active: true, beat: 0 } }); } catch {}
     ui.onTourStart();
     render();
   }
@@ -141,6 +144,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     document.body.classList.remove('tour-at-hero');
     document.body.classList.remove('tour-chrome-off');
     document.body.classList.remove('tour-morphing');
+    try { store.set({ tour: { active: false, beat: 0 } }); } catch {}
     ui.onTourClose();
   }
 
@@ -148,12 +152,14 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     if (!_active) return;
     if (_idx >= BEATS.length - 1) { close(); return; }
     _idx += 1;
+    try { store.set({ tour: { beat: _idx } }); } catch {}
     render();
   }
 
   function prev() {
     if (!_active || _idx <= 0) return;
     _idx -= 1;
+    try { store.set({ tour: { beat: _idx } }); } catch {}
     render();
   }
 

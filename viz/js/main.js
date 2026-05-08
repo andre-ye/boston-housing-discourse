@@ -27,6 +27,7 @@ import { dom } from './core/dom.js';
 import { storage } from './core/storage.js';
 import { raf } from './core/raf.js';
 import { keys } from './core/keys.js?v=1';
+import { store } from './core/store.js';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -245,7 +246,7 @@ async function boot() {
       if (cl == null) return;
       const clMeta = App.state.clusterMeta?.[String(cl)];
       const clName = clMeta?.name || `Topic ${cl}`;
-      const range = globe._filter?.monthRange || null;
+      const range = store.get().filters.monthRange || null;
       const rangeLabel = range
         ? ` (${App.state.monthLabels[range.lo]} → ${App.state.monthLabels[range.hi]})`
         : '';
@@ -433,7 +434,7 @@ async function boot() {
     const host = document.getElementById('nav-header');
     let panel = document.getElementById('sr-agenda-panel');
     if (!_activeSubredditFilter) { panel?.remove(); return; }
-    const range = globe._filter?.monthRange || null;
+    const range = store.get().filters.monthRange || null;
     const rows = range
       ? getTopStancesForSubredditInRange(_activeSubredditFilter.id, range, 6)
       : getTopStancesForSubreddit(_activeSubredditFilter.id, 6);
@@ -685,7 +686,7 @@ async function boot() {
     if (!anchors) return;
     // Honor the active timeline filter so the "loudest here" list reflects
     // the period the user is studying, not all-time totals.
-    const range = globe._filter?.monthRange || null;
+    const range = store.get().filters.monthRange || null;
     const entries = [];
     // Respect an active subreddit filter: when r/X is pinned the user
     // is studying that community — the "loudest here" list should reflect
@@ -917,6 +918,21 @@ async function boot() {
   let _shiftActive = false;
   let _shiftEpoch = 0;
   let _priorThreadsEnabled = false;
+  // Mirrors _shiftActive into the cross-module store. Cheap; called from
+  // the same handful of sites that flip the closure variable.
+  function _publishConnectionsMode() {
+    try { store.set({ modes: { connections: _shiftActive } }); } catch {}
+  }
+  // Mirrors sprout-overlay activity. Called from sproutSpawn (after pushing
+  // sprouts) and sproutClear (after teardown). Reads `activeSprouts.length`
+  // + `_spaceDown` rather than threading a boolean through every callsite.
+  function _publishSproutsMode() {
+    try {
+      const active = _spaceDown
+        || (typeof activeSprouts !== 'undefined' && activeSprouts.length > 0);
+      store.set({ modes: { sproutsActive: !!active } });
+    } catch {}
+  }
 
   // ─── Globe hover → floating cursor tooltip + thread arcs ────────
   // Tooltip is a fixed-position card that follows the mouse. It replaces
@@ -1029,7 +1045,7 @@ async function boot() {
     if (wantsLink && details?.permalink) {
       window.open(details.permalink, '_blank', 'noopener,noreferrer');
     } else {
-      pinnedPointIdx = ev.detail.idx;
+      _setSelection({ pinnedIdx: ev.detail.idx });
       globe.setPinnedPoint(pinnedPointIdx);
       showDetailCard(details);
       // Connections mode: smoothly redraw arcs around the new pin so
@@ -1048,10 +1064,22 @@ async function boot() {
   const hoverHaloEl = document.getElementById('hover-halo');
   let hoverPointIdx = -1;
   let pinnedPointIdx = -1;
+  // Single chokepoint for selection writes — mirrors to the cross-module
+  // store so non-owners (tour beats, debug helpers, …) can read
+  // store.get().selection without reaching into this closure.
+  function _setSelection({ pinnedIdx, hoveredIdx }) {
+    if (pinnedIdx !== undefined) pinnedPointIdx = pinnedIdx;
+    if (hoveredIdx !== undefined) hoverPointIdx = hoveredIdx;
+    try {
+      store.set({ selection: {
+        ...(pinnedIdx !== undefined ? { pinnedIdx } : {}),
+        ...(hoveredIdx !== undefined ? { hoveredIdx } : {}),
+      } });
+    } catch {}
+  }
   function clearSelectedPoint({ refreshRelations = true } = {}) {
     const hadPinned = pinnedPointIdx >= 0;
-    pinnedPointIdx = -1;
-    hoverPointIdx = -1;
+    _setSelection({ pinnedIdx: -1, hoveredIdx: -1 });
     globe.setPinnedPoint(-1);
     globe.setHoverPoint(-1);
     // Smooth refresh: when the user clears a pin while in connections
@@ -1241,7 +1269,7 @@ async function boot() {
         ev.preventDefault();
         cancelSproutClearTimer();
         globe.rotateTo(k.lat, k.lon, 1.8);
-        pinnedPointIdx = k.idx;
+        _setSelection({ pinnedIdx: k.idx });
         globe.setPinnedPoint(k.idx);
         showDetailCard(d);
         _spaceDown = false;
@@ -1348,6 +1376,7 @@ async function boot() {
     sproutLinesEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
     sproutLinesEl.setAttribute('width', W);
     sproutLinesEl.setAttribute('height', H);
+    _publishSproutsMode();
   }
   function sproutClear(opts = {}) {
     const immediate = !!opts.immediate;
@@ -1370,6 +1399,7 @@ async function boot() {
       sproutsEl.innerHTML = '';
       slClearLinesSafe();
     }
+    _publishSproutsMode();
   }
   function slClearLinesSafe() {
     if (!sproutLinesEl) return;
@@ -1441,6 +1471,7 @@ async function boot() {
       _spaceDown = !_spaceDown;
       if (_spaceDown) sproutSpawn(++sproutRenderToken);
       else sproutClear({ immediate: true });
+      _publishSproutsMode();
       return true;
     },
   });
@@ -1902,7 +1933,7 @@ async function boot() {
     function pickSurprise() {
       const anchors = App.state.positionAnchors || {};
       const candidates = [];
-      const mr = globe._filter?.monthRange;
+      const mr = store.get().filters.monthRange;
       const hasTimeFilter = !!mr;
       // Honor active subreddit filter too — if the user filtered to r/X,
       // Surprise should land on stances where r/X actually has a voice.
@@ -2235,7 +2266,7 @@ async function boot() {
 
   async function pinPointByIndex(idx) {
     if (idx == null || idx < 0) return;
-    pinnedPointIdx = idx;
+    _setSelection({ pinnedIdx: idx });
     globe.setPinnedPoint(idx);
     const lat = App.state.coords[2 * idx];
     const lon = App.state.coords[2 * idx + 1];
@@ -2264,7 +2295,7 @@ async function boot() {
     if (nav.focusCl != null) parts.push(`cl=${nav.focusCl}`);
     if (nav.focusGid != null) parts.push(`gid=${nav.focusGid}`);
     if (nav.focusPosIdx != null) parts.push(`pos=${nav.focusPosIdx}`);
-    const mr = globe._filter?.monthRange;
+    const mr = store.get().filters.monthRange;
     if (mr && Array.isArray(mr) && mr.length === 2) {
       parts.push(`from=${mr[0]}`, `to=${mr[1]}`);
     }
@@ -3101,6 +3132,7 @@ async function boot() {
   async function shiftShowRelations() {
     if (_shiftActive) return;
     _shiftActive = true;
+    _publishConnectionsMode();
     _priorThreadsEnabled = globe.threadArcsEnabled;
     _syncShiftHint();
     await _renderConnectionArcs();
@@ -3109,6 +3141,7 @@ async function boot() {
   function shiftHideRelations() {
     if (!_shiftActive) return;
     _shiftActive = false;
+    _publishConnectionsMode();
     _shiftEpoch++;
     _syncShiftHint();
     clearDetailContextEmphasis();
@@ -3673,6 +3706,7 @@ async function boot() {
     try {
       if (_shiftActive) shiftHideRelations();
       _shiftActive = false;
+      _publishConnectionsMode();
       _priorThreadsEnabled = false;
       _shiftEpoch++;
       _syncShiftHint();

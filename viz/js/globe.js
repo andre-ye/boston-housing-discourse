@@ -9,6 +9,7 @@ import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/Buf
 import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=233';
 import { raf } from './core/raf.js';
 import { keys } from './core/keys.js?v=1';
+import { store } from './core/store.js';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -648,6 +649,12 @@ export class GlobeView extends EventTarget {
     f.multiSubs = subs && subs.size > 0 ? subs : null;
     f.multiPositions = positions && positions.size > 0 ? positions : null;
     this._recomputeDim();
+    // Mirror to store as a single representative "paint" slot — cross-module
+    // readers don't need the union breakdown, only "is paint active".
+    try {
+      const paint = f.multiPositions || f.multiSubs || f.multiClusters || null;
+      store.set({ filters: { paint } });
+    } catch {}
   }
 
   // Subreddit filter. Intersects with whatever focus state is already active.
@@ -655,6 +662,7 @@ export class GlobeView extends EventTarget {
     const f = this._filter;
     f.subredditIds = idSet && idSet.size > 0 ? idSet : null;
     this._recomputeDim();
+    try { store.set({ filters: { subredditId: f.subredditIds } }); } catch {}
   }
 
   // Filter globe to a month-idx range, intersected with everything else.
@@ -663,6 +671,7 @@ export class GlobeView extends EventTarget {
     const f = this._filter;
     f.monthRange = range && range.lo != null && range.hi != null ? range : null;
     this._recomputeDim();
+    try { store.set({ filters: { monthRange: f.monthRange } }); } catch {}
   }
 
   // Per-post text filter: only points in this set are lit. Intersects with
@@ -671,6 +680,7 @@ export class GlobeView extends EventTarget {
     const f = this._filter;
     f.spotlight = idxSet && idxSet.size > 0 ? idxSet : null;
     this._recomputeDim();
+    try { store.set({ filters: { spotlight: f.spotlight } }); } catch {}
   }
 
   setThreadsEnabled(v) {

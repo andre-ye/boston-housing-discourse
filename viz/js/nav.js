@@ -5,6 +5,7 @@ import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGid
 import { storage } from './core/storage.js';
 import { keys } from './core/keys.js?v=1';
 import { overlayManager } from './core/overlays.js';
+import { store } from './core/store.js';
 
 // Each segment must be tall enough for a 2-line label. We use a readable
 // floor (30px) rather than the old 3px — the bar grows vertically and
@@ -2045,6 +2046,9 @@ export class NavController extends EventTarget {
     this.focusCl = cl;
     this.focusGid = gid;
     this.focusPosIdx = posIdx;
+    // Mirror drill state into the cross-module store so non-owners can
+    // read store.get().drill instead of reaching into the NavController.
+    try { store.set({ drill: { cl, gid, posIdx } }); } catch {}
     this.renderL1();
     if (cl != null) {
       this.renderL2(cl);
