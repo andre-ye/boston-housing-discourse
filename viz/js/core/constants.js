@@ -47,3 +47,11 @@ export const BAR_SEG_GAP_PX = 1;
 // applies in the overflow path (when even MIN total exceeds container, we
 // fall back to a log-scale rank instead of strict proportional).
 export const BAR_SEG_PROPORTIONAL_BONUS_PX = 34;
+
+// ── Subtopic luminance shading (#32 #40) ─────────────────────────────────
+// When drilled into a single cluster, sub-points are recolored by sub-id
+// to a luminance step within the parent hue. BRIGHT_FACTOR is applied to
+// the lowest sub-id; DIM_FACTOR to the highest. Multiplied against the
+// linear RGB of the cluster color, then clamped to [0,1].
+export const SUB_LUMA_DIM_FACTOR = 0.55;
+export const SUB_LUMA_BRIGHT_FACTOR = 1.40;

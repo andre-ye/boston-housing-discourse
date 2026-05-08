@@ -13,6 +13,7 @@ import { store } from './core/store.js';
 import {
   GLOBE_RADIUS, POINT_RADIUS, POINT_SIZE_BASE,
   MIN_ZOOM, MAX_ZOOM, DEFAULT_DISTANCE,
+  SUB_LUMA_DIM_FACTOR, SUB_LUMA_BRIGHT_FACTOR,
 } from './core/constants.js';
 
 function sphereColor(c) {
@@ -44,6 +45,25 @@ export class GlobeView extends EventTarget {
     this._bindInteraction();
     this._tick = this._tick.bind(this);
     raf.add('globe', this._tick);
+
+    // Subtopic luma shading (#32 #40): when the user has drilled into a
+    // single cluster (cl set, gid null), recolor that cluster's points by
+    // sub-id. Re-render only fires when the drill cl/gid combination
+    // crosses the "single-cluster, no sub" threshold — string key dedupe.
+    this._unsubLumaDrill = store.subscribe(
+      (s) => {
+        const d = s.drill || {};
+        // Shade only when drilled to a cluster but NOT a single sub. When
+        // gid is set the user wants their one sub highlighted; flat color
+        // reads better against the dim filter.
+        if (d.cl != null && d.gid == null) return `cl:${d.cl}`;
+        return 'flat';
+      },
+      (key) => {
+        if (key === 'flat') this.applySubLumaShading(null);
+        else if (key.startsWith('cl:')) this.applySubLumaShading(parseInt(key.slice(3), 10));
+      },
+    );
   }
 
   _initPins() {
@@ -237,6 +257,14 @@ export class GlobeView extends EventTarget {
       colors[3*i] = r/255; colors[3*i+1] = g/255; colors[3*i+2] = b/255;
       sizes[i] = 1.0;
     }
+    // Snapshot the per-point base color (cluster hue) so #32 #40 luma
+    // shading can be applied non-destructively: when the user drills into
+    // a cluster we recompute colors[] from these base values * a per-sub
+    // luminance factor. Restoring on un-drill is a single array.set().
+    this._baseColors = new Float32Array(colors);
+    this._lumaDrilledCl = null;   // tracks which cluster (if any) is currently shaded
+    // Per-cluster sub-id → luminance factor map, lazily built on first drill.
+    this._lumaSubFactors = null;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -705,6 +733,63 @@ export class GlobeView extends EventTarget {
     f.spotlight = idxSet && idxSet.size > 0 ? idxSet : null;
     this._recomputeDim();
     try { store.set({ filters: { spotlight: f.spotlight } }); } catch {}
+  }
+
+  // ── Subtopic luminance shading on globe points (#32 #40) ──────────────
+  // When the user drills into a single cluster (cl set, gid null), shade
+  // each sub-cluster within that cluster as a different luminance step
+  // within the parent hue. Sub ids are sorted ascending for stable
+  // colors across reloads. When un-drilled or drilled deeper to a single
+  // sub, restore the flat per-cluster color.
+  //
+  // Recolor only fires on drill change — colors are written once per
+  // change and the GPU buffer is marked dirty. No per-frame work.
+  applySubLumaShading(cl) {
+    const st = this.state;
+    if (!this._baseColors || !st || !st.cluster || !st.subLocal) return;
+    const colors = this.pointGeom.attributes.color.array;
+    const N = st.N;
+    if (cl == null) {
+      // Restore flat color from snapshot.
+      if (this._lumaDrilledCl == null) return;   // already flat
+      colors.set(this._baseColors);
+      this._lumaDrilledCl = null;
+      this.pointGeom.attributes.color.needsUpdate = true;
+      return;
+    }
+    if (this._lumaDrilledCl === cl) return;      // already shaded for this cluster
+    // Build sub-id → factor map for this cluster.
+    const subSet = new Set();
+    for (let i = 0; i < N; i++) {
+      if (st.cluster[i] === cl) subSet.add(st.subLocal[i]);
+    }
+    const subs = [...subSet].sort((a, b) => a - b);
+    const factorBy = new Map();
+    if (subs.length === 1) {
+      factorBy.set(subs[0], 1.0);
+    } else {
+      for (let k = 0; k < subs.length; k++) {
+        const t = k / (subs.length - 1);                         // 0..1
+        const f = SUB_LUMA_BRIGHT_FACTOR + t * (SUB_LUMA_DIM_FACTOR - SUB_LUMA_BRIGHT_FACTOR);
+        factorBy.set(subs[k], f);
+      }
+    }
+    // First restore from snapshot so we don't compound prior shading.
+    colors.set(this._baseColors);
+    // Then apply the factor in-cluster only.
+    for (let i = 0; i < N; i++) {
+      if (st.cluster[i] !== cl) continue;
+      const f = factorBy.get(st.subLocal[i]) || 1.0;
+      const r = this._baseColors[3*i] * f;
+      const g = this._baseColors[3*i + 1] * f;
+      const b = this._baseColors[3*i + 2] * f;
+      // Clamp to [0,1] so >1 factors don't wrap or blow out.
+      colors[3*i]     = Math.min(1, r);
+      colors[3*i + 1] = Math.min(1, g);
+      colors[3*i + 2] = Math.min(1, b);
+    }
+    this._lumaDrilledCl = cl;
+    this.pointGeom.attributes.color.needsUpdate = true;
   }
 
   setThreadsEnabled(v) {
