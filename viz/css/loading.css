@@ -7,6 +7,21 @@
     transition: opacity 0.3s;
   }
   #loading.gone { opacity: 0; pointer-events: none; }
+
+  /* Boot suppression: while body.app-loading is set (until main.js finishes
+     wiring the tour and pins), keep the static sidebar + globe chrome
+     completely hidden. The loading overlay is only 85% opaque, so without
+     this rule the topic-list bars flash in behind the spinner before the
+     tour has a chance to apply tour-active. Removing the class at the end
+     of boot lets the tour overlay's own body classes take over visibility. */
+  body.app-loading #nav,
+  body.app-loading #globe-controls-dock,
+  body.app-loading #tour-launcher,
+  body.app-loading #pin-labels,
+  body.app-loading .timeline,
+  body.app-loading #tl-toggle {
+    visibility: hidden !important;
+  }
   #loading .spinner {
     width: 40px; height: 40px;
     border: 2px solid var(--line);

@@ -40,7 +40,7 @@
 }
 </script>
 </head>
-<body>
+<body class="app-loading">
 <div id="app">
   <aside id="nav">
     <div id="nav-header">
@@ -200,23 +200,6 @@
     </div>
   </section>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
-  <button id="layout-toggle" class="tour-launcher" aria-label="Switch sphere layout"
-          style="bottom:50px; right:14px; opacity:.7;"
-          onclick="(function(){
-            var cur = (function(){ try { return localStorage.getItem('layout') || 'default'; } catch(e){ return 'default'; }})();
-            var next = cur === 'pymde' ? 'default' : 'pymde';
-            try { localStorage.setItem('layout', next); } catch(e){}
-            location.reload();
-          })()">⇄ Layout: <span id="layout-name">default</span></button>
-  <script>
-    (function () {
-      try {
-        var ls = localStorage.getItem('layout') || 'default';
-        var el = document.getElementById('layout-name');
-        if (el) el.textContent = ls;
-      } catch (e) {}
-    })();
-  </script>
   <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-label="Guided tour">
     <!-- Step 0: Split hero — left text, right live globe -->
     <div class="tour-hero">

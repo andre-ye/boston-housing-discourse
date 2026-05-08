@@ -152,8 +152,19 @@ async function boot() {
     // Cold load auto-opens the tour; deep-links (#cl=…) skip it. The inline
     // boot script in index.html may have already painted the hero overlay
     // before this module loaded — calling start() here is idempotent.
+    //
+    // Boot-flash gate: drop body.app-loading only AFTER the tour overlay's
+    // own body classes are in place (start() applies tour-active +
+    // tour-at-hero). Without this ordering the static sidebar would paint
+    // for one frame between boot and the tour grabbing it.
     if (!location.hash) tour.start();
-  } catch (e) { console.warn('tour init failed:', e); }
+    document.body.classList.remove('app-loading');
+  } catch (e) {
+    console.warn('tour init failed:', e);
+    // Tour failed — release the boot gate so the user isn't stuck on a
+    // blank sidebar. The loading overlay's own dismissal still runs.
+    document.body.classList.remove('app-loading');
+  }
 
   // Empty-state + intro live here (not inside #insp-body, which is display:none
   // in the minimal layout).
