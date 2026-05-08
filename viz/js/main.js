@@ -3714,22 +3714,11 @@ async function boot() {
     if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
     if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
   }
-  window.App.toggleConnectionsMode = () => {
-    if (_shiftActive) shiftHideRelations();
-    else shiftShowRelations();
-    return _shiftActive;
-  };
-  window.App.connectionsModeActive = () => _shiftActive;
+  window.App.toggleConnectionsMode = () => false;
+  window.App.connectionsModeActive = () => false;
   window.App.refreshConnections = refreshConnectionsIfActive;
   window.App.emphasizeDetailContextForConnections = emphasizeDetailContextForConnections;
 
-  window.addEventListener('keydown', (e) => {
-    if ((e.key || '').toLowerCase() !== 'c' || e.repeat) return;
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    e.preventDefault();
-    window.App.toggleConnectionsMode();
-  });
 
   // Make the connections chip a real button. Click toggles the mode;
   // its visual `is-on` state is owned by `_syncShiftHint()` so it

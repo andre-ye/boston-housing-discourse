@@ -611,8 +611,7 @@ const BEATS = [
           const onKeyDown = (e) => {
             if (e.repeat) return;
             if ((e.key || '').toLowerCase() !== 'c') return;
-            // Let the global C handler do the work; we only listen
-            // here so we can advance the step.
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
             trigger();
           };
           chip?.addEventListener('click', onClick);
