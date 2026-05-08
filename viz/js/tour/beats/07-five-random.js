@@ -19,7 +19,13 @@ export const beat = {
     'bottom toolbar (“R · C · Reset” row). Esc dismisses floating captions; Reset clears ' +
     'drill, filters, timeline, zoom.',
   hint: 'Press R or click below • Esc dismisses cards',
-  showChrome: ['random'],
+  // #38 — when the user clicks one of the five sprouted captions, sprouts.js
+  // calls App.showDetailCard which renders into #pinned-view. Without
+  // 'cards' in showChrome the pinned-view stays opacity:0/visibility:hidden
+  // (per the body.tour-active default) and the click looks broken. Opting
+  // into 'cards' here lets the pinned-view become interactive without
+  // disabling the global pinned-view-while-tour-active fade.
+  showChrome: ['random', 'cards'],
   pulse: 'tour-pulse-random',
   manualContinue: true,
   enter(ctx) {
@@ -70,6 +76,12 @@ export const beat = {
       }
       // Animated retract on exit (matches sprout-clear non-immediate path).
       try { App?.clearSprouts?.({ immediate: false }); } catch {}
+      // #18 — if the user clicked one of the spawned posts, the pinned-view
+      // and the globe's pinned spotlight stick around when they navigate
+      // forward or back. The beat owns that state (it spawned the sprouts
+      // that led to the pin), so it must tear it down on cleanup.
+      try { App?.clearPinnedPoint?.(); } catch {}
+      document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
 };

@@ -932,9 +932,16 @@ export class GlobeView extends EventTarget {
     // When the guided tour is active, ease more slowly so rotations read
     // as deliberate camera moves rather than snap-to. 0.18/0.14 → 0.05/0.04
     // stretches the settle time from ~1.5s to ~6s.
+    //
+    // Beats that need a snappier long-distance move (#27 — beat 5 zooming
+    // into the three spotlit voices) flip body.tour-cam-snappy on enter()
+    // and clear it on cleanup; while that flag is set we revert to the
+    // non-tour rates so the tween settles in ~1s instead of 6s.
     const tourOn = typeof window !== 'undefined' && window.App?.tour?.isActive?.();
-    const slerpRate = tourOn ? 0.05 : 0.18;
-    const zoomRate  = tourOn ? 0.04 : 0.14;
+    const camSnappy = tourOn && typeof document !== 'undefined'
+      && document.body?.classList?.contains('tour-cam-snappy');
+    const slerpRate = tourOn ? (camSnappy ? 0.18 : 0.05) : 0.18;
+    const zoomRate  = tourOn ? (camSnappy ? 0.14 : 0.04) : 0.14;
     this.worldQuat.slerp(this.worldQuatTarget, slerpRate);
     this.distance += (this.distanceTarget - this.distance) * zoomRate;
     this._maybeRescaleThreadArcs();

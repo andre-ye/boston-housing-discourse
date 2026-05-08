@@ -46,6 +46,12 @@ export const beat = {
     try { globe.setSpotlight(idxSet); spotlightOn = true; } catch {}
     document.body.classList.add('tour-pin-spotlight');
 
+    // #27 — long-distance jump from the previous opener-page framing into
+    // a tight crop on three points needs the snappy camera rate
+    // (~600–1000 ms) or it reads as molasses. Flag is read by globe._tick
+    // and cleared in cleanup.
+    document.body.classList.add('tour-cam-snappy');
+
     // Centroid of the three coordinates.
     const lat = (state.coords[2*picks[0].idx]
                + state.coords[2*picks[1].idx]
@@ -87,6 +93,7 @@ export const beat = {
         try { globe.setSpotlight(null); } catch {}
       }
       document.body.classList.remove('tour-pin-spotlight');
+      document.body.classList.remove('tour-cam-snappy');
       document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
