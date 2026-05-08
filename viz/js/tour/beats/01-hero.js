@@ -8,8 +8,9 @@ export const beat = {
   kind: 'hero',
   headline: 'The Boston Social Sphere\nDiscourse of Reddit',
   lede:
-    'Over 400,000 Reddit posts and comments about housing, transit, and city life ' +
-    'in Boston from 2015–2025, grouped by topics and points of view',
+    'This visualization holds over 400,000 Reddit posts and comments about housing, ' +
+    'transit, and city life in Boston from 2015 to 2025, grouped by what they discuss ' +
+    'and what point of view they take.',
   enter(ctx) {
     const { globe } = ctx;
     try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}

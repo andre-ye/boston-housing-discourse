@@ -10,10 +10,10 @@ export const beat = {
   eyebrow: 'PART 2 — TOP-DOWN',
   title: 'Click “Rent Stabilization Ideas”',
   prose:
-    'Topic 32 — “Gentrification & Rent Control” — holds a decade of argument about what ' +
+    'Topic 32, “Gentrification & Rent Control,” holds a decade of argument about what ' +
     'Boston’s housing crisis actually is. The middle column splits the topic into ' +
-    'subtopics. The biggest one is “Rent Stabilization Ideas” — the actual rent-control ' +
-    'argument. Click it.',
+    'subtopics, and the biggest one is “Rent Stabilization Ideas,” which is where the ' +
+    'actual rent-control debate plays out. Click it.',
   pullquotes: [
     'Market supply can’t match demand here.',
     'Rent control is good for incumbents and bad for newcomers.',

@@ -11,10 +11,10 @@ export const beat = {
   eyebrow: 'PART 2 — TOP-DOWN',
   title: 'Click “Shortage & Disincentive”',
   prose:
-    'Inside “Rent Stabilization Ideas,” each point is a post or comment taking a side: ' +
-    'for rent control, against it, or threading some nuanced middle path. The right ' +
-    'column lists the points of view. The largest, “Shortage & Disincentive,” argues ' +
-    'rent control shrinks supply — 756 posts. Click it.',
+    'Inside “Rent Stabilization Ideas,” each point is a post or comment taking a side, ' +
+    'either for rent control, against it, or threading some nuanced middle path. The ' +
+    'right column lists the points of view. The largest one, “Shortage & Disincentive,” ' +
+    'argues that rent control shrinks supply, and it covers 756 posts. Click it.',
   pullquotes: [
     'Rent control is good for incumbents and bad for newcomers.',
     'You need both stabilization and new construction.',

@@ -27,12 +27,13 @@ export const beat = {
   eyebrow: 'PART 1 — BOTTOM-UP',
   title: 'Sample five voices at once',
   prose:
-    'Press R to scatter five voices from this region. We picked these five so they read ' +
-    'across the cluster: one blames zoning, one blames investment firms, one wants more ' +
-    'tenant bargaining power, one warns rent control rewards existing renters at the ' +
-    'expense of new ones, and one notes that a stagnant market locks people in place. ' +
-    'They are all sitting near each other because they are all arguing about the same thing.',
-  hint: 'Press R or click below • Esc dismisses cards',
+    'Press R to sample five posts from the area you are looking at. We picked these five ' +
+    'so they read across the cluster. One blames zoning, one blames investment firms, ' +
+    'one wants more tenant bargaining power, one warns that rent control rewards existing ' +
+    'renters at the expense of new ones, and one notes that a stagnant market locks people ' +
+    'in place. They sit near each other on the sphere because they are all arguing about ' +
+    'the same thing.',
+  hint: 'Press R or click below. Press Esc to dismiss cards.',
   // #38 — when the user clicks one of the five sprouted captions, sprouts.js
   // calls App.showDetailCard which renders into #pinned-view. Without
   // 'cards' in showChrome the pinned-view stays opacity:0/visibility:hidden

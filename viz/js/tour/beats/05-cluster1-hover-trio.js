@@ -33,12 +33,13 @@ export const beat = {
   eyebrow: 'PART 1 — BOTTOM-UP',
   title: 'Read three nearby voices',
   prose:
-    'These three glowing dots sit in the same cluster — the one that argues about rent ' +
-    'and gentrification. Click the first two: they almost touch on the sphere, and they ' +
-    'say nearly the same thing — that the answer is to build more, not to cap rents. ' +
-    'Now click the third one, a few hops further out: same cluster, but the framing ' +
-    'flips from supply to displacement. That is what nearby means here. Distance is meaning.',
-  hint: 'Click each glowing marker — 1, 2, 3',
+    'All three glowing dots sit inside the same cluster, which is the one that argues ' +
+    'about rent and gentrification. Click the first two and you will see that they almost ' +
+    'touch on the sphere, and that they say nearly the same thing: the answer is to build ' +
+    'more, not to cap rents. Now click the third one, which sits a little further out. It ' +
+    'is in the same cluster, but the framing flips from supply to displacement. On this ' +
+    'sphere, the distance between two points reflects how similar they are in meaning.',
+  hint: 'Click each glowing marker (1, 2, 3)',
   showChrome: ['cards'],
   pulse: 'tour-pulse-spotlight',
   manualContinue: true,

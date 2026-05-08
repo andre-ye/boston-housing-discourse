@@ -13,10 +13,11 @@ export const beat = {
   eyebrow: 'PART 3 — SEARCH & TIME',
   title: 'Search for a chronological phrase',
   prose:
-    'Some conversations on the sphere have a clear shape in time. Covid is a clean ' +
-    'example: almost nothing before 2020, then a city-wide argument about housing, ' +
-    'commutes, work, schools, nightlife, and risk. Type “Covid” into the search bar.',
-  hint: '↖ Type into the search bar',
+    'Some conversations on the sphere have a clear shape in time. Covid is a good ' +
+    'example, because there is almost nothing about it before 2020 and then a city-wide ' +
+    'argument breaks out about housing, commutes, work, schools, nightlife, and risk. ' +
+    'Type “Covid” into the search bar to see those posts on the sphere.',
+  hint: 'Type into the search bar in the top left.',
   showChrome: ['nav'],
   pulse: 'tour-pulse-search',
   manualContinue: true,

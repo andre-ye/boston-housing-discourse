@@ -9,10 +9,10 @@ export const beat = {
   eyebrow: 'PART 3 — SEARCH & TIME',
   title: 'Open the timeline',
   prose:
-    'Covid has an unmistakable chronology: almost no mentions before 2020, then a sharp ' +
-    'change in what Boston talks about. Open the timeline scrubber and move the handles ' +
-    'around 2020 to see that shift.',
-  hint: 'Click the ⏱ button ↘',
+    'Covid has an unmistakable chronology in the corpus. There are almost no mentions ' +
+    'of it before 2020, and then there is a sharp change in what Boston talks about. ' +
+    'Open the timeline scrubber and move the handles around 2020 to see that shift.',
+  hint: 'Click the ⏱ button in the bottom right.',
   showChrome: ['time'],
   pulse: 'tour-pulse-time',
   manualContinue: true,

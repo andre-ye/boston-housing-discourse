@@ -13,10 +13,10 @@ export const beat = {
   title: 'Look at this post in its thread',
   prose:
     'The pinned post is only one node in a Reddit thread. Look at the Thread context ' +
-    'section in the panel: that little map is this post and its thread neighbors. Now ' +
-    'click the bottom “connections” chip (or press C) to draw those same relationships ' +
-    'as arcs from this exact pinned node on the globe.',
-  hint: 'Look at Thread context, then click “connections” below',
+    'section in the panel, where the little map shows this post and its thread ' +
+    'neighbours. Now click the “connections” chip at the bottom (or press C) to draw ' +
+    'those same relationships as arcs from this pinned node on the globe.',
+  hint: 'Look at Thread context, then click “connections” below.',
   showChrome: ['nav', 'shift', 'cards'],
   pulse: 'tour-pulse-shift',
   manualContinue: true,

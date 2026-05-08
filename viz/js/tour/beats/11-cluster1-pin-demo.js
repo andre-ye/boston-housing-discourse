@@ -22,10 +22,10 @@ export const beat = {
   eyebrow: 'PART 1 — BOTTOM-UP',
   title: 'Click a point to pin it',
   prose:
-    'Click any point on the sphere to pin it — the full thread context shows up in the ' +
-    'side panel. We have spotlit one for you: a comment on a r/boston thread literally ' +
-    'titled “Protest for Rent Control.” Click it to read what was said.',
-  hint: 'Click the glowing dot →',
+    'You can click any point on the sphere to pin it, and the full thread context will ' +
+    'show up in the side panel. We have spotlit one for you, which is a comment on a ' +
+    'r/boston thread titled “Protest for Rent Control.” Click it to read what was said.',
+  hint: 'Click the glowing dot on the right.',
   showChrome: ['nav', 'cards'],
   pulse: 'tour-pulse-spotlight',
   manualContinue: true,

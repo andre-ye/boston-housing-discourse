@@ -12,9 +12,9 @@ export const beat = {
   title: 'Pick a topic and drill in',
   prose:
     'You can also start from a topic and narrow down. The left rail is sorted by how ' +
-    'loud each topic is. Topic 32 — “Gentrification & Rent Control” — is the loudest ' +
-    'fault line in Boston housing. Click it to drill in.',
-  hint: '← Click “Gentrification & Rent Control”',
+    'much each topic is discussed in the corpus. Topic 32, “Gentrification & Rent ' +
+    'Control,” is the largest topic in Boston housing discussions. Click it to drill in.',
+  hint: 'Click “Gentrification & Rent Control” on the left.',
   showChrome: ['nav'],
   pulse: 'tour-pulse-l1-32',
   manualContinue: true,
