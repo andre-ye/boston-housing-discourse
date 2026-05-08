@@ -1,12 +1,6 @@
-// Unified keydown registry — Stage 2 of the refactor.
+// keys — unified keydown registry; priority-sorted intents, first true wins.
 //
-// One global keydown listener (capture-phase) dispatches to a priority-sorted
-// list of "intents" registered via keys.bind(). Each intent declares which
-// keys it cares about, optional gating predicates, and whether it tolerates
-// modifiers / typing targets. The first intent whose handler returns `true`
-// consumes the event; lower-priority intents do not see it.
-//
-// Conventions used by callers (see comments in main.js / nav.js / tour.js):
+// Conventions used by callers (priority):
 //   200 — tour-active gates
 //   100 — overlay closers (help, etc.)
 //    50 — pinned-card / focus-card Esc dismissal

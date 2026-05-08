@@ -1,6 +1,4 @@
-// Animation channel scheduler. One rAF loop drives multiple named channels,
-// so adding a per-frame callback doesn't cost a separate rAF chain.
-// Returns a disposer from `add` for symmetric setup/teardown.
+// raf — single rAF loop driving named channels; `add` returns a disposer.
 
 const channels = new Map();   // channelName -> Set<callback>
 let rafId = 0;

@@ -1,7 +1,4 @@
-// Surprise Me: drop the user at a random, well-supported position.
-// Weights by sqrt(count) so larger stances dominate but small surprising
-// ones still appear. Honors active timeline + subreddit filters and
-// down-weights recently-shown clusters so the next pick rarely repeats.
+// surprise — random well-supported stance, sqrt-weighted, repeat-averse.
 
 import { getTrendInfo, getPositionSeries } from './series.js';
 

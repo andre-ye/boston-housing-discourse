@@ -5,6 +5,7 @@
 // matches and rotate to the densest pocket.
 
 import { rotateToPointSet } from '../helpers.js';
+import { CLOSE_FRAMING } from '../../core/constants.js';
 
 export const beat = {
   id: 'search-covid',
@@ -44,7 +45,7 @@ export const beat = {
         const set = await App?.findPointsContaining?.(q);
         if (set && set.size > 0) {
           try { globe.setSpotlight(set); } catch {}
-          rotateToPointSet(globe, App.state, set, 1.35);
+          rotateToPointSet(globe, App.state, set, CLOSE_FRAMING);
         }
       } catch {}
       markStepDone?.();

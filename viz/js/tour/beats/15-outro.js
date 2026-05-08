@@ -1,4 +1,6 @@
-// Outro — final card, "Explore" button closes the tour.
+// 15-outro — final card; "Explore" button closes the tour.
+
+import { HERO_FRAMING } from '../../core/constants.js';
 
 export const beat = {
   id: 'outro',
@@ -11,7 +13,7 @@ export const beat = {
     'your selections. Press ? for the full shortcut list.',
   enter(ctx) {
     const { globe } = ctx;
-    try { globe.rotateTo(15, -25, 3.0); } catch {}
+    try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
     return () => {};
   },
 };

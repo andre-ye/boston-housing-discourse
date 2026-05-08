@@ -1,17 +1,10 @@
-// Shared helpers for tour beats.
-//
-// pickThreeDemoPoints: returns three points for Part 1 step 1 — two in the
-// same cluster (semantically similar), one in a different cluster but
-// spatially nearby on the sphere. Deterministic ordering so re-running the
-// tour shows the same trio. May return null if the data isn't loaded yet.
-//
-// pickThreeFallbackPoints: when the geometry-aware picker can't find a clean
-// triangle, return any three globally distributed indices so the beat can
-// still proceed (issue #18 root-cause fix).
-//
-// rotateToPointSet: rotates the globe to the densest sampled pocket of an
-// index set. Search terms like "covid" appear across many topics; a global
-// average can land between clusters and look like nothing happened.
+// tour/helpers — shared spatial pickers for tour beats.
+
+import {
+  TOUR_SAME_CLUSTER_MIN_RAD, TOUR_SAME_CLUSTER_MAX_RAD,
+  TOUR_DIFF_CLUSTER_MIN_RAD, TOUR_DIFF_CLUSTER_MAX_RAD,
+  TOUR_SEARCH_DENSITY_RAD,
+} from '../core/constants.js';
 
 export function pickThreeDemoPoints(state) {
   if (!state?.coords || !state?.cluster || !state?.N) return null;
@@ -45,9 +38,9 @@ export function pickThreeDemoPoints(state) {
       if (cl == null) continue;
       const d = dist(seed, i);
       if (cl === cl0) {
-        if (d >= 0.035 && d <= 0.12 && (!sameBest || d < sameBest.d)) sameBest = { i, d, cl };
+        if (d >= TOUR_SAME_CLUSTER_MIN_RAD && d <= TOUR_SAME_CLUSTER_MAX_RAD && (!sameBest || d < sameBest.d)) sameBest = { i, d, cl };
       } else {
-        if (d >= 0.085 && d <= 0.20 && (!diffBest || d < diffBest.d)) diffBest = { i, d, cl };
+        if (d >= TOUR_DIFF_CLUSTER_MIN_RAD && d <= TOUR_DIFF_CLUSTER_MAX_RAD && (!diffBest || d < diffBest.d)) diffBest = { i, d, cl };
       }
     }
     if (sameBest && diffBest) {
@@ -108,7 +101,7 @@ export function rotateToPointSet(globe, state, idxSet, distance = 1.22) {
   for (const a of picks) {
     let score = 0;
     for (const b of picks) {
-      if (dist(a, b) <= 0.18) score++;
+      if (dist(a, b) <= TOUR_SEARCH_DENSITY_RAD) score++;
     }
     if (score > bestScore) { best = a; bestScore = score; }
   }

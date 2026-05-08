@@ -10,17 +10,15 @@ import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v
 import { raf } from './core/raf.js';
 import { keys } from './core/keys.js?v=1';
 import { store } from './core/store.js';
+import {
+  GLOBE_RADIUS, POINT_RADIUS, POINT_SIZE_BASE,
+  MIN_ZOOM, MAX_ZOOM, DEFAULT_DISTANCE,
+} from './core/constants.js';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
   return SPHERE_PALETTE[i];
 }
-
-const GLOBE_RADIUS = 1.0;
-const POINT_RADIUS = 1.012;    // points sit just above globe surface
-const POINT_SIZE_BASE = 0.024;
-const MIN_ZOOM = 1.18;
-const MAX_ZOOM = 6.0;
 
 export class GlobeView extends EventTarget {
   constructor(canvas, state) {
@@ -160,16 +158,16 @@ export class GlobeView extends EventTarget {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 50);
-    this.camera.position.set(0, 0, 3.0);
+    this.camera.position.set(0, 0, DEFAULT_DISTANCE);
 
     // World rotation as a quaternion — supports unlimited spin in any direction.
     this.worldQuat = new THREE.Quaternion();
     this.worldQuatTarget = new THREE.Quaternion();
-    this.distance = 3.0;
-    this.distanceTarget = 3.0;
+    this.distance = DEFAULT_DISTANCE;
+    this.distanceTarget = DEFAULT_DISTANCE;
     // Last zoom set by rotateTo / app navigation (scroll wheel only changes
     // distanceTarget). Used so Esc can snap back after user zoom.
-    this._canonicalDistance = 3.0;
+    this._canonicalDistance = DEFAULT_DISTANCE;
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
 
@@ -437,12 +435,11 @@ export class GlobeView extends EventTarget {
   }
 
   _interactionZoomScale() {
-    const defaultDistance = 3.0;
     const closeT = Math.max(0, Math.min(1,
-      (this.distanceTarget - MIN_ZOOM) / (defaultDistance - MIN_ZOOM)));
+      (this.distanceTarget - MIN_ZOOM) / (DEFAULT_DISTANCE - MIN_ZOOM)));
     const closeScale = 0.08 + 0.92 * Math.pow(closeT, 1.35);
-    const farScale = this.distanceTarget > defaultDistance
-      ? this.distanceTarget / defaultDistance
+    const farScale = this.distanceTarget > DEFAULT_DISTANCE
+      ? this.distanceTarget / DEFAULT_DISTANCE
       : 1;
     return closeScale * farScale;
   }
@@ -544,7 +541,7 @@ export class GlobeView extends EventTarget {
 
   /** User scroll moved zoom away from the last app-set distance (rotateTo). */
   isZoomedAwayFromCanonical() {
-    const c = this._canonicalDistance != null ? this._canonicalDistance : 3.0;
+    const c = this._canonicalDistance != null ? this._canonicalDistance : DEFAULT_DISTANCE;
     const tol = 0.055;
     // Compare both: wheel updates distanceTarget first; distance eases behind.
     // If we only checked distanceTarget, Esc could no-op while the camera
@@ -554,7 +551,7 @@ export class GlobeView extends EventTarget {
 
   /** Snap zoom to the canonical distance from the last rotateTo (or default). */
   resetCanonicalZoom() {
-    const c = this._canonicalDistance != null ? this._canonicalDistance : 3.0;
+    const c = this._canonicalDistance != null ? this._canonicalDistance : DEFAULT_DISTANCE;
     this.distanceTarget = c;
     this.distance = c;
   }
@@ -710,9 +707,8 @@ export class GlobeView extends EventTarget {
   }
 
   _threadArcRadiusScale() {
-    const defaultDistance = 3.0;
     const t = Math.max(0, Math.min(1,
-      (this.distanceTarget - MIN_ZOOM) / (defaultDistance - MIN_ZOOM)));
+      (this.distanceTarget - MIN_ZOOM) / (DEFAULT_DISTANCE - MIN_ZOOM)));
     // Near the surface the same world-space tube projects much wider, so the
     // geometry radius needs to shrink aggressively. Keep far/default zoom at
     // the established thickness.

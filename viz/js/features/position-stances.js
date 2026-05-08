@@ -1,11 +1,7 @@
-// Per-position subreddit breakdown + inverse "what does r/X voice" lookups.
-// Backed by the pre-baked App._posSubTable that boot builds once on load.
+// position-stances — per-position subreddit breakdown + r/X reverse lookups.
 
 const _posSubCache = new Map();
 
-// Per-position subreddit breakdown. Answers "who voiced THIS specific stance?"
-// which the focus-card's sub-level bar can't — a single sub often mixes voices
-// from several subreddits with different ideological leans.
 export function getPositionSubredditCounts(gid, posIdx) {
   const key = `${gid}:${posIdx}`;
   if (_posSubCache.has(key)) return _posSubCache.get(key);

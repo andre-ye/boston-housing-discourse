@@ -1,7 +1,4 @@
-// Sparklines: compact SVG monthly-volume charts shown on focus + position cards.
-// Extracted from main.js Stage 6. All functions read App state via window.App
-// (set during boot) and emit globe-relative actions via window._tlApplyHashRange
-// + window.App.globe.
+// sparklines — compact monthly-volume charts on focus + position cards.
 
 import { escapeHtml } from './html-utils.js';
 

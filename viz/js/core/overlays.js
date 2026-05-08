@@ -1,11 +1,4 @@
-// Overlay manager — single owner of overlay open/close + body-class state.
-// Stage 3 of the refactor.
-//
-// Each overlay registers a spec describing its root element, the body classes
-// the overlay should set while open, and optional onOpen/onClose hooks. The
-// manager maintains an open-stack so closeTop() can dismiss the most recently
-// opened overlay (used by the global Esc cascade), and aggregates body classes
-// across all open overlays so two overlays sharing a class behave correctly.
+// overlays — single owner of overlay open/close + aggregated body classes.
 
 const _registry = new Map();   // name → spec
 const _stack = [];              // names, top of stack = most recently opened

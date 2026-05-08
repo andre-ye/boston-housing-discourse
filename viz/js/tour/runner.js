@@ -1,17 +1,4 @@
-// Tour runner — declarative beats with mandatory cleanup.
-//
-// Each beat exports an `enter(ctx)` returning a cleanup() function. The
-// runner calls cleanup() before advancing/retreating to the next beat,
-// ensuring every listener / RAF / DOM element / body class is unbound.
-// Spotlight markers and per-beat state live inside the beat that needs
-// them, never as runner state.
-//
-// State the runner owns:
-//   _idx       — current beat index
-//   _cleanup   — cleanup fn returned by the active beat's enter()
-//   _active    — whether the tour is currently running
-//
-// Public API: { start, close, next, prev, isActive(), index() }
+// tour/runner — declarative beats; each enter(ctx) returns its own cleanup().
 
 import { store } from '../core/store.js';
 

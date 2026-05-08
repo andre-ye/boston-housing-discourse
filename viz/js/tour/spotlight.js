@@ -1,14 +1,7 @@
-// Screen-space numbered markers for the Part-1 spotlight beat.
-//
-// Three.js doesn't emit per-frame events we can hook for screen-space DOM
-// markers, so we run our own RAF loop and project lat/lon to the canvas
-// every frame. Cheap (3 points) and self-cancelling on teardown.
-//
-// Refactored from the original attachSpotlightMarkers() in tour.js. Now uses
-// the central raf scheduler so it joins the global rAF loop instead of
-// spinning a private chain.
+// tour/spotlight — screen-space numbered markers for the Part-1 spotlight beat.
 
 import { raf } from '../core/raf.js';
+import { POINT_RADIUS } from '../core/constants.js';
 
 export function attachSpotlight(globe, points) {
   const markers = points.map((p, i) => {
@@ -24,7 +17,7 @@ export function attachSpotlight(globe, points) {
     const rect = globe.canvas.getBoundingClientRect();
     const camPos = globe.camera.position;
     for (const m of markers) {
-      const wp = globe.worldPositionOf(m.lat, m.lon, 1.012);
+      const wp = globe.worldPositionOf(m.lat, m.lon, POINT_RADIUS);
       const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
       if (facing <= 0.02) { m.el.style.opacity = '0'; continue; }
       const proj = wp.clone().project(globe.camera);

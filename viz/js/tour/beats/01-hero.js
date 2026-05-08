@@ -1,9 +1,7 @@
-// Hero beat — split-screen intro. Live globe spins behind transparent right
-// pane while the headline + lede fade in on the left.
-//
-// Cleanup unbinds the rAF spin disposer registered with the central scheduler.
+// 01-hero — split-screen intro; live globe spins behind transparent right pane.
 
 import { raf } from '../../core/raf.js';
+import { HERO_FRAMING, HERO_NUDGE_LON, HERO_NUDGE_LAT } from '../../core/constants.js';
 
 export const beat = {
   id: 'hero',
@@ -14,9 +12,9 @@ export const beat = {
     'in Boston from 2015–2025, grouped by topics and points of view',
   enter(ctx) {
     const { globe } = ctx;
-    try { globe.rotateTo(15, -25, 3.0); } catch {}
+    try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
     const dispose = raf.add('tour:hero-spin', () => {
-      try { globe.nudge?.(0.22, -0.06); } catch {}
+      try { globe.nudge?.(HERO_NUDGE_LON, HERO_NUDGE_LAT); } catch {}
     });
     return () => {
       try { dispose(); } catch {}

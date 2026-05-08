@@ -1,7 +1,4 @@
-// Timeline scrubber: drag a date range to filter the globe, with a play
-// button that sweeps a 12-month rolling window. Shares state with
-// renderFocusStances + the subreddit agenda panel by reaching back through
-// ctx.refreshOnRange.
+// timeline — month-range scrubber + 12-month rolling-window play.
 
 import { escapeHtml } from './html-utils.js';
 import { updateSparklineBands } from './sparklines.js';

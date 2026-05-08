@@ -1,9 +1,7 @@
-// "We started by talking to 26 people" — narration card, interview pins
-// spotlighted while the globe slowly rotates so each P-pin drifts past.
-//
-// Cleanup: stop the spin, drop the spotlight, remove the body class.
+// 02-interview-pins — narration card, interview pins spotlighted, slow drift.
 
 import { raf } from '../../core/raf.js';
+import { PIN_FRAMING } from '../../core/constants.js';
 
 export const beat = {
   id: 'interview-pins',
@@ -14,7 +12,7 @@ export const beat = {
     'metro area. We asked people about where they live and their commute.',
   enter(ctx) {
     const { globe, App } = ctx;
-    try { globe.rotateTo(20, -30, 2.6); } catch {}
+    try { globe.rotateTo(20, -30, PIN_FRAMING); } catch {}
 
     const placements = App.state?.interviewPins?.placements || [];
     const idxSet = new Set(placements.map(p => p.idx).filter(i => Number.isFinite(i)));

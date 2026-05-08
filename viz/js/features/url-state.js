@@ -1,7 +1,4 @@
-// URL hash + browser history. Each user-initiated focus change writes a
-// history entry so back/forward arrows step through the same exploration
-// path. Programmatic restores set `_suppressHashWrite` so applyHash and
-// the tour don't poison history with their own beats.
+// url-state — URL hash sync + browser history for the drill path.
 
 export function init(ctx) {
   const { App, globe, nav, store, focusPosition, toggleSubredditFilter } = ctx;

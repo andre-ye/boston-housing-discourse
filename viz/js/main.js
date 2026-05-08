@@ -8,6 +8,10 @@ import { storage } from './core/storage.js';
 import { raf } from './core/raf.js';
 import { keys } from './core/keys.js?v=1';
 import { store } from './core/store.js';
+import {
+  POINT_RADIUS, DEFAULT_DISTANCE,
+  TOPIC_FRAMING, SUB_FRAMING, STANCE_FRAMING, CLOSE_FRAMING, ZOOM_TO_POINT_FRAMING,
+} from './core/constants.js';
 import * as THREE from 'three';
 import { escapeHtml, redditScoreInlineHtml, formatRedditKindLabel } from './features/html-utils.js';
 import {
@@ -821,7 +825,7 @@ async function boot() {
     globe.setHighlight({ cl, gid, posIdx });
 
     if (cl == null) {
-      globe.rotateTo(0, 0, 3.0, 700);
+      globe.rotateTo(0, 0, DEFAULT_DISTANCE, 700);
       focusCard.classList.add('hidden');
       if (fspark) fspark.innerHTML = '';
       globe.loadThreadArcs([]);
@@ -838,7 +842,7 @@ async function boot() {
     hideInspectorEmpty();
     if (gid == null) {
       const a = clusterAnchor(App.state, cl);
-      if (a) globe.rotateTo(a.lat, a.lon, 1.9);
+      if (a) globe.rotateTo(a.lat, a.lon, TOPIC_FRAMING);
       const meta = App.state.clusterMeta[String(cl)];
       ftitle.textContent = meta ? meta.name : `Topic ${cl}`;
       ftitle.style.color = sphereColor(cl);
@@ -856,7 +860,7 @@ async function boot() {
     const g = App.subGidMap.byGid[gid];
     if (g) {
       const a = subAnchor(App.state, g.cl, g.sub);
-      if (a) { globe.rotateTo(a.lat, a.lon, 1.55); pulseAt(a.lat, a.lon, sphereColor(g.cl)); }
+      if (a) { globe.rotateTo(a.lat, a.lon, SUB_FRAMING); pulseAt(a.lat, a.lon, sphereColor(g.cl)); }
       ftitle.textContent = g.name;
       ftitle.style.color = sphereColor(g.cl);
       fkind.innerHTML = `subtopic ${renderTrendBadge(getSubSeries(gid))}`;
@@ -1075,7 +1079,7 @@ async function boot() {
     }
     const lat = App.state.coords[2 * hoverPointIdx];
     const lon = App.state.coords[2 * hoverPointIdx + 1];
-    const wp = globe.worldPositionOf(lat, lon, 1.012);
+    const wp = globe.worldPositionOf(lat, lon, POINT_RADIUS);
     const camPos = globe.camera.position;
     const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
     if (facing <= 0) { hoverHaloEl.classList.remove('show'); return; }
@@ -1117,7 +1121,7 @@ async function boot() {
   //   2. its projected screen position lies inside the canvas rect
   // _screenOf returns null when either fails.
   function _screenOf(lat, lon) {
-    const wp = globe.worldPositionOf(lat, lon, 1.012);
+    const wp = globe.worldPositionOf(lat, lon, POINT_RADIUS);
     const camPos = globe.camera.position;
     const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
     if (facing <= 0.02) return null;
@@ -1238,7 +1242,7 @@ async function boot() {
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
         cancelSproutClearTimer();
-        globe.rotateTo(k.lat, k.lon, 1.8);
+        globe.rotateTo(k.lat, k.lon, ZOOM_TO_POINT_FRAMING);
         _setSelection({ pinnedIdx: k.idx });
         globe.setPinnedPoint(k.idx);
         showDetailCard(d);
@@ -1740,7 +1744,7 @@ async function boot() {
     if (pos && pos.lat != null) {
       // Fixed framing distance — do not fold scroll-zoom into _canonicalDistance
       // or "Reset view" / Esc cannot zoom back out after the user scrolls in.
-      globe.rotateTo(pos.lat, pos.lon, 1.35);
+      globe.rotateTo(pos.lat, pos.lon, CLOSE_FRAMING);
       pulseAt(pos.lat, pos.lon, sphereColor(cl));
     }
     // Mark the selected flag
@@ -1805,7 +1809,7 @@ async function boot() {
     const camPos = globe.camera.position;
     const v = new THREE.Vector3();
     for (const info of posLabelEls) {
-      const wp = globe.worldPositionOf(info.lat, info.lon, 1.012);
+      const wp = globe.worldPositionOf(info.lat, info.lon, POINT_RADIUS);
       const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
       if (facing <= 0) { info.el.style.opacity = '0'; info.el.style.pointerEvents = 'none'; continue; }
       v.copy(wp).project(globe.camera);
@@ -1834,18 +1838,18 @@ async function boot() {
       const { cl, gid, posIdx } = currentFocusedPosition;
       const doc = App.state.positionAnchors?.[String(gid)];
       const p = doc?.positions?.[posIdx];
-      if (p?.lat != null) return { lat: p.lat, lon: p.lon, distance: 1.35, color: sphereColor(cl) };
+      if (p?.lat != null) return { lat: p.lat, lon: p.lon, distance: CLOSE_FRAMING, color: sphereColor(cl) };
     }
     if (nav.focusGid != null) {
       const g = App.subGidMap.byGid[nav.focusGid];
       if (g) {
         const a = subAnchor(App.state, g.cl, g.sub);
-        if (a) return { lat: a.lat, lon: a.lon, distance: 1.55, color: sphereColor(g.cl) };
+        if (a) return { lat: a.lat, lon: a.lon, distance: SUB_FRAMING, color: sphereColor(g.cl) };
       }
     }
     if (nav.focusCl != null) {
       const a = clusterAnchor(App.state, nav.focusCl);
-      if (a) return { lat: a.lat, lon: a.lon, distance: 1.9, color: sphereColor(nav.focusCl) };
+      if (a) return { lat: a.lat, lon: a.lon, distance: TOPIC_FRAMING, color: sphereColor(nav.focusCl) };
     }
     return null;
   }
@@ -2125,7 +2129,7 @@ async function boot() {
             }
             return;
           }
-          globe.rotateTo(p.lat, p.lon, 1.8);
+          globe.rotateTo(p.lat, p.lon, ZOOM_TO_POINT_FRAMING);
           const data = {
             ...p,
             cluster_name: App.state.clusterMeta?.[String(p.cluster)]?.name,
@@ -2308,7 +2312,7 @@ async function boot() {
       };
     });
     // Rotate the globe so the pin faces the camera, then drop the pulse.
-    globe.rotateTo(pin.lat, pin.lon, 1.5);
+    globe.rotateTo(pin.lat, pin.lon, STANCE_FRAMING);
     pulseAt(pin.lat, pin.lon, sphereColor(pin.cluster));
   }
 

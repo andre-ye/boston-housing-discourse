@@ -1,13 +1,4 @@
-// Centralized app state. Stage 5 of the refactor.
-//
-// Owners still hold their own canonical copy (e.g. globe._filter, NavController.focusCl,
-// the boot()-closure pinnedPointIdx). The store is a *cross-module read surface* —
-// modules write through both their existing setters AND store.set(), so any non-owner
-// can read store.get() instead of reaching across module boundaries.
-//
-// Subscribe with a selector: the callback fires only when the selected slice
-// changes by reference equality. Pass a stable selector if you want deep
-// comparison (e.g. precompute a tuple, or rely on the slice object identity).
+// store — cross-module read surface; owners keep canonical state and mirror writes.
 //
 // Slices:
 //   drill      — { cl, gid, posIdx } — owned by NavController

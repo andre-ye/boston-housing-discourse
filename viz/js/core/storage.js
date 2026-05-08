@@ -1,6 +1,4 @@
-// Namespaced localStorage wrapper. Migrates legacy unprefixed keys on first
-// boot so older sessions don't lose their intro-seen / search-history /
-// bookmarks / preferences when the namespace landed.
+// storage — namespaced localStorage wrapper; migrates legacy keys on first boot.
 
 const PREFIX = 'boston-reddit:';
 const LEGACY_KEYS = {

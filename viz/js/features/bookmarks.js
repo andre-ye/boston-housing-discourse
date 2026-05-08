@@ -1,7 +1,4 @@
-// Bookmarks: save pinned points for later browsing. Persisted in localStorage
-// as a flat list (most-recent first). We snapshot enough metadata to render
-// the list without re-fetching the chunk before the user clicks; clicking
-// re-pins via pinPointByIndex which refreshes the live detail card.
+// bookmarks — save pinned points for later (storage-backed, most-recent first).
 
 import { escapeHtml, formatRedditKindLabel } from './html-utils.js';
 

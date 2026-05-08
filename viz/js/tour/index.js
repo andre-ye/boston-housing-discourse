@@ -1,13 +1,9 @@
-// Tour public entry point — Stage 4 of the refactor.
-//
-// Replaces the 1300-line tour.js monolith with a declarative beat system.
-// Each beat lives under ./beats/ as a self-contained enter()/cleanup() pair.
-// This module wires the runner to the existing tour DOM (#tour-overlay) and
-// exposes the same createTour({...}) signature main.js depends on.
+// tour — public entry; wires the runner to #tour-overlay + exposes createTour.
 
 import { keys } from '../core/keys.js?v=1';
 import { overlayManager } from '../core/overlays.js';
 import { dom } from '../core/dom.js';
+import { HERO_FRAMING } from '../core/constants.js';
 import { BEATS } from './beats/index.js';
 import { createTourRunner } from './runner.js';
 import { escHtml } from './helpers.js';
@@ -172,7 +168,7 @@ export function createTour({ globe, App, nav }) {
       try { document.getElementById('spotlight-chip')?.remove(); } catch {}
       try { App?._timelineResetAndClose?.(); } catch {}
       try { nav.focus({}); } catch {}
-      try { globe.rotateTo(15, -25, 3.0); } catch {}
+      try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
     },
     onTourClose: () => {
       overlayManager.close('tour');
@@ -187,7 +183,7 @@ export function createTour({ globe, App, nav }) {
       try { document.getElementById('spotlight-chip')?.remove(); } catch {}
       try { App?._timelineResetAndClose?.(); } catch {}
       try { nav.focus({}); } catch {}
-      try { globe.rotateTo(15, -25, 3.0); } catch {}
+      try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
     },
   };
 

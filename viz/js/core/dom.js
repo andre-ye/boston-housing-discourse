@@ -1,7 +1,4 @@
-// Element registry — single source of truth for known DOM IDs.
-// Centralizes the most-queried elements so modules don't repeat
-// `document.getElementById('xxx')` strings (which are easy to mistype
-// and hard to grep when an id is renamed).
+// dom — element registry; single source of truth for known DOM IDs.
 
 const KNOWN = {
   // ── overlays ───────────────────────────────────────────────────────

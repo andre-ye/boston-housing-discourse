@@ -1,7 +1,6 @@
-// Per-post text search across the chunk corpus. Loads all 22 chunks once
-// (cached forever in chunkCache), then scans title + hover_body for substring
-// matches. Heavy first call (~5-15s locally, longer over network); subsequent
-// calls are instant.
+// search-find — per-post text search across the chunk corpus.
+
+import { ZOOM_TO_POINT_FRAMING } from '../core/constants.js';
 
 export function init(ctx) {
   const { App, globe, getPointDetails, showDetailCard, setSelection } = ctx;
@@ -68,7 +67,7 @@ export function init(ctx) {
     globe.setPinnedPoint(idx);
     const lat = App.state.coords[2 * idx];
     const lon = App.state.coords[2 * idx + 1];
-    if (lat != null && lon != null) globe.rotateTo(lat, lon, 1.8);
+    if (lat != null && lon != null) globe.rotateTo(lat, lon, ZOOM_TO_POINT_FRAMING);
     try {
       const details = await getPointDetails(App.state, idx);
       if (details) showDetailCard(details);

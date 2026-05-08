@@ -1,12 +1,7 @@
-// Trend math + per-series accessors. Every callsite should use these
-// rather than walking timeHist directly: getTrendInfo normalizes by
-// corpus growth so "trending" actually means "faster than the conversation
-// is growing overall."
+// series — trend math + per-series accessors (cluster/sub/position).
 
-// Trend score: ratio of recent-window mean to all-time mean, normalized
-// by corpus growth so "trending" means "growing faster than the overall
-// conversation," not "happens to have more recent data." Small baseline
-// floor prevents tiny historical counts from blowing up the ratio.
+// Recent-window mean over all-time mean, normalized by corpus growth so
+// "trending" means faster than the overall conversation, not just newer.
 export function computeTrend(series, windowMonths = 6) {
   if (!series || series.length < windowMonths * 2) return null;
   const n = series.length;

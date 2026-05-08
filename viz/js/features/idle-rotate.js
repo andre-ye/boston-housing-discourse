@@ -1,6 +1,4 @@
-// Idle auto-rotate: slow continuous drift toward the top-right until the
-// user touches the globe (drag, wheel, arrow/zoom key) or drills into a
-// cluster. Typing in the search box does NOT stop it.
+// idle-rotate — slow drift until the user touches the globe or drills in.
 
 export function init(ctx) {
   const { globe, nav, keys, raf } = ctx;

@@ -1,7 +1,6 @@
-// Part 1 / Step 2 — meet an interview pin (P2). Qualitative voice.
-//
-// Spotlight only the anchor post under P2 so the rest of the sphere fades.
-// Pin click triggers markStepDone; runner waits for Next.
+// 06-click-p2-ferry — Part 1 / Step 2: spotlight P2's anchor and wait for click.
+
+import { TOPIC_FRAMING } from '../../core/constants.js';
 
 export const beat = {
   id: 'click-p2-ferry',
@@ -30,7 +29,7 @@ export const beat = {
       try { globe.setSpotlight(idxSet); spotlightOn = true; } catch {}
     }
     document.body.classList.add('tour-pin-spotlight');
-    if (p2) { try { globe.rotateTo(p2.lat, p2.lon, 1.9); } catch {} }
+    if (p2) { try { globe.rotateTo(p2.lat, p2.lon, TOPIC_FRAMING); } catch {} }
     else    { try { globe.rotateTo(20, -30, 2.4); } catch {} }
 
     let advanced = false;
