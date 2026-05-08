@@ -295,12 +295,12 @@
     visibility: visible !important;
     pointer-events: auto !important;
   }
-  /* Inspector cards (detail / interview / position) need to be interactive
+  /* Inspector cards (pinned-view / interview / focus) need to be interactive
      during step 3 so the close × actually closes them; the broader
      `body.tour-active .interview-card { pointer-events: none }` rule
      above defaults them off, and this per-step opt-in re-enables them. */
   body.tour-step-mode.tour-step-show-cards .interview-card,
-  body.tour-step-mode.tour-step-show-cards .detail-card,
+  body.tour-step-mode.tour-step-show-cards .pinned-view,
   body.tour-step-mode.tour-step-show-cards .focus-card {
     pointer-events: auto !important;
     opacity: 1 !important;
@@ -639,7 +639,7 @@
   body.tour-active #nav,
   body.tour-active .focus-card,
   body.tour-active .interview-card,
-  body.tour-active .detail-card,
+  body.tour-active .pinned-view,
   body.tour-active #point-tooltip,
   body.tour-active .timeline,
   body.tour-active .ui-topbar {
@@ -656,14 +656,14 @@
     visibility: visible !important;
     transition: opacity 0.3s, visibility 0s 0s;
   }
-  /* Focus-card and detail-card are hidden across the entire tour. The
+  /* Focus-card and pinned-view are hidden across the entire tour. The
      tour-card carries the narrative; floating inspector cards on the
      same right-side region just stack on top of each other and create
      the "tour covers the pinned post" amateurish look the user
      reported. Cards re-enable themselves only inside steps that opt in
      via `showChrome: ['cards']` (the P-pin click step). */
   body.tour-active .focus-card,
-  body.tour-active .detail-card,
+  body.tour-active .pinned-view,
   body.tour-active .interview-card {
     opacity: 0 !important;
     visibility: hidden !important;
@@ -671,7 +671,7 @@
     transition: opacity 0.25s ease, visibility 0s 0.25s;
   }
   body.tour-active.tour-step-mode.tour-step-show-cards .focus-card,
-  body.tour-active.tour-step-mode.tour-step-show-cards .detail-card,
+  body.tour-active.tour-step-mode.tour-step-show-cards .pinned-view,
   body.tour-active.tour-step-mode.tour-step-show-cards .interview-card {
     opacity: 1 !important;
     visibility: visible !important;
@@ -687,7 +687,7 @@
   body.tour-active.tour-at-hero #nav,
   body.tour-active.tour-at-hero .focus-card,
   body.tour-active.tour-at-hero .interview-card,
-  body.tour-active.tour-at-hero .detail-card,
+  body.tour-active.tour-at-hero .pinned-view,
   body.tour-active.tour-at-hero #point-tooltip,
   body.tour-active.tour-at-hero .timeline,
   body.tour-active.tour-at-hero .ui-topbar {
@@ -712,7 +712,7 @@
   body.tour-active.tour-chrome-off #nav,
   body.tour-active.tour-chrome-off .focus-card,
   body.tour-active.tour-chrome-off .interview-card,
-  body.tour-active.tour-chrome-off .detail-card,
+  body.tour-active.tour-chrome-off .pinned-view,
   body.tour-active.tour-chrome-off #point-tooltip,
   body.tour-active.tour-chrome-off .timeline,
   body.tour-active.tour-chrome-off .ui-topbar,

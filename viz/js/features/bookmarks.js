@@ -7,7 +7,9 @@ const BOOKMARKS_MAX = 200;
 
 export function init(ctx) {
   const { App, storage, sphereColor, pinPointByIndex, getCurrentDetailPin } = ctx;
-  const dcBookmarkBtn = document.getElementById('dc-bookmark');
+  // B1: pinned-comment surface lives in nav as #pinned-view; the bookmark
+  // toggle is now #pv-bookmark in the new pinned panel header.
+  const dcBookmarkBtn = document.getElementById('pv-bookmark');
   const bmCard = document.getElementById('bookmarks-card');
   const bmList = document.getElementById('bm-list');
   const bmEmpty = document.getElementById('bm-empty');

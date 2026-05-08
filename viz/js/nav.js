@@ -368,13 +368,16 @@ export class NavController extends EventTarget {
         return true;
       },
     });
-    // Detail card close (priority 50).
+    // Pinned view close (priority 50).
     keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-detail-card',
+      keys: ['Escape'], priority: 50, label: 'esc-pinned-view',
       allowInInput: true,
       handler: (e) => {
-        if (!dc || dc.classList.contains('hidden')) return false;
-        dc.classList.add('hidden');
+        const pv = document.getElementById('pinned-view');
+        if (!pv || pv.classList.contains('hidden')) return false;
+        const closeBtn = document.getElementById('pv-close');
+        if (closeBtn) closeBtn.click();
+        else pv.classList.add('hidden');
         e.preventDefault();
         return true;
       },

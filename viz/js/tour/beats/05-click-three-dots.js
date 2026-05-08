@@ -87,7 +87,7 @@ export const beat = {
         try { globe.setSpotlight(null); } catch {}
       }
       document.body.classList.remove('tour-pin-spotlight');
-      document.getElementById('detail-card')?.classList.add('hidden');
+      document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
 };

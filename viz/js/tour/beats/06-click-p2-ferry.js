@@ -47,7 +47,7 @@ export const beat = {
       }
       document.body.classList.remove('tour-pin-spotlight');
       document.getElementById('interview-card')?.classList.add('hidden');
-      document.getElementById('detail-card')?.classList.add('hidden');
+      document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
 };

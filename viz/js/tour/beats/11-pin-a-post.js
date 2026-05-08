@@ -19,7 +19,7 @@ export const beat = {
   enter(ctx) {
     const { globe, App, markStepDone } = ctx;
     try { App?.clearPinnedPoint?.(); } catch {}
-    ['focus-card', 'interview-card', 'detail-card']
+    ['focus-card', 'interview-card', 'pinned-view']
       .forEach(id => document.getElementById(id)?.classList.add('hidden'));
 
     let advanced = false;

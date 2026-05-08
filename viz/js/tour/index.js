@@ -155,7 +155,7 @@ export function createTour({ globe, App, nav }) {
       try { App?.clearPinnedPoint?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
-      ['detail-card', 'interview-card', 'focus-card']
+      ['pinned-view', 'interview-card', 'focus-card']
         .forEach(id => document.getElementById(id)?.classList.add('hidden'));
       try {
         const input = document.getElementById('search-input');
@@ -178,7 +178,7 @@ export function createTour({ globe, App, nav }) {
       try { App?.clearPinnedPoint?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
-      ['detail-card', 'interview-card', 'focus-card']
+      ['pinned-view', 'interview-card', 'focus-card']
         .forEach(id => document.getElementById(id)?.classList.add('hidden'));
       try { document.getElementById('spotlight-chip')?.remove(); } catch {}
       try { App?._timelineResetAndClose?.(); } catch {}
@@ -207,7 +207,7 @@ export function createTour({ globe, App, nav }) {
     allowInInput: true,
     when: tourActiveOrVisible,
     handler: (e) => {
-      const cards = ['interview-card', 'detail-card']
+      const cards = ['interview-card', 'pinned-view']
         .map(id => document.getElementById(id))
         .filter(c => c && !c.classList.contains('hidden'));
       if (cards.length === 0) return false;

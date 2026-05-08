@@ -832,7 +832,7 @@ async function boot() {
   function showInspectorEmpty() {
     const anyOpen =
       !focusCard.classList.contains('hidden') ||
-      !dom.el('detailCard').classList.contains('hidden') ||
+      !dom.el('pinnedView').classList.contains('hidden') ||
       !dom.el('interviewCard').classList.contains('hidden') ||
       !dom.el('voicesListInline').classList.contains('hidden');
     if (!anyOpen && inspEmpty) inspEmpty.classList.remove('hidden');
@@ -954,7 +954,7 @@ async function boot() {
   // currently over an opaque panel. Listener is in capture phase so
   // panel-internal pointermoves still register.
   const _cardSelectors = [
-    '.detail-card', '.interview-card', '.focus-card',
+    '.pinned-view', '.interview-card', '.focus-card',
     '#tour-overlay .tour-card', '#tour-overlay .tour-hero', '#tour-overlay .tour-outro',
     '#bookmarks-panel', '#search-suggestions', '#nav', '.timeline',
   ].join(', ');
@@ -1551,8 +1551,8 @@ async function boot() {
     if (si) { si.value = ''; si.blur(); }
     const ss = document.getElementById('search-suggestions');
     ss?.classList.add('hidden');
-    // Close detail card if open
-    document.getElementById('detail-card')?.classList.add('hidden');
+    // Close pinned view if open
+    hidePinnedView();
     // Clear hash last — after all state changes
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     globe?.resetCanonicalZoom?.();
@@ -2176,7 +2176,7 @@ async function boot() {
     if (!showing) {
       // Showing voices → hide other cards
       focusCard.classList.add('hidden');
-      document.getElementById('detail-card').classList.add('hidden');
+      hidePinnedView();
       document.getElementById('interview-card').classList.add('hidden');
       hideInspectorEmpty();
       clearSelectedPoint();
@@ -2222,10 +2222,8 @@ async function boot() {
   if (ic && ic.parentElement?.id === 'insp-body') {
     document.body.appendChild(ic);
   }
-  const dcEl = document.getElementById('detail-card');
-  if (dcEl && dcEl.parentElement?.id === 'insp-body') {
-    document.body.appendChild(dcEl);
-  }
+  // Pinned post lives INSIDE #insp-body (B1: nav-resident, not floating).
+  const pvEl = dom.el('pinnedView');
   const fcEl = document.getElementById('focus-card');
   if (fcEl && fcEl.parentElement?.id === 'insp-body') {
     document.body.appendChild(fcEl);
@@ -2237,8 +2235,9 @@ async function boot() {
   // Keep <body class="has-floating-card"> in sync so CSS can fade the
   // keyboard hints when a card covers that top-right region. Uses a
   // single MutationObserver watching each card's class attribute.
+  // (Pinned-view is nav-resident now and doesn't count as a floating card.)
   (() => {
-    const cards = [ic, dcEl, fcEl].filter(Boolean);
+    const cards = [ic, fcEl].filter(Boolean);
     if (cards.length === 0) return;
     const refresh = () => {
       const anyVisible = cards.some(c => !c.classList.contains('hidden'));
@@ -2256,7 +2255,7 @@ async function boot() {
   }
   async function showInterviewCard(pin) {
     if (!ic) return;
-    dc.classList.add('hidden');
+    hidePinnedView();
     clearSelectedPoint();
     focusCard.classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
@@ -2585,7 +2584,7 @@ async function boot() {
     clearSelectedPoint({ refreshRelations: false });
     hideTooltip();
     hideInterviewCard();
-    document.getElementById('detail-card')?.classList.add('hidden');
+    hidePinnedView();
   };
   // Escape: the universal "back out of transient modes" key, split across
   // three separate bindings (priority 50). All three may run on a single
@@ -2687,18 +2686,54 @@ async function boot() {
     globe.loadThreadArcs([]);
   }
 
-  // ─── Detail card (Reddit post/comment) ─────────────────────
-  const dc = document.getElementById('detail-card');
-  const dcMeta = document.getElementById('dc-meta');
-  const dcTitle = document.getElementById('dc-title');
-  const dcBody = document.getElementById('dc-body');
-  const dcLink = document.getElementById('dc-link');
+  // ─── Pinned view (Reddit post/comment) — B1: lives in nav, not floating
+  const pinnedView    = dom.el('pinnedView');
+  const pvMeta        = dom.el('pvMeta');
+  const pvPostTitle   = dom.el('pvPostTitle');
+  const pvPostBody    = dom.el('pvPostBody');
+  const pvPostLink    = dom.el('pvPostLink');
+  const pvBackBtn     = dom.el('pvBack');
+  const pvCloseBtn    = dom.el('pvClose');
+  const pvThreadEl    = dom.el('pvThread');
   // Hoisted so showDetailCard / bookmark wiring can reference it before the
   // bookmarks block declares the rest of the persistent UI further down.
   let _currentDetailPin = null;
-  document.getElementById('dc-close').onclick = () => {
-    dc.classList.add('hidden');
+  // Back-stack for pinned points. Capped at 10. Each entry is the prior
+  // pinned-pin payload (the same `d` shape passed to showDetailCard).
+  const PV_BACKSTACK_MAX = 10;
+  const _pinnedBackStack = [];
+  function _syncPvBackBtn() {
+    if (!pvBackBtn) return;
+    const can = _pinnedBackStack.length > 0;
+    pvBackBtn.disabled = !can;
+    pvBackBtn.setAttribute('aria-disabled', can ? 'false' : 'true');
+  }
+  function hidePinnedView() {
+    if (!pinnedView) return;
+    pinnedView.classList.add('hidden');
+  }
+  if (pvCloseBtn) pvCloseBtn.onclick = () => {
+    hidePinnedView();
+    _pinnedBackStack.length = 0;
+    _syncPvBackBtn();
     clearSelectedPoint();
+  };
+  if (pvBackBtn) pvBackBtn.onclick = () => {
+    if (_pinnedBackStack.length === 0) return;
+    const prev = _pinnedBackStack.pop();
+    _syncPvBackBtn();
+    if (!prev) return;
+    // Re-pin via globe so the camera + selection state both follow the
+    // user back to the prior post. Use _renderPinned (no stack push).
+    if (typeof prev.idx === 'number' && prev.idx >= 0) {
+      _setSelection({ pinnedIdx: prev.idx });
+      globe.setPinnedPoint(prev.idx);
+      const lat = App.state.coords?.[2 * prev.idx];
+      const lon = App.state.coords?.[2 * prev.idx + 1];
+      if (lat != null && lon != null) globe.rotateTo(lat, lon, ZOOM_TO_POINT_FRAMING);
+      if (_shiftActive) refreshConnectionsIfActive();
+    }
+    _renderPinned(prev);
   };
   /** Prefer opening the Reddit thread in a new tab when we have a permalink. */
   function openRedditThreadOrDetail(d) {
@@ -2710,48 +2745,64 @@ async function boot() {
     }
     showDetailCard(d);
   }
+  // Public-stable name (search-find.js, App.showSnippetCard, etc. call this).
+  // Renders into the new pinned-view inside the nav.
   function showDetailCard(d) {
+    // Push the previous pin onto the back-stack so ← can return to it.
+    // Skip the push when re-pinning the same idx (would just clutter the
+    // stack with duplicates) or when there is no prior pin.
+    const sameIdx =
+      _currentDetailPin != null && d != null
+      && _currentDetailPin.idx != null && d.idx != null
+      && _currentDetailPin.idx === d.idx;
+    if (_currentDetailPin && d && !sameIdx) {
+      _pinnedBackStack.push(_currentDetailPin);
+      if (_pinnedBackStack.length > PV_BACKSTACK_MAX) _pinnedBackStack.shift();
+    }
+    _renderPinned(d);
+  }
+  function _renderPinned(d) {
+    if (!pinnedView) return;
     if (ic) ic.classList.add('hidden');
     focusCard.classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
     if (d._metaOverride != null) {
-      dcMeta.innerHTML = `<span class="dc-meta-text">${escapeHtml(d._metaOverride)}</span>`;
+      pvMeta.innerHTML = `<span class="pv-meta-text">${escapeHtml(d._metaOverride)}</span>`;
     } else {
       const left = `r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}`;
-      dcMeta.innerHTML = `<span class="dc-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
+      pvMeta.innerHTML = `<span class="pv-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
     }
-    dcTitle.textContent = (d.title || '').trim();
-    dcBody.textContent = (d.body || '').slice(0, 1600);
-    if (d.permalink) { dcLink.href = d.permalink; dcLink.style.display = ''; }
-    else dcLink.style.display = 'none';
+    pvPostTitle.textContent = (d.title || '').trim();
+    pvPostBody.textContent = (d.body || '').slice(0, 1600);
+    if (d.permalink) { pvPostLink.href = d.permalink; pvPostLink.style.display = ''; }
+    else pvPostLink.style.display = 'none';
     _currentDetailPin = d;
+    _syncPvBackBtn();
     if (typeof updateDetailBookmarkBtn === 'function') updateDetailBookmarkBtn();
-    dc.classList.remove('hidden');
-    renderDetailContext(d).catch(() => {});
-    scrollCardIntoView(dc);
+    pinnedView.classList.remove('hidden');
+    renderDetailContext(d, pvThreadEl).catch(() => {});
+    scrollCardIntoView(pinnedView);
   }
 
   function clearDetailContextEmphasis() {
-    const ctxEl = document.getElementById('dc-context');
-    ctxEl?.classList.remove('connections-focus');
+    pvThreadEl?.classList.remove('connections-focus');
   }
 
   function emphasizeDetailContextForConnections() {
-    const ctxEl = document.getElementById('dc-context');
-    if (!ctxEl || ctxEl.classList.contains('hidden')) return false;
-    ctxEl.classList.add('connections-focus');
-    try { ctxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
+    if (!pvThreadEl || pvThreadEl.classList.contains('hidden')) return false;
+    pvThreadEl.classList.add('connections-focus');
+    try { pvThreadEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
     return true;
   }
 
-  // Fisheye: pinned post in the center, thread siblings arrayed around it.
-  // Built lazily from the existing siblingsForThread helper, so the same
-  // post-id grouping that drives Shift-relations powers the per-card view.
+  // Thread context list in the pinned view. Same data the old #dc-context
+  // rendered; rendered into the passed target element so the renderer is
+  // not hardcoded to a single id.
   let _detailContextToken = 0;
-  async function renderDetailContext(d) {
-    const ctxEl = document.getElementById('dc-context');
+  async function renderDetailContext(d, targetEl) {
+    const ctxEl = targetEl || pvThreadEl;
     if (!ctxEl) return;
     const token = ++_detailContextToken;
     ctxEl.classList.add('hidden');
@@ -2760,14 +2811,14 @@ async function boot() {
     const postId = m ? m[1] : null;
     if (!postId || d?.idx == null) return;
     ctxEl.classList.remove('hidden');
-    ctxEl.innerHTML = `<div class="dc-ctx-head">Thread context</div><div class="dc-ctx-loading">Loading thread…</div>`;
+    ctxEl.innerHTML = `<h4 class="pv-thread-h">Thread context</h4><div class="pv-thread-loading">Loading thread…</div>`;
     let siblings;
     try { siblings = await siblingsForThread(postId); }
     catch { siblings = []; }
     if (token !== _detailContextToken) return;
     const others = siblings.filter(s => s !== d.idx);
     if (others.length === 0) {
-      ctxEl.innerHTML = `<div class="dc-ctx-head">Thread context</div><div class="dc-ctx-empty">No other points share this thread.</div>`;
+      ctxEl.innerHTML = `<h4 class="pv-thread-h">Thread context</h4><div class="pv-thread-empty">No other points share this thread.</div>`;
       if (_shiftActive) emphasizeDetailContextForConnections();
       return;
     }
@@ -2778,101 +2829,65 @@ async function boot() {
     );
     if (token !== _detailContextToken) return;
 
-    const W = 320, H = 220;
-    const cx = W / 2, cy = H / 2;
-    const innerR = 22;
-    const ringR = Math.min(W, H) * 0.42;
-    const centerColor = sphereColor(d.cluster);
-
-    const positions = shown.map((idx, i) => {
-      const angle = (i / shown.length) * Math.PI * 2 - Math.PI / 2;
-      return {
-        idx,
-        det: detailsList[i],
-        x: cx + Math.cos(angle) * ringR,
-        y: cy + Math.sin(angle) * ringR,
-      };
-    });
-
-    const lines = positions.map(p => {
-      const col = p.det != null ? sphereColor(p.det.cluster) : '#666';
-      return `<line class="dc-fish-line" x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${col}" stroke-opacity="0.5" stroke-width="1.5"/>`;
-    }).join('');
-
-    const sats = positions.map(p => {
-      const col = p.det != null ? sphereColor(p.det.cluster) : '#666';
-      return `<circle class="dc-fish-sat" data-idx="${p.idx}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${col}" stroke="rgba(0,0,0,0.55)" stroke-width="1"/>`;
-    }).join('');
-
-    const center =
-      `<circle class="dc-fish-center" cx="${cx}" cy="${cy}" r="${innerR}" fill="${centerColor}" stroke="#fff" stroke-width="2.5"/>` +
-      `<text class="dc-fish-center-label" x="${cx}" y="${cy + 4}" text-anchor="middle">PINNED</text>`;
-
-    const moreNote = others.length > shown.length
-      ? `<div class="dc-ctx-more">+${others.length - shown.length} more in this thread</div>`
-      : '';
-
-    const list = positions.map(p => {
-      const det = p.det;
+    const rowHtml = shown.map((idx, i) => {
+      const det = detailsList[i];
       const col = det != null ? sphereColor(det.cluster) : '#666';
       const titleText = ((det?.title || det?.body || '').replace(/\s+/g, ' ').trim()) || '(no text)';
       const meta = det
         ? `r/${escapeHtml(det.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(det.type))}`
         : 'unknown';
       return `
-        <button class="dc-ctx-row" data-idx="${p.idx}" type="button">
-          <span class="dc-ctx-dot" style="background:${col}"></span>
-          <span class="dc-ctx-meta">${meta}</span>
-          <span class="dc-ctx-title">${escapeHtml(titleText.slice(0, 120))}</span>
-        </button>
+        <li>
+          <button class="pv-thread-row" data-idx="${idx}" type="button">
+            <span class="pv-thread-dot" style="background:${col}"></span>
+            <span class="pv-thread-meta">${meta}</span>
+            <span class="pv-thread-title">${escapeHtml(titleText.slice(0, 120))}</span>
+          </button>
+        </li>
       `;
     }).join('');
 
-    ctxEl.innerHTML = `
-      <div class="dc-ctx-head">Thread context · ${others.length} ${others.length === 1 ? 'point' : 'points'}</div>
-      <svg class="dc-fisheye" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-        ${lines}${center}${sats}
-      </svg>
-      <div class="dc-ctx-list">${list}</div>
-      ${moreNote}
-    `;
+    const moreNote = others.length > shown.length
+      ? `<div class="pv-thread-more">+${others.length - shown.length} more in this thread</div>`
+      : '';
+
+    const headLabel = `Thread context · ${others.length} ${others.length === 1 ? 'point' : 'points'}`;
+    if (shown.length > 3) {
+      // Collapsible when there are many siblings — keeps the nav from
+      // getting overwhelmed by long threads.
+      ctxEl.innerHTML = `
+        <details open>
+          <summary>${headLabel}</summary>
+          <ol class="pv-thread-list">${rowHtml}</ol>
+          ${moreNote}
+        </details>
+      `;
+    } else {
+      ctxEl.innerHTML = `
+        <h4 class="pv-thread-h">${headLabel}</h4>
+        <ol class="pv-thread-list">${rowHtml}</ol>
+        ${moreNote}
+      `;
+    }
     if (_shiftActive) emphasizeDetailContextForConnections();
 
     const refocus = (idx) => {
       if (idx == null || isNaN(idx)) return;
       pinPointByIndex(idx);
     };
-    ctxEl.querySelectorAll('.dc-ctx-row').forEach(el => {
+    ctxEl.querySelectorAll('.pv-thread-row').forEach(el => {
       el.addEventListener('click', (ev) => {
         ev.stopPropagation();
         refocus(+el.dataset.idx);
-      });
-      el.addEventListener('mouseenter', () => {
-        const idx = +el.dataset.idx;
-        ctxEl.querySelectorAll('.dc-fish-sat').forEach(s => {
-          s.classList.toggle('active', +s.dataset.idx === idx);
-        });
-      });
-      el.addEventListener('mouseleave', () => {
-        ctxEl.querySelectorAll('.dc-fish-sat.active').forEach(s => s.classList.remove('active'));
-      });
-    });
-    ctxEl.querySelectorAll('.dc-fish-sat').forEach(el => {
-      el.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        refocus(+el.dataset.idx);
-      });
-      el.addEventListener('mouseenter', () => {
-        const idx = +el.dataset.idx;
-        ctxEl.querySelectorAll('.dc-ctx-row').forEach(row => {
-          row.classList.toggle('active', +row.dataset.idx === idx);
-        });
-      });
-      el.addEventListener('mouseleave', () => {
-        ctxEl.querySelectorAll('.dc-ctx-row.active').forEach(row => row.classList.remove('active'));
       });
     });
   }
+  _syncPvBackBtn();
+
+  // Public API: stable signatures kept for tour beats + search-find +
+  // App.showSnippetCard. emphasizeDetailContextForConnections still works
+  // and now points at the pv-thread element.
+  window.App.showDetailCard = showDetailCard;
 
   // ─── Bookmarks: save pinned points for later browsing ─────────
   const _bmAPI = initBookmarks({ App, storage, sphereColor, pinPointByIndex,

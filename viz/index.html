@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="./css/help.css">
 <link rel="stylesheet" href="./css/inspector.css">
 <link rel="stylesheet" href="./css/cards-overrides.css">
+<link rel="stylesheet" href="./css/pinned.css">
 <link rel="stylesheet" href="./css/search.css">
 <style>
   :root {
@@ -115,17 +116,25 @@
         <div id="focus-stances"></div>
         <div id="focus-voices"></div>
       </div>
-      <div id="detail-card" class="detail-card hidden">
-        <button class="dc-close" id="dc-close" aria-label="Close">×</button>
-        <button class="dc-bookmark" id="dc-bookmark" type="button"
-                aria-label="Bookmark this point"
-                aria-pressed="false"
-                title="Bookmark this point (saved locally)">☆</button>
-        <div class="dc-meta" id="dc-meta"></div>
-        <h3 class="dc-title" id="dc-title"></h3>
-        <div class="dc-body" id="dc-body"></div>
-        <div id="dc-context" class="dc-context hidden"></div>
-        <a class="dc-link" id="dc-link" href="#" target="_blank" rel="noopener">Open on Reddit ↗</a>
+      <div id="pinned-view" class="pinned-view hidden" role="region" aria-label="Pinned post">
+        <header class="pv-head">
+          <button class="pv-back" id="pv-back" type="button" aria-label="Back to previous pin" title="Back" disabled>←</button>
+          <div class="pv-meta" id="pv-meta"></div>
+          <button class="pv-bookmark" id="pv-bookmark" type="button"
+                  aria-label="Bookmark this point"
+                  aria-pressed="false"
+                  title="Bookmark this point (saved locally)">☆</button>
+          <button class="pv-close" id="pv-close" type="button" aria-label="Close pinned view" title="Close">×</button>
+        </header>
+        <article class="pv-post">
+          <h3 class="pv-post-title" id="pv-post-title"></h3>
+          <div class="pv-post-body" id="pv-post-body"></div>
+          <a class="pv-post-link" id="pv-post-link" href="#" target="_blank" rel="noopener">View on Reddit ↗</a>
+        </article>
+        <section id="pv-thread" class="pv-thread hidden">
+          <h4 class="pv-thread-h">Thread context</h4>
+          <ol id="pv-thread-list" class="pv-thread-list"></ol>
+        </section>
       </div>
       <div id="interview-card" class="interview-card hidden"></div>
       <div id="voices-list-inline" class="voices-list-inline hidden"></div>
@@ -136,7 +145,7 @@
           <button class="bm-clear" id="bm-clear" type="button" title="Remove all saved points">Clear all</button>
         </div>
         <div class="bm-empty" id="bm-empty">
-          No saved points yet. Pin a node and tap the ☆ on the detail card to save it for later.
+          No saved points yet. Pin a node and tap the ☆ in the pinned panel to save it for later.
         </div>
         <div class="bm-list" id="bm-list"></div>
       </div>
@@ -349,7 +358,7 @@
             <div><dt><kbd>C</kbd> (toggle)</dt><dd>Show connections. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press <kbd>C</kbd> again or click the connections chip to dismiss.</dd></div>
             <div><dt><kbd>Esc</kbd></dt><dd>Clears random cards, connections, pinned node, then bookmarks, search / topic filters / paint, and zoom—one layer at a time. <strong>Reset</strong> clears everything in one click.</dd></div>
             <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
-            <div><dt><span class="help-icon">★</span> Bookmark</dt><dd>Pin a node, then tap the <strong>☆</strong> on its detail card to save it for later. The <strong>★ saved</strong> chip on the right opens your saved list (stored locally in this browser); click any row to jump back.</dd></div>
+            <div><dt><span class="help-icon">★</span> Bookmark</dt><dd>Pin a node, then tap the <strong>☆</strong> in the pinned panel (left side) to save it for later. The <strong>★ saved</strong> chip on the right opens your saved list (stored locally in this browser); click any row to jump back.</dd></div>
           </dl>
         </section>
       </div>
@@ -390,6 +399,6 @@
     }
   })();
 </script>
-<script type="module" src="./js/main.js?v=324"></script>
+<script type="module" src="./js/main.js?v=325"></script>
 </body>
 </html>
