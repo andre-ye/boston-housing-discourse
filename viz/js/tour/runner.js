@@ -83,10 +83,23 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     applyBodyClasses(beat);
     applyStepChrome(beat);
 
+    // Step counter ("Step N of M") indexes against the step beats only —
+    // not against hero/opener/outro — so the user sees "Step 1 of 8"
+    // when they hit the first interaction beat, not "Step 5 of 13".
+    let stepIdx = -1;
+    let stepTotal = 0;
+    for (let i = 0; i < BEATS.length; i++) {
+      if (BEATS[i].kind !== 'step') continue;
+      if (i === _idx) stepIdx = stepTotal;
+      stepTotal++;
+    }
+
     // Ask the UI layer to draw the appropriate card/hero/outro.
     ui.renderCardForBeat(beat, {
       idx: _idx,
       total: BEATS.length,
+      stepIdx,
+      stepTotal,
       hasPrev: _idx > 0,
       isLastBeforeOutro: _idx === BEATS.length - 2,
     });

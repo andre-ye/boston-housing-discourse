@@ -40,7 +40,17 @@ export const beat = {
     const focusRaf = requestAnimationFrame(() => {
       try {
         const input = document.getElementById('search-input');
-        input?.focus();
+        if (!input) return;
+        // Don't steal focus mid-keystroke if the user is already typing in
+        // (or has clicked into) some other input — only auto-focus when the
+        // currently-focused element is the document body or null.
+        const ae = document.activeElement;
+        const aeTag = ae?.tagName;
+        const aeEditable =
+          aeTag === 'INPUT' || aeTag === 'TEXTAREA' || aeTag === 'SELECT' ||
+          ae?.isContentEditable === true;
+        if (aeEditable && ae !== input) return;
+        input.focus();
       } catch {}
     });
 

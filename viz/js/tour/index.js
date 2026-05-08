@@ -85,13 +85,15 @@ export function createTour({ globe, App, nav }) {
       // Step counter: shows "Step N of M" so the user knows how far along
       // the sequence they are. Skipped on hero / outro (handled by their
       // own renderers) and on the opener pages (which carry their own
-      // "1 / 3" count in the eyebrow). Beats can override with stepLabel.
-      const showCounter =
-        beat.kind !== 'hero' && beat.kind !== 'outro' && beat.kind !== 'opener';
+      // "1 / 3" count in the eyebrow). The runner gives us `stepIdx` /
+      // `stepTotal` indexed against step beats only, so an opener page
+      // doesn't bump the count. Beats can override with stepLabel.
+      const showCounter = beat.kind === 'step';
       if (beat.stepLabel) {
         stepEl.textContent = beat.stepLabel;
-      } else if (showCounter && Number.isInteger(meta?.idx) && Number.isInteger(meta?.total)) {
-        stepEl.textContent = `Step ${meta.idx + 1} of ${meta.total}`;
+      } else if (showCounter && Number.isInteger(meta?.stepIdx) && meta.stepIdx >= 0
+                  && Number.isInteger(meta?.stepTotal) && meta.stepTotal > 0) {
+        stepEl.textContent = `Step ${meta.stepIdx + 1} of ${meta.stepTotal}`;
       } else {
         stepEl.textContent = '';
       }

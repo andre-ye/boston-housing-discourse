@@ -79,11 +79,20 @@ export const beat = {
     };
 
     const chip = document.getElementById('random-hint');
-    const onChipClick = () => {
+    // Once the curated five have sprouted, a second chip click would
+    // resample (with the curated indices still installed, the same five
+    // would respawn) and visually thrash the screen. Latch off after the
+    // first fire — registered in the capture phase with stopImmediate-
+    // Propagation so the global #random-hint click handler in main.js
+    // (which always calls sampleFiveRandom) doesn't fire either while
+    // the latch is held.
+    const onChipClick = (e) => {
+      try { e.stopImmediatePropagation?.(); e.preventDefault?.(); } catch {}
+      if (fired) return;
       try { App?.sampleFiveRandom?.(); } catch {}
       trigger();
     };
-    chip?.addEventListener('click', onChipClick);
+    chip?.addEventListener('click', onChipClick, true);
 
     const unbindKey = keys.bind({
       keys: ['r'],
