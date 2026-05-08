@@ -1,0 +1,466 @@
+  #nav {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: var(--nav-w);
+    max-width: 34%;
+    z-index: 5;
+    padding: 0;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg,
+      rgba(10,12,19,0.98) 0%,
+      rgba(8,10,16,0.98) 100%);
+    border-right: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 6px 0 24px rgba(0,0,0,0.35);
+    transition: width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+                max-width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  /* Header block keeps its own inner padding so only it has margins —
+     the bar columns below reach the panel edges. */
+  #nav > #nav-header { padding: 14px 14px 6px; flex: 0 0 auto; }
+  #nav > #nav-bars {
+    padding: 0;
+    margin: 0;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  /* Right-side detail panel — shows what the current focus (cluster /
+     subtopic / point of view) is about and lists the linked posts + comments. */
+  #detail {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: var(--detail-w);
+    max-width: 34%;
+    z-index: 5;
+    padding: 18px 18px 18px 16px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg,
+      rgba(10,12,19,0.98) 0%,
+      rgba(8,10,16,0.98) 100%);
+    border-left: 1px solid rgba(255,255,255,0.06);
+    box-shadow: -6px 0 24px rgba(0,0,0,0.35);
+  }
+  #detail-header {
+    flex: 0 0 auto;
+    margin-bottom: 10px;
+  }
+  #detail-kind {
+    font: 700 10px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin-bottom: 4px;
+  }
+  #detail-title {
+    font: 700 16px/1.25 'Inter', system-ui, sans-serif;
+    color: var(--fg);
+    margin: 0 0 6px;
+    word-wrap: break-word;
+  }
+  #detail-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--fg);
+    margin-bottom: 6px;
+  }
+  #detail-meta {
+    font-size: 11px;
+    color: var(--fg-mute);
+  }
+  #detail-list-label {
+    flex: 0 0 auto;
+    font: 700 10px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--fg);
+    margin: 12px 0 6px;
+  }
+  #detail-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .dl-row {
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  .dl-row:hover {
+    background: rgba(255,255,255,0.05);
+    transform: translateX(2px);
+  }
+  .dl-row .dl-meta {
+    font-size: 10px;
+    color: var(--fg-mute);
+    margin-bottom: 3px;
+    letter-spacing: 0.2px;
+  }
+  .dl-row .dl-title {
+    font: 600 12px 'Inter', system-ui, sans-serif;
+    color: var(--fg);
+    line-height: 1.3;
+    margin-bottom: 4px;
+    word-wrap: break-word;
+  }
+  .dl-row .dl-body {
+    font-size: 11px;
+    color: var(--fg-dim);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .dl-row.expanded .dl-body {
+    -webkit-line-clamp: none;
+    display: block;
+  }
+  .dl-row.expanded {
+    background: rgba(255,255,255,0.06);
+  }
+  #detail.empty #detail-list,
+  #detail.empty #detail-list-label {
+    display: none;
+  }
+  #detail-empty {
+    color: var(--fg-mute);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 10px;
+    padding: 12px 10px;
+    border: 1px dashed rgba(255,255,255,0.06);
+    border-radius: 6px;
+  }
+  #detail:not(.empty) #detail-empty { display: none; }
+  /* When the cursor enters a collapsed L1/L2 strip, expand the whole sidebar
+     so the hover-expanded column has room to render its labels without
+     squeezing the active (current-level) column. */
+  /* Keep the sidebar its own width — don't blow past the user's chosen
+     nav width just because a narrow strip is hovered. The strip expands
+     in place instead (see .bar-column.narrow.open below). */
+  #nav.nav-narrow-open {
+    width: var(--nav-w) !important;
+    max-width: 34% !important;
+  }
+  #nav-header { margin-bottom: 8px; flex-shrink: 0; }
+  #nav-bars { flex: 1 1 0; min-height: 140px; }
+  @media (max-height: 760px) {
+    #nav-bars { min-height: 110px; }
+    .insp-section--body { max-height: 38vh; }
+  }
+  .insp-section--hover { flex: 0 0 auto; }
+  #nav-header {
+    margin-bottom: 14px;
+  }
+  #nav-header h1 {
+    margin: 0 0 6px 0;
+    font-size: 16px; font-weight: 600; letter-spacing: 0.2px;
+  }
+  #nav-header .sub {
+    font-size: 12px; color: var(--fg);
+    line-height: 1.42;
+    margin-bottom: 6px;
+  }
+  #nav-header .sub-stats {
+    font-size: 11px; color: var(--fg-mute);
+    letter-spacing: 0.2px;
+  }
+  /* "You are exploring …" header that sits above the bar columns. The
+     focused topic and subtopic names appear here horizontally so the
+     user doesn't have to read the sideways title in the narrow column.
+     Hidden until the user has actually drilled into something. */
+  #breadcrumbs {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+    margin: 10px 0 6px;
+    font-size: 12px; color: var(--fg-dim);
+    line-height: 1.3;
+    max-height: 200px;
+    transition: opacity 0.18s ease, max-height 0.22s ease, margin 0.22s ease;
+  }
+  #breadcrumbs.is-empty {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #breadcrumbs .crumb-label {
+    font: 600 9.5px 'Source Sans Pro', sans-serif;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(244,237,225,0.45);
+    margin-right: 2px;
+  }
+  #breadcrumbs .crumb {
+    cursor: pointer;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.025);
+    transition: all 0.15s;
+    font-weight: 500;
+    /* Border-left accent matches the cluster color via inline style. */
+    border-left-width: 3px;
+  }
+  #breadcrumbs .crumb:hover { color: var(--fg); border-color: #2c3850; background: rgba(255,255,255,0.05); }
+  #breadcrumbs .crumb.active {
+    color: var(--fg);
+    background: rgba(40,52,76,0.55);
+    border-color: #2c3850;
+    font-weight: 600;
+  }
+  #breadcrumbs .crumb.crumb-root {
+    border-left-width: 1px;
+    font-weight: 400;
+    color: rgba(244,237,225,0.55);
+  }
+  #breadcrumbs .sep { opacity: 0.5; font-size: 13px; }
+
+  #nav-bars {
+    position: relative;
+    display: flex;
+    gap: 0;                     /* bars butt up against each other */
+    min-height: 0;
+    padding: 0;
+  }
+  .bar-column {
+    position: relative;
+    display: flex; flex-direction: column;
+    min-width: 0;
+    flex: 1 1 0;
+    transition:
+      min-width 0.38s cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 0.28s ease;
+  }
+  .bar-column.collapsed {
+    flex: 0 0 0px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Narrow = shown but un-focused: a skinny colored strip, no labels.
+     Hover adds .open (handled by nav.js) to re-expand the column, and
+     #nav.nav-narrow-open widens the whole sidebar so the active column
+     isn't squeezed. */
+  .bar-column.narrow {
+    flex: 0 0 22px;
+    min-width: 22px;
+    cursor: pointer;
+  }
+  /* In narrow mode keep the title VISIBLE but rotate it to fit the 22px
+     strip — this gives a subtle "what's this sliver?" affordance and
+     suggests hover-to-expand. */
+  .bar-column.narrow .bar-col-title {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center center;
+    width: max-content;
+    max-width: 70vh;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #fff;
+    opacity: 1;
+    pointer-events: none;
+    z-index: 2;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .bar-column.narrow .bar-seg {
+    padding: 0 1px 0 3px;
+    border-left-width: 2px;
+  }
+  /* Narrow columns are NEVER scrollable — neither collapsed nor hover-
+     expanded. Scroll belongs exclusively to the active (wide) column. */
+  .bar-column.narrow .bar-stack,
+  .bar-column.narrow.open .bar-stack {
+    overflow-y: hidden !important;
+    overscroll-behavior: contain;
+  }
+  .bar-column.narrow .bar-seg .label,
+  .bar-column.narrow .bar-seg .pct {
+    opacity: 0;
+    transition: opacity 0.12s;
+    pointer-events: none;
+  }
+  .bar-column.narrow .bar-seg .bg { opacity: 1; }
+  /* Narrow strip no longer re-expands on hover — keep it a consistent
+     sliver so the sidebar layout stays stable. User sees full names via
+     native tooltip or by clicking back up one level. */
+  .bar-column.narrow.open {
+    flex: 0 0 22px;
+    min-width: 22px;
+  }
+  .bar-column.narrow.open .bar-col-title {
+    /* Restore the horizontal title layout when expanded. Overrides the
+       rotated narrow-mode positioning above. */
+    position: static;
+    transform: none;
+    font-size: 10.5px;
+    letter-spacing: 0.4px;
+    opacity: 1;
+    color: var(--fg-mute);
+  }
+  .bar-column.narrow.open .bar-seg { padding: 3px 8px 3px 10px; }
+  .bar-column.narrow.open .bar-seg .label,
+  .bar-column.narrow.open .bar-seg .pct {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .bar-col-title {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--fg);
+    margin-bottom: 8px; white-space: nowrap;
+  }
+  .bar-stack {
+    flex: 1;
+    position: relative;
+    border-radius: 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Transparent so any space inside the stack that isn't covered by a
+       bar-seg blends with the surrounding nav gradient instead of
+       reading as a separate dark "black bar" rectangle. */
+    background: transparent;
+    min-height: 0;
+  }
+  /* Scroll-mode: segments live in an absolutely-positioned layer. The ::before
+     spacer gives the stack enough vertical room to scroll through them all. */
+  .bar-stack::before {
+    content: '';
+    display: block;
+    height: var(--content-h, 100%);
+    width: 1px;
+    pointer-events: none;
+  }
+  #ribbons-overlay {
+    position: absolute;
+    pointer-events: none;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 5;
+  }
+  .bar-seg {
+    position: absolute; left: 0; right: 0;
+    padding: 0 8px;
+    display: flex; align-items: center;
+    cursor: pointer;
+    overflow: hidden;
+    transition:
+      top 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+      height 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+      transform 0.2s ease,
+      filter 0.2s ease,
+      opacity 0.26s ease;
+    border-left: 3px solid transparent;
+    will-change: top, height, opacity;
+  }
+  .bar-seg.leaving { pointer-events: none; }
+  .bar-seg:hover {
+    filter: brightness(1.15);
+    transform: translateX(2px);
+  }
+  .bar-seg:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.85);
+    outline-offset: -2px;
+    filter: brightness(1.15) saturate(1.1);
+    z-index: 4;
+  }
+  .bar-seg.link-hover {
+    outline: 1px solid rgba(255,255,255,0.5);
+    outline-offset: -1px;
+    filter: brightness(1.2) saturate(1.15);
+    z-index: 3;
+  }
+  .bar-seg.active {
+    border-left-color: rgba(255,255,255,0.85);
+  }
+  .bar-seg.faded {
+    opacity: 0.35;
+  }
+  .bar-seg .bg {
+    position: absolute; inset: 0;
+    opacity: 1;
+  }
+  .bar-seg .label {
+    position: relative; z-index: 2;
+    font-size: 11.5px;
+    color: #0a0d14;
+    font-weight: 700;
+    flex: 1;
+    min-width: 0;
+    line-height: 1.22;
+    letter-spacing: -0.05px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow-wrap: anywhere;
+    /* Subtle light backing so the label stays readable against ANY hue in
+       the saturated palette — even the deeper blues/purples. */
+    text-shadow: 0 0 2px rgba(255,255,255,0.25);
+  }
+  .bar-seg .label.two-line {
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+  /* L3 (points of view) labels are sentence-form and want more room. Allow up
+     to 6 lines and don't truncate with an ellipsis on that column. */
+  #col-l3 .bar-seg .label {
+    -webkit-line-clamp: 6 !important;
+    white-space: normal !important;
+  }
+  #col-l3 .bar-seg { padding: 6px 8px 6px 10px; }
+  .bar-seg { padding: 3px 8px 3px 10px; align-items: center; }
+  .bar-seg .pct {
+    position: relative; z-index: 2;
+    font-size: 10px;
+    color: rgba(20,24,35,0.72);
+    font-variant-numeric: tabular-nums;
+    margin-left: 5px;
+    font-weight: 600;
+    opacity: 1;
+    transition: opacity 0.18s;
+  }
+  .bar-seg:hover .pct,
+  .bar-seg.active .pct { opacity: 1; color: rgba(20,24,35,0.95); }
+  .bar-seg.faded { opacity: 0.28; }
+  /* Trend glyph on bar segments — especially useful on L3 so surging
+     points of view surface at the navigation level, before any card is open. */
+  .bar-seg .bar-trend {
+    position: absolute; right: 4px; top: 3px;
+    z-index: 2;
+    font-size: 8.5px;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 3px;
+    pointer-events: none;
+  }
+  .bar-seg .bar-trend-up {
+    color: rgba(255,198,125,0.98);
+    text-shadow: 0 0 4px rgba(255,160,95,0.7);
+    background: rgba(40,24,12,0.25);
+  }
+  .bar-seg .bar-trend-down {
+    color: rgba(160,175,200,0.9);
+    background: rgba(18,22,32,0.2);
+  }
+  .ribbons {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .ribbons svg { width: 100%; height: 100%; }
+

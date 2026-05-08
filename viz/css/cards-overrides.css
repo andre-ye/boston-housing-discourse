@@ -1,0 +1,180 @@
+  /* ─── Neutralize the old absolute-positioned cards ─────────── */
+  /* They now live inside #insp-body and stack naturally. */
+  #focus-card,
+  #detail-card,
+  #interview-card {
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    right: auto !important; top: auto !important; bottom: auto !important; left: auto !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    animation: none !important;
+  }
+  /* Exception: interview-card + detail-card + focus-card are moved to
+     document.body at boot (because #insp-body is display:none in the
+     minimal layout). When they live at body-level, restore the original
+     floating-card styling so clicks actually show content. */
+  body > #interview-card,
+  body > #detail-card,
+  body > #focus-card {
+    position: absolute !important;
+    right: 22px !important; top: 22px !important; left: auto !important; bottom: auto !important;
+    width: 400px !important;
+    max-height: calc(100vh - 44px) !important;
+    overflow-y: auto !important;
+    padding: 18px 20px 20px !important;
+    background: linear-gradient(165deg, rgba(18,22,33,0.98) 0%, rgba(12,15,23,0.98) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    border-radius: 14px !important;
+    backdrop-filter: blur(14px) !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important;
+    animation: ic-fadein 0.24s ease !important;
+    z-index: 13;
+  }
+  body > #interview-card.hidden,
+  body > #detail-card.hidden,
+  body > #focus-card.hidden { display: none !important; }
+  /* Bookmarks card is also moved to body at boot. It lives at bottom-right
+     so it can coexist with whatever floating card (focus / detail / interview)
+     occupies the top-right slot. */
+  body > #bookmarks-card {
+    position: absolute !important;
+    right: 22px !important; bottom: 22px !important; left: auto !important; top: auto !important;
+    width: 340px !important;
+    max-height: 48vh !important;
+    overflow-y: auto !important;
+    padding: 14px 16px 16px !important;
+    background: rgba(14,17,26,0.96) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45) !important;
+    margin: 0 !important;
+    z-index: 13;
+  }
+  body > #bookmarks-card.hidden { display: none !important; }
+  #focus-card.fc-slot {
+    padding-bottom: 10px !important;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+  }
+  #focus-card.hidden { display: none; }
+  #focus-card .kind { letter-spacing: 0.5px; font-size: 10px; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 3px; }
+  #focus-card .title { font: 600 14px 'Inter', system-ui, sans-serif; margin-bottom: 3px; }
+  #focus-card .meta { font-size: 11px; color: var(--fg-dim); }
+
+  /* Close "x" inside inspector cards → small square top-right */
+  .dc-close, .ic-close {
+    position: absolute !important;
+    right: 6px !important; top: 4px !important;
+  }
+
+  /* Detail-card (Reddit post) inside inspector */
+  #detail-card { max-height: none !important; overflow: visible !important; }
+  #detail-card.hidden { display: none; }
+  #detail-card .dc-meta { font-size: 10px; letter-spacing: 0.4px; color: var(--fg-mute); margin-bottom: 4px; }
+  #detail-card .dc-meta .dc-meta-text { text-transform: uppercase; }
+  #detail-card .dc-title { font: 600 14px/1.3 'Inter', system-ui, sans-serif; margin: 0 0 8px; color: var(--fg); }
+  #detail-card .dc-body { font-size: 12px; line-height: 1.5; color: var(--fg-dim); white-space: pre-wrap; margin-bottom: 10px; }
+  #detail-card .dc-link { font-size: 11px; color: var(--accent); border-bottom: 1px dashed currentColor; }
+
+  /* Interview card (compact) inside inspector */
+  #interview-card { max-height: none !important; overflow: visible !important; }
+  #interview-card.hidden { display: none; }
+  #interview-card .ic-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  #interview-card .ic-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font: 700 11.5px 'Inter', system-ui, sans-serif;
+    color: #0a0c12;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.18);
+    flex-shrink: 0;
+  }
+  #interview-card .ic-eyebrow { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 2px; }
+  #interview-card .ic-role { font: 600 13px 'Inter', system-ui, sans-serif; color: var(--fg); line-height: 1.3; }
+  #interview-card .ic-quote {
+    margin: 0 0 12px;
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--accent);
+    font: italic 400 12.5px/1.45 'Source Serif Pro', Georgia, serif;
+    color: var(--fg);
+  }
+  #interview-card .ic-fields {
+    margin: 0 0 10px; padding: 0;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  #interview-card .ic-field { display: grid; grid-template-columns: 72px 1fr; column-gap: 8px; }
+  #interview-card .ic-field dt { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-mute); }
+  #interview-card .ic-field dd { margin: 0; font-size: 11.5px; color: var(--fg); line-height: 1.4; }
+  #interview-card .ic-notes {
+    font-size: 11.5px; line-height: 1.45; color: var(--fg-dim);
+    padding: 8px 10px; background: rgba(255,255,255,0.03);
+    border-radius: 6px; margin-bottom: 10px;
+  }
+  #interview-card .ic-reddit-row { padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
+  #interview-card .ic-reddit-label { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 4px; }
+  #interview-card .ic-reddit-btn { background: none; border: none; color: var(--accent); font-size: 12px; padding: 2px 0; cursor: pointer; border-bottom: 1px dashed currentColor; }
+
+
+  /* Hide original HUD since toolbar replaces it; also hide ctrlpad (arrow keys suffice). */
+  #hud, #ctrlpad { display: none !important; }
+
+  /* ─── Voices list (inline, inside inspector) ───────────────── */
+  .voices-list-inline {
+    padding: 4px 2px;
+  }
+  .voices-list-inline.hidden { display: none; }
+  .voices-list-inline .vli-head {
+    font: 600 10px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    padding: 0 4px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 6px;
+    display: flex; justify-content: space-between;
+  }
+  .voice-item {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .voice-item:hover { background: rgba(255,255,255,0.05); }
+  .voice-item.selected { background: rgba(124,240,201,0.08); }
+  .voice-item .v-head { display: flex; align-items: center; gap: 4px; justify-content: end; }
+  .voice-item .v-id {
+    font: 700 9.5px 'Inter', system-ui, sans-serif;
+    color: var(--fg-mute);
+  }
+  .voice-item .v-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    box-shadow: 0 0 3px currentColor;
+  }
+  .voice-item .v-label {
+    font-size: 11.5px;
+    color: var(--fg);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  /* Hide old floating voices panel if anything references it */
+  .voices-panel { display: none !important; }
+
+  /* Hide floating point-card since hover content now lives in inspector */
+  #point-card { display: none !important; }

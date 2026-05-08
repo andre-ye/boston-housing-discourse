@@ -1,0 +1,420 @@
+  /* Right: globe */
+  #globe-root {
+    position: relative;
+    background:
+      radial-gradient(ellipse 60% 55% at 62% 48%, rgba(124,240,201,0.04) 0%, transparent 60%),
+      var(--bg);
+    overflow: hidden;
+  }
+  #globe-root::after {
+    /* Subtle atmospheric vignette around the rendered globe. */
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse 58% 58% at 62% 50%,
+      transparent 46%,
+      rgba(124,240,201,0.035) 55%,
+      rgba(124,240,201,0.02) 60%,
+      transparent 75%);
+    mix-blend-mode: screen;
+    z-index: 0;
+  }
+  #globe-canvas {
+    position: absolute; inset: 0; display: block;
+    width: 100%; height: 100%;
+    cursor: grab;
+  }
+  #globe-canvas.grabbing { cursor: grabbing; }
+  #globe-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+  }
+  /* Timeline scrubber — filters the globe by month range. Sits along the
+     bottom of the globe area; hidden by default, toggled by the ⏱ button. */
+  #timeline-scrubber {
+    position: absolute;
+    left: 410px; right: 22px; bottom: 18px;
+    background: rgba(10,13,20,0.88);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 10px 14px 12px;
+    backdrop-filter: blur(10px);
+    z-index: 6;
+    pointer-events: auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+  #timeline-scrubber.hidden { display: none; }
+  #timeline-scrubber .tl-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font: 500 11px 'Inter', system-ui, sans-serif;
+    color: var(--fg);
+    margin-bottom: 6px;
+  }
+  #timeline-scrubber .tl-label { letter-spacing: 0.2px; }
+  #timeline-scrubber .tl-label b { color: var(--accent); font-weight: 600; }
+  #timeline-scrubber .tl-actions {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  #timeline-scrubber .tl-play {
+    background: transparent; border: 1px solid rgba(255,255,255,0.15);
+    color: var(--accent);
+    border-radius: 999px;
+    font-size: 10px; letter-spacing: 0.3px;
+    padding: 2px 8px; line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  #timeline-scrubber .tl-play:hover {
+    background: rgba(124,240,201,0.1);
+    border-color: rgba(124,240,201,0.5);
+  }
+  #timeline-scrubber .tl-play.playing {
+    background: rgba(124,240,201,0.14);
+    border-color: rgba(124,240,201,0.7);
+  }
+  #timeline-scrubber .tl-clear {
+    background: transparent; border: none;
+    color: var(--fg-mute); font-size: 15px; line-height: 1;
+    cursor: pointer; padding: 0 6px;
+  }
+  #timeline-scrubber .tl-clear:hover { color: var(--fg); }
+  #timeline-scrubber .tl-svg {
+    display: block; width: 100%; height: 42px;
+    cursor: crosshair;
+    user-select: none; -webkit-user-select: none;
+  }
+  #timeline-scrubber .tl-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(10,13,20,0.96);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font: 500 10.5px 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    color: var(--fg);
+    white-space: nowrap;
+    z-index: 5;
+    transform: translateX(-50%);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  }
+  #timeline-scrubber .tl-tooltip b { color: var(--accent); font-weight: 600; }
+  #timeline-scrubber .tl-tooltip.hidden { display: none; }
+  #timeline-scrubber .tl-hint {
+    margin-top: 2px;
+    font: 500 9.5px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.5px;
+    color: var(--fg-mute);
+    text-align: center;
+    text-transform: uppercase;
+  }
+  #timeline-scrubber .tl-svg .tl-bar {
+    fill: rgba(255,255,255,0.14);
+    transition: fill 0.12s;
+  }
+  #timeline-scrubber .tl-svg .tl-bar.in-range {
+    fill: var(--accent);
+  }
+  #timeline-scrubber .tl-svg .tl-tick {
+    font: 500 8.5px 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    fill: var(--fg-mute);
+    text-anchor: middle;
+    dominant-baseline: alphabetic;
+  }
+  #tl-toggle {
+    position: absolute;
+    right: 22px; bottom: 18px;
+    width: 38px; height: 38px;
+    background: rgba(14,17,26,0.9);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    color: var(--fg-dim);
+    font-size: 17px;
+    cursor: pointer;
+    z-index: 7;
+    pointer-events: auto;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  #tl-toggle:hover, #tl-toggle.active {
+    color: var(--accent); border-color: rgba(124,240,201,0.45);
+    background: rgba(124,240,201,0.1);
+  }
+  #tl-toggle.active { display: none; }
+  /* Hide the toggle button when the scrubber is open (redundant × inside
+     the scrubber handles closing). */
+  /* Off-screen compass for the current focus target — shown only when the
+     focused lat/lon is on the far side of the globe, so rotating away
+     doesn't lose the user's anchor. Gestalt continuity. */
+  #focus-compass {
+    position: absolute;
+    pointer-events: auto;
+    width: 40px; height: 40px;
+    margin-left: -20px; margin-top: -20px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(14,17,26,0.82);
+    border: 1px solid rgba(124,240,201,0.4);
+    border-radius: 50%;
+    color: var(--accent);
+    font-size: 17px;
+    cursor: pointer;
+    z-index: 8;
+    opacity: 0;
+    transform: scale(0.75);
+    transition: opacity 0.22s, transform 0.22s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  }
+  #focus-compass.show { opacity: 1; transform: scale(1); }
+  #focus-compass .fc-arrow {
+    display: inline-block;
+    transform-origin: 50% 50%;
+    transition: transform 0.18s ease-out;
+  }
+  #focus-compass:hover {
+    background: rgba(20,28,40,0.95);
+    border-color: rgba(124,240,201,0.7);
+  }
+
+  /* Halo on the currently-hovered globe point — so the user knows exactly
+     which dot the tooltip refers to. Positioned in JS each frame. */
+  #hover-halo {
+    position: absolute;
+    pointer-events: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.35),
+      0 0 18px 4px rgba(255,255,255,0.45),
+      inset 0 0 10px 2px rgba(255,255,255,0.35);
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+    transition: opacity 0.12s;
+    z-index: 6;
+  }
+  #hover-halo.show { opacity: 1; animation: halo-pulse 1.3s ease-in-out infinite; }
+  @keyframes halo-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 16px 3px rgba(255,255,255,0.45); }
+    50%      { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 26px 8px rgba(255,255,255,0.65); }
+  }
+
+  /* Globe controls — horizontal dock so chips never stack on narrow widths. */
+  .globe-controls-dock {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 10px;
+    z-index: 14;
+    max-width: calc(100% - 24px);
+    pointer-events: none;
+  }
+  .globe-controls-dock > button {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    left: auto;
+    top: auto;
+    right: auto;
+    margin: 0;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px 7px 9px;
+    background: rgba(14,17,26,0.78);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    backdrop-filter: blur(6px);
+    user-select: none;
+    pointer-events: auto;
+    cursor: pointer;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    transition: opacity 0.18s ease, transform 0.18s ease,
+                border-color 0.15s ease, background 0.15s ease;
+  }
+  .globe-controls-dock > button > * { pointer-events: none; }
+  .globe-controls-dock > button:hover {
+    border-color: rgba(255,255,255,0.32);
+    background: rgba(20,28,42,0.95);
+    transform: translateY(-2px);
+  }
+  .globe-controls-dock > button:focus-visible {
+    outline: 2px solid rgba(124,240,201,0.65);
+    outline-offset: 2px;
+  }
+  /* `#random-hint` is an action button (no persistent on state). It
+     flashes briefly each time R / click fires so the user sees their
+     action register; class is added in main.js and removed via
+     animation end. */
+  #random-hint.flash .sh-key {
+    background: linear-gradient(180deg, #7cf0c9, #54d3a9);
+    color: #0a1812;
+    border-color: #7cf0c9;
+    transition: background 0.18s, color 0.18s, border-color 0.18s;
+  }
+  /* `#shift-hint` is a true mode toggle. It stays lit while
+     connections-mode is active so the user always knows whether
+     they're looking at thread arcs. */
+  #shift-hint.is-on {
+    border-color: rgba(124,240,201,0.55);
+    background: rgba(14,32,28,0.92);
+  }
+  #shift-hint.is-on .sh-key {
+    background: linear-gradient(180deg, #7cf0c9, #54d3a9);
+    color: #0a1812;
+    border-color: #7cf0c9;
+  }
+  body.has-timeline-open .globe-controls-dock {
+    bottom: 104px;
+  }
+  #reset-view-hint {
+    opacity: 0.52;
+    border-color: rgba(255,255,255,0.08);
+  }
+  #reset-view-hint.rv-away {
+    opacity: 1;
+    border-color: rgba(124,240,201,0.22);
+    background: rgba(14,22,24,0.88);
+  }
+  #reset-view-hint:hover,
+  #reset-view-hint:focus-visible {
+    opacity: 1;
+    border-color: rgba(124,240,201,0.45);
+    background: rgba(124,240,201,0.1);
+    outline: none;
+  }
+  #random-hint .sh-key,
+  #shift-hint .sh-key,
+  #reset-view-hint .sh-key {
+    font: 600 11px 'Inter', system-ui, sans-serif;
+    color: #fff;
+    letter-spacing: 0.5px;
+    text-transform: lowercase;
+    padding: 3px 9px;
+    min-width: 28px;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(40,48,68,0.95), rgba(20,26,40,0.95));
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 5px;
+    box-shadow:
+      inset 0 -2px 0 rgba(0,0,0,0.5),
+      0 1px 2px rgba(0,0,0,0.5);
+  }
+  #reset-view-hint .sh-key { min-width: 0; padding: 4px 10px; font-size: 10px; }
+  #reset-view-hint .rv-label {
+    font: 500 11px 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.15px;
+  }
+  #random-hint .sh-text,
+  #shift-hint .sh-text {
+    font: 500 11px 'Inter', system-ui, sans-serif;
+    color: #fff;
+    letter-spacing: 0.2px;
+  }
+
+  /* Ephemeral "sprout" captions toggled with SPACE. */
+  #sprouts {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 7;
+  }
+  #sprout-lines {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    width: 100%; height: 100%;
+  }
+  #sprout-lines line {
+    stroke-linecap: round;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  #sprout-lines line.show { opacity: 1; }
+  /* Glowing marker on each sprout's anchor point so the user sees which
+     dot on the globe each caption comes from. */
+  .sprout-anchor {
+    position: absolute;
+    pointer-events: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2.5px solid #fff;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.2s;
+    animation: sprout-anchor-pulse 1.4s ease-in-out infinite;
+  }
+  .sprout-anchor.show { opacity: 1; }
+  @keyframes sprout-anchor-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(0,0,0,0.5), 0 0 14px 3px rgba(255,255,255,0.5); transform: translate(-50%, -50%) scale(1); }
+    50%      { box-shadow: 0 0 0 2px rgba(0,0,0,0.5), 0 0 22px 6px rgba(255,255,255,0.75); transform: translate(-50%, -50%) scale(1.12); }
+  }
+  .sprout {
+    position: absolute;
+    max-width: 280px;
+    padding: 7px 26px 7px 9px;     /* right padding leaves room for the ↗ icon */
+    background: rgba(14,17,26,0.96);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fg);
+    pointer-events: auto;           /* clickable to open the Reddit permalink */
+    cursor: pointer;
+    opacity: 0;
+    transform: translate(0, 6px) scale(0.92);
+    transform-origin: 0 0;
+    transition:
+      opacity 0.22s ease,
+      transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+    text-decoration: none;
+  }
+  .sprout:hover {
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.6);
+  }
+  .sprout .sp-link {
+    position: absolute;
+    top: 6px; right: 7px;
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    color: rgba(255,255,255,0.65);
+    pointer-events: none;
+  }
+  .sprout:hover .sp-link { color: #fff; }
+  .sprout.show {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  .sprout .sp-meta {
+    font-size: 9px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin-bottom: 2px;
+  }
+  .sprout .sp-title {
+    font: 600 11.5px 'Inter', system-ui, sans-serif;
+    color: var(--fg);
+    margin-bottom: 2px;
+    word-wrap: break-word;
+  }
+  .sprout .sp-body {
+    color: var(--fg-dim);
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
