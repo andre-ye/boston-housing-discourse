@@ -111,6 +111,12 @@ export const beat = {
       }
       document.body.classList.remove('tour-pin-spotlight');
       document.body.classList.remove('tour-cam-snappy');
+      // Clear the full pinned chain — the trio click pins points into the
+      // pinned-view, so cleanup must drop the pin, hide the surface, AND
+      // empty the back-stack so the next beat doesn't see stale prior pins.
+      try { App?.clearPinnedPoint?.(); } catch {}
+      try { App?.hidePinnedView?.(); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
       document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },

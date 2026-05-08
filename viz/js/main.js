@@ -469,7 +469,7 @@ async function boot() {
       btn.onclick = () => {
         const cl = +btn.dataset.cl, gid = +btn.dataset.gid, posIdx = +btn.dataset.pos;
         nav.focus({ cl, gid });
-        setTimeout(() => focusPosition(cl, gid, posIdx), 180);
+        scheduleFocusPosition(cl, gid, posIdx, 180);
       };
     });
   }
@@ -766,7 +766,7 @@ async function boot() {
       btn.onclick = () => {
         const cl2 = +btn.dataset.cl, gid2 = +btn.dataset.gid, posIdx2 = +btn.dataset.pos;
         nav.focus({ cl: cl2, gid: gid2 });
-        setTimeout(() => focusPosition(cl2, gid2, posIdx2), 180);
+        scheduleFocusPosition(cl2, gid2, posIdx2, 180);
       };
     });
   }
@@ -1659,6 +1659,11 @@ async function boot() {
     ss?.classList.add('hidden');
     // Close pinned view if open
     hidePinnedView();
+    // Drop the pinned back-stack so ← on the pinned-view doesn't keep
+    // offering posts from the session before the reset.
+    _pinnedBackStack.length = 0;
+    _currentDetailPin = null;
+    _syncPvBackBtn();
     // Clear hash last — after all state changes
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     globe?.resetCanonicalZoom?.();
@@ -1857,6 +1862,20 @@ async function boot() {
   function rebuildPositionLabels(_cl, _gid) {
     for (const e of posLabelEls) e.el.remove();
     posLabelEls.length = 0;
+  }
+
+  // A single named timer for deferred focusPosition() calls. Several call
+  // sites used to use raw `setTimeout(() => focusPosition(...), 180)` with
+  // no cancellation hook; if the user clicked twice quickly, both fired
+  // and the second one fought the first. Funnel them all through this
+  // helper so a fresh schedule cancels the prior one.
+  let _focusPosTimer = null;
+  function scheduleFocusPosition(cl, gid, posIdx, delay) {
+    if (_focusPosTimer != null) clearTimeout(_focusPosTimer);
+    _focusPosTimer = setTimeout(() => {
+      _focusPosTimer = null;
+      focusPosition(cl, gid, posIdx);
+    }, delay);
   }
 
   let currentFocusedPosition = null;   // { cl, gid, posIdx }
@@ -2435,7 +2454,7 @@ async function boot() {
         const pos = +btn.dataset.pos;
         const clb = +btn.dataset.cl;
         nav.focus({ cl: clb, gid });
-        setTimeout(() => focusPosition(clb, gid, pos), 220);
+        scheduleFocusPosition(clb, gid, pos, 220);
       };
     });
     // Rotate the globe so the pin faces the camera, then drop the pulse.
@@ -2906,9 +2925,8 @@ async function boot() {
     return true;
   }
 
-  // Thread context list in the pinned view. Same data the old #dc-context
-  // rendered; rendered into the passed target element so the renderer is
-  // not hardcoded to a single id.
+  // Thread context list in the pinned view. Rendered into the passed target
+  // element so the renderer is not hardcoded to a single id.
   let _detailContextToken = 0;
   async function renderDetailContext(d, targetEl) {
     const ctxEl = targetEl || pvThreadEl;
@@ -3056,6 +3074,18 @@ async function boot() {
   window.App.clearPinnedPoint = () => {
     try { clearSelectedPoint({ refreshRelations: false }); } catch {}
   };
+  // Clear the pinned back-stack and the "currently pinned detail" pointer so
+  // the ← button on the pinned-view stops offering stale prior pins. Used
+  // wherever we hard-reset pinned state (App.resetAll, tour close, tour Esc
+  // cascade, beat cleanups that owned the pin lifecycle).
+  window.App.clearPinnedBackStack = () => {
+    _pinnedBackStack.length = 0;
+    _currentDetailPin = null;
+    _syncPvBackBtn();
+  };
+  // Public alias so tour beats can hide the pinned-view through the same path
+  // the close button uses, instead of poking #pinned-view.classList directly.
+  window.App.hidePinnedView = () => { hidePinnedView(); };
   window.App.clearConnectionsMode = () => {
     try {
       if (_shiftActive) shiftHideRelations();

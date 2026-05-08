@@ -81,7 +81,21 @@ export function createTour({ globe, App, nav }) {
     cardEl.classList.toggle('tour-card--opener', isOpener);
 
     if (eyebrowEl) eyebrowEl.textContent = beat.eyebrow || '';
-    if (stepEl)    stepEl.textContent    = beat.stepLabel || '';
+    if (stepEl) {
+      // Step counter: shows "Step N of M" so the user knows how far along
+      // the sequence they are. Skipped on hero / outro (handled by their
+      // own renderers) and on the opener pages (which carry their own
+      // "1 / 3" count in the eyebrow). Beats can override with stepLabel.
+      const showCounter =
+        beat.kind !== 'hero' && beat.kind !== 'outro' && beat.kind !== 'opener';
+      if (beat.stepLabel) {
+        stepEl.textContent = beat.stepLabel;
+      } else if (showCounter && Number.isInteger(meta?.idx) && Number.isInteger(meta?.total)) {
+        stepEl.textContent = `Step ${meta.idx + 1} of ${meta.total}`;
+      } else {
+        stepEl.textContent = '';
+      }
+    }
     if (titEl)     titEl.textContent     = beat.title || '';
     if (proEl) {
       if (typeof beat.bodyHtml === 'string' && beat.bodyHtml) {
@@ -190,6 +204,7 @@ export function createTour({ globe, App, nav }) {
       try { App?.clearConnectionsMode?.(); } catch {}
       try { App?.clearSprouts?.({ immediate: true }); } catch {}
       try { App?.clearPinnedPoint?.(); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
       ['pinned-view', 'interview-card', 'focus-card']
@@ -213,6 +228,7 @@ export function createTour({ globe, App, nav }) {
       try { App?.clearConnectionsMode?.(); } catch {}
       try { App?.clearSprouts?.({ immediate: true }); } catch {}
       try { App?.clearPinnedPoint?.(); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
       ['pinned-view', 'interview-card', 'focus-card']
@@ -259,6 +275,9 @@ export function createTour({ globe, App, nav }) {
       if (cards.length === 0) return false;
       cards.forEach(c => c.classList.add('hidden'));
       document.querySelectorAll('.pin.selected').forEach(el => el.classList.remove('selected'));
+      // Esc on the pinned-view zeroes out: drop the back-stack so the next
+      // pin starts from scratch instead of inheriting prior history.
+      try { App?.clearPinnedBackStack?.(); } catch {}
       e.preventDefault();
       return true;
     },

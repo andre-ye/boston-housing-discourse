@@ -24,7 +24,9 @@ export const beat = {
   prose:
     'You can click any point on the sphere to pin it, and the full thread context will ' +
     'show up in the side panel. We have spotlit one for you, which is a comment on a ' +
-    'r/boston thread titled “Protest for Rent Control.” Click it to read what was said.',
+    'r/boston thread titled “Protest for Rent Control.” Click it to read what was said. ' +
+    'Once it opens, the “Thread context” section under the post lists the surrounding ' +
+    'replies — a quick way to see how this point relates to the conversation around it.',
   hint: 'Click the glowing dot on the right.',
   showChrome: ['nav', 'cards'],
   pulse: 'tour-pulse-spotlight',
@@ -80,8 +82,12 @@ export const beat = {
       }
       document.body.classList.remove('tour-pin-spotlight');
       document.body.classList.remove('tour-cam-snappy');
-      document.getElementById('pinned-view')?.classList.add('hidden');
+      // Drop the pin, hide the panel, AND empty the back-stack so the next
+      // beat opens with a fresh pinned-view rather than inheriting this pin.
       try { App?.clearPinnedPoint?.(); } catch {}
+      try { App?.hidePinnedView?.(); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
+      document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
 };

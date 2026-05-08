@@ -111,6 +111,8 @@ export const beat = {
       // forward or back. The beat owns that state (it spawned the sprouts
       // that led to the pin), so it must tear it down on cleanup.
       try { App?.clearPinnedPoint?.(); } catch {}
+      try { App?.hidePinnedView?.(); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
       document.getElementById('pinned-view')?.classList.add('hidden');
     };
   },
