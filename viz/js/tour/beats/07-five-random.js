@@ -1,12 +1,25 @@
-// Part 1 / Step 3 — random-five action.
+// Part 1 / Step 3 — curated scattershot for the rent-control cluster.
 //
-// Pressing R or clicking the R chip sprouts five random voices around the
-// sphere. We bind R via the keys registry (priority 200 so it fires before
-// the global R handler, but returning false means the global handler still
-// runs and the actual sample fires).
+// Pressing R or clicking the R chip sprouts five voices around the sphere.
+// During the tour we override the random pool with a hand-picked set
+// (see tutorial-content.md § "R-scattershot curated set"): five comments
+// across five different subclusters of cl=32, so the user feels the cluster
+// as an argument-with-many-positions, not a single position. The override
+// is wired through `App.tour.curatedSproutIndices` (read by sproutSpawn in
+// main.js); we set it on enter and clear it on cleanup.
 //
-// Cleanup: unbind chip click, unbind R keybind, clear collapse timer,
-// retract any sprouts left on screen.
+// Cleanup: clear the curated indices hook, unbind chip click, unbind R
+// keybind, clear collapse timer, retract any sprouts left on screen.
+
+// Hand-picked indices from tutorial-content.md. One per cl=32 subcluster
+// (sub=0/1/2/4/5), chosen for substance + a quote that reads aloud well.
+const CURATED_INDICES = [
+  421909,   // sub=0 Supply vs. Demand: "BPDA made it so difficult to build"
+  241887,   // sub=1 Housing Market: "mega-investment firms hoover up housing stock"
+  342511,   // sub=2 Displacement: "rewards existing residents at expense of future"
+  282489,   // sub=4 Rent Stabilization: "increases bargaining power of renters renewing"
+   58464,   // sub=5 Airbnb / market: "less likely to move if market rent outpaces"
+];
 
 export const beat = {
   id: 'five-random',
@@ -14,10 +27,11 @@ export const beat = {
   eyebrow: 'PART 1 — BOTTOM-UP',
   title: 'Sample five voices at once',
   prose:
-    'When you want a quick read on what the sphere actually contains, sample five ' +
-    'random voices from whatever’s currently visible. Press R or tap the R chip in the ' +
-    'bottom toolbar (“R · C · Reset” row). Esc dismisses floating captions; Reset clears ' +
-    'drill, filters, timeline, zoom.',
+    'Press R to scatter five voices from this region. We picked these five so they read ' +
+    'across the cluster: one blames zoning, one blames investment firms, one wants more ' +
+    'tenant bargaining power, one warns rent control rewards existing renters at the ' +
+    'expense of new ones, and one notes that a stagnant market locks people in place. ' +
+    'They are all sitting near each other because they are all arguing about the same thing.',
   hint: 'Press R or click below • Esc dismisses cards',
   // #38 — when the user clicks one of the five sprouted captions, sprouts.js
   // calls App.showDetailCard which renders into #pinned-view. Without
@@ -29,7 +43,7 @@ export const beat = {
   pulse: 'tour-pulse-random',
   manualContinue: true,
   enter(ctx) {
-    const { App, keys, markStepDone } = ctx;
+    const { App, globe, keys, markStepDone } = ctx;
 
     // Reset any leftover sprouts and blur whatever has focus so R reaches us.
     try { App?.clearSprouts?.({ immediate: true }); } catch {}
@@ -37,6 +51,16 @@ export const beat = {
       const ae = document.activeElement;
       if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
     } catch {}
+
+    // Install the curated-indices hook so the next R fire returns these
+    // exact five points. main.js sproutSpawn reads this off App.tour.
+    if (App?.tour) {
+      App.tour.curatedSproutIndices = CURATED_INDICES.slice();
+    }
+    // Aim the camera at the cl=32 centroid so the curated picks are on
+    // screen when sproutSpawn projects them. (Off-screen indices are
+    // dropped by the override path.)
+    try { globe.rotateTo(0.467, -2.375, 1.6); } catch {}
 
     let fired = false;
     let collapseTimer = null;
@@ -73,6 +97,11 @@ export const beat = {
       if (collapseTimer != null) {
         clearTimeout(collapseTimer);
         collapseTimer = null;
+      }
+      // Drop the curated-indices hook so the next R press outside this
+      // beat goes back to the normal random sampling.
+      if (App?.tour) {
+        App.tour.curatedSproutIndices = null;
       }
       // Animated retract on exit (matches sprout-clear non-immediate path).
       try { App?.clearSprouts?.({ immediate: false }); } catch {}

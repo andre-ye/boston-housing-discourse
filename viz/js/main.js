@@ -1207,20 +1207,41 @@ async function boot() {
     const minAxis = Math.min(W, H);
     const diversitySteps = [0.18, 0.13, 0.08, 0.04, 0];   // fractions of minAxis
     let kept = [];
-    for (const frac of diversitySteps) {
-      const min2 = (minAxis * frac) ** 2;
-      const order = pool.slice().sort(() => Math.random() - 0.5);
-      kept = [];
-      for (const c of order) {
-        if (kept.length >= n) break;
-        let ok = true;
-        for (const k of kept) {
-          const dx = k.sx - c.sx, dy = k.sy - c.sy;
-          if (dx*dx + dy*dy < min2) { ok = false; break; }
-        }
-        if (ok) kept.push(c);
+
+    // ── Tutorial override hook ────────────────────────────────────────
+    // When a tour beat sets App.tour.curatedSproutIndices = [...], the
+    // next R fire returns that hand-picked set instead of rolling the
+    // dice. The beat is responsible for clearing the array on cleanup.
+    // Indices that aren't on screen (back of sphere, off-canvas) are
+    // dropped — the beat should rotate the camera so the curated set is
+    // visible before invoking R.
+    const curated = window.App?.tour?.curatedSproutIndices;
+    if (Array.isArray(curated) && curated.length > 0) {
+      for (const idx of curated) {
+        if (!Number.isFinite(idx) || idx < 0 || idx >= N) continue;
+        const lat = state.coords[2 * idx];
+        const lon = state.coords[2 * idx + 1];
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        const s = _screenOf(lat, lon);
+        if (!s) continue;
+        kept.push({ idx, lat, lon, sx: s.x, sy: s.y });
       }
-      if (kept.length >= n) break;
+    } else {
+      for (const frac of diversitySteps) {
+        const min2 = (minAxis * frac) ** 2;
+        const order = pool.slice().sort(() => Math.random() - 0.5);
+        kept = [];
+        for (const c of order) {
+          if (kept.length >= n) break;
+          let ok = true;
+          for (const k of kept) {
+            const dx = k.sx - c.sx, dy = k.sy - c.sy;
+            if (dx*dx + dy*dy < min2) { ok = false; break; }
+          }
+          if (ok) kept.push(c);
+        }
+        if (kept.length >= n) break;
+      }
     }
     // If the viewport is literally so small we can't fit n distinct points,
     // keep whatever we have.
