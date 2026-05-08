@@ -14,12 +14,14 @@ export const beat = {
   eyebrow: 'PART 3 — SEARCH & TIME',
   title: 'Search the corpus',
   prose:
-    'The bike-lane cluster sits up here in its own region of the sphere. Search ' +
-    'paints every post whose body or title contains your query, then rotates the ' +
-    'globe to the densest pocket. Try typing the word "doored" into the search ' +
-    'bar — almost every match lives inside this cluster. After the tour you can ' +
-    'try other queries like "mass ave" or "protected lane" to see how different ' +
-    'phrases pick out different shapes of conversation.',
+    'The bike-lane cluster sits in its own region of the sphere. Search paints ' +
+    'every post whose body or title contains your query, then rotates the globe ' +
+    'to the densest pocket. Try typing the word "doored" into the search bar — ' +
+    'almost every match lives inside this cluster. The small "P" markers floating ' +
+    'around the sphere are interview pins, anchored near the topics each ' +
+    'interviewee actually talks about. After the tour you can try other queries ' +
+    'like "mass ave" or "protected lane" to see how different phrases pick out ' +
+    'different shapes of conversation.',
   hint: 'Type "doored" into the search bar in the top left.',
   showChrome: ['nav'],
   pulse: 'tour-pulse-search',
@@ -63,8 +65,34 @@ export const beat = {
     return () => {
       cancelAnimationFrame(focusRaf);
       input?.removeEventListener('input', onInput);
-      // Leave the spotlight up so the user can see what they painted as the
-      // next beat opens; the time beat does not depend on it being clear.
+      // Tear down the search-paint state so Back into earlier beats doesn't
+      // see a polluted globe / search input. Drop the spotlight, clear the
+      // input AND fire its `input` event so search-find clears its paint
+      // (mere `value=""` doesn't trip the listener), and remove the
+      // `q=` URL hash param if one was set.
+      try { globe.setSpotlight(null); } catch {}
+      try { App?.clearPinnedBackStack?.(); } catch {}
+      if (input) {
+        try {
+          input.value = '';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.blur();
+        } catch {}
+      }
+      try {
+        if (location.hash) {
+          // Strip a `q=…` segment from the hash (and a leading `&` or `?`),
+          // leaving the rest of the hash intact. If the resulting hash is
+          // empty, drop it entirely.
+          const next = location.hash
+            .replace(/([#&?])q=[^&]*/g, '$1')
+            .replace(/[#&?]$/, '')
+            .replace(/[#&?]&/g, '$1');
+          if (next !== location.hash) {
+            history.replaceState(null, '', location.pathname + location.search + next);
+          }
+        }
+      } catch {}
     };
   },
 };

@@ -18,7 +18,7 @@ export const beat = {
   prose:
     'You can also start from a topic and narrow down. The left rail lists every cluster, ' +
     'sorted by how much of the corpus it covers. Topic 8, “Tenant Rights & Landlords,” ' +
-    'is where people are not arguing about housing in the abstract — they are stuck in ' +
+    'is where people are not arguing about housing in the abstract. They are stuck in ' +
     'an apartment with a problem and asking what to do. Click it to drill in.',
   hint: 'Click “Tenant Rights & Landlords” on the left.',
   showChrome: ['nav'],

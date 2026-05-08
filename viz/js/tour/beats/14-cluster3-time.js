@@ -16,7 +16,7 @@ export const beat = {
     'on the Esplanade, shop recommendations. After 2024 it averages hundreds: ' +
     'PAC ads against Mayor Wu, lanes blocked by police cruisers, design fights. ' +
     'Open the timeline scrubber, then try dragging the window to compare 2016 ' +
-    'and 2024 — you should see the cluster fill in as you slide forward in time.',
+    'and 2024 — the cluster fills in as the window slides forward.',
   hint: 'Click the ⏱ button in the bottom right.',
   showChrome: ['time'],
   pulse: 'tour-pulse-time',
@@ -31,6 +31,11 @@ export const beat = {
     let advanced = false;
     const onClick = () => {
       if (advanced) return;
+      // The same button toggles the scrubber open AND closed. If clicking
+      // closed it, that's not the action we're cueing — wait for the next
+      // click that actually opens it. The body class flips synchronously
+      // inside the toggle handler, so reading it after the click is safe.
+      if (!document.body.classList.contains('has-timeline-open')) return;
       advanced = true;
       markStepDone?.();
     };
