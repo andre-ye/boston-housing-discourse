@@ -22,7 +22,7 @@ export const beat = {
     '<a href="https://academictorrents.com" target="_blank" rel="noopener">Academic Torrents</a> ',
     'rather than scraping the site live.</p>',
     '<h3>Street interviews</h3>',
-    '<p>The second source is interviews with about eighteen people we spoke ',
+    '<p>The second source is interviews with eighteen people we spoke ',
     'with in person around Boston, at MBTA stops and on sidewalks, about ',
     'housing, transit, and what the city is like to live in. They appear on ',
     'the sphere as <span class="opener-pin">P</span>-pins, placed near the ',
