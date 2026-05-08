@@ -1,6 +1,5 @@
 // tour/spotlight — screen-space numbered markers for the Part-1 spotlight beat.
 
-import { raf } from '../core/raf.js';
 import { POINT_RADIUS } from '../core/constants.js';
 
 export function attachSpotlight(globe, points) {
@@ -9,6 +8,7 @@ export function attachSpotlight(globe, points) {
     el.className = 'tour-spotlight-pulse';
     el.dataset.tag = p.tag != null ? String(p.tag) : String(i + 1);
     el.style.position = 'fixed';
+    el.style.opacity = '0';   // hidden until first projection lands
     document.body.appendChild(el);
     return { ...p, el, _consumed: false };
   });
@@ -29,7 +29,18 @@ export function attachSpotlight(globe, points) {
       m.el.style.top = `${y}px`;
     }
   };
-  const dispose = raf.add('tour:spotlight', tick);
+  // Chain into globe._onFrame so projection runs in the same frame as the
+  // camera tween, immediately after worldGroup.quaternion + camera.position
+  // are settled. Going through globe.raf 'tour:spotlight' worked in practice
+  // (insertion-order iteration meant 'globe' ran first) but was a fragile
+  // dependency on channel registration timing — chaining here makes the
+  // ordering an invariant of the globe's render loop.
+  const prevFrame = globe._onFrame;
+  globe._onFrame = () => {
+    if (prevFrame) prevFrame();
+    tick();
+  };
+  const dispose = () => { globe._onFrame = prevFrame; };
 
   return {
     consume(idx) {
