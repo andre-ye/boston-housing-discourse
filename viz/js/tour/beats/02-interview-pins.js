@@ -6,7 +6,7 @@ import { PIN_FRAMING } from '../../core/constants.js';
 export const beat = {
   id: 'interview-pins',
   kind: 'card',
-  title: 'We started by talking to 26 people',
+  title: 'We started by talking to 18 people',
   prose:
     'We stood at MBTA stops, commuter rail platforms, and on sidewalks around the ' +
     'metro area. We asked people about where they live and their commute.',
