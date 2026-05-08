@@ -16,6 +16,52 @@ const MIN_LABEL_PX = 14;
 const GAP_PX = 1;       // gap between segments
 const PROPORTIONAL_BONUS_PX = 34;   // extra height large clusters get
 
+// Largest-remainder rounding so the percentages we paint on a stack add
+// up to exactly 100%. Without this the display can round to 99% or 101%
+// (e.g. four 12.5% siblings rounding to 13/13/12/12 → display 13/13/12/12).
+//
+// Returns an array of display strings ("13%" or "0.5%") aligned with `pcts`.
+// Inputs < 0.01 (under 1%) keep the existing one-decimal format and don't
+// participate in the largest-remainder distribution — they read as
+// "essentially nothing" anyway, so quantizing them to whole percents would
+// flatten visible structure for no gain.
+function formatPctsLargestRemainder(pcts) {
+  const out = new Array(pcts.length);
+  if (!pcts.length) return out;
+  // Two pools: small (sub-1%) and main (>= 1%). Small ones get formatted
+  // independently; main ones share the integer-percent budget.
+  const mainIdx = [];
+  let smallSum = 0;
+  for (let i = 0; i < pcts.length; i++) {
+    const p = pcts[i] == null ? 0 : pcts[i];
+    if (p >= 0.01) mainIdx.push(i);
+    else { smallSum += p; out[i] = `${Math.round(p * 1000) / 10}%`; }
+  }
+  if (mainIdx.length === 0) return out;
+  // Target budget: 100% minus what the small pool already consumed
+  // (rounded the same way it was displayed). Floor everyone, then hand
+  // out the remainder to the largest-remainder candidates first.
+  const reserved = Math.round(smallSum * 100);
+  const budget = Math.max(0, 100 - reserved);
+  const scaled = mainIdx.map(i => pcts[i] * 100);
+  const floors = scaled.map(v => Math.floor(v));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let remainderToHandOut = Math.max(0, budget - used);
+  // Pair (mainIdx position, fractional remainder) sorted desc by remainder.
+  const order = scaled
+    .map((v, k) => ({ k, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  const finals = floors.slice();
+  for (let n = 0; n < order.length && remainderToHandOut > 0; n++) {
+    finals[order[n].k] += 1;
+    remainderToHandOut -= 1;
+  }
+  for (let n = 0; n < mainIdx.length; n++) {
+    out[mainIdx[n]] = `${finals[n]}%`;
+  }
+  return out;
+}
+
 export class NavController extends EventTarget {
   constructor(state) {
     super();
@@ -1845,6 +1891,10 @@ export class NavController extends EventTarget {
     const scale = fits ? (h - minTotal) : 0;
     let maxPct = 0;
     for (const d of data) if (d.pct > maxPct) maxPct = d.pct;
+    // Display strings rounded so the visible percentages sum to 100%.
+    // Computed once per render (#36) — used everywhere _renderStack paints
+    // an "X%" label or aria/title attribute.
+    const pctDisplays = formatPctsLargestRemainder(data.map(d => d.pct));
 
     // Index existing segments by data-key so we can reuse them (letting
     // the CSS top/height/background transitions animate).
@@ -1951,11 +2001,10 @@ export class NavController extends EventTarget {
       // Hover → highlight on the globe; leave → restore the active focus.
       seg.onmouseenter = () => this._onSegHover(info);
       seg.onmouseleave = () => this._onSegUnhover();
+      const pctDisplay = pctDisplays[i] || '';
       if (span < MIN_LABEL_PX) {
         const countStr = info.count != null ? ` · ${info.count.toLocaleString()} posts` : '';
-        const pctStr = info.pct != null
-          ? ` · ${info.pct >= 0.01 ? Math.round(info.pct*100) + '%' : (Math.round(info.pct*1000)/10) + '%'}`
-          : '';
+        const pctStr = info.pct != null && pctDisplay ? ` · ${pctDisplay}` : '';
         seg.title = `${info.label}${countStr}${pctStr}`;
       } else {
         seg.removeAttribute('title');
@@ -1967,9 +2016,7 @@ export class NavController extends EventTarget {
         || seg.dataset.color !== info.color
         || seg.dataset.trend !== (info.trend || '');
       if (needInner) {
-        const pctTxt = info.pct != null
-          ? `, ${info.pct >= 0.01 ? Math.round(info.pct*100) + '%' : (Math.round(info.pct*1000)/10) + '%'} of parent`
-          : '';
+        const pctTxt = info.pct != null && pctDisplay ? `, ${pctDisplay} of parent` : '';
         seg.setAttribute('aria-label', `${info.label}${pctTxt}`);
         seg.innerHTML = '';
         const bg = document.createElement('div');
@@ -1983,7 +2030,7 @@ export class NavController extends EventTarget {
           seg.appendChild(label);
           const pct = document.createElement('div');
           pct.className = 'pct';
-          pct.textContent = info.pct >= 0.01 ? `${Math.round(info.pct*100)}%` : `${Math.round(info.pct*1000)/10}%`;
+          pct.textContent = pctDisplay;
           seg.appendChild(pct);
         }
         // Trend-arrow badges removed per user request (they were adding
@@ -1998,7 +2045,7 @@ export class NavController extends EventTarget {
         if (labelEl) labelEl.classList.toggle('two-line', span >= 36);
         const pctEl = seg.querySelector('.pct');
         if (pctEl && info.pct != null) {
-          pctEl.textContent = info.pct >= 0.01 ? `${Math.round(info.pct*100)}%` : `${Math.round(info.pct*1000)/10}%`;
+          pctEl.textContent = pctDisplay;
         }
       }
 
