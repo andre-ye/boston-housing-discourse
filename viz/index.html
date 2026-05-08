@@ -3044,7 +3044,7 @@
   }
 
   .tour-hero-inner {
-    max-width: 480px;
+    max-width: 540px;
     color: #f4ede1;
   }
   .tour-hero .tour-eyebrow {
@@ -3053,13 +3053,47 @@
   .tour-hero .tour-headline {
     font: 400 38px/1.22 'Source Serif Pro', Georgia, serif;
     color: #fff;
-    margin: 0 0 24px;
+    margin: 0 0 22px;
     letter-spacing: -0.4px;
   }
   .tour-hero .tour-lede {
     font: 400 15px/1.65 'Source Sans Pro', system-ui, sans-serif;
     color: rgba(244,237,225,0.75);
-    margin: 0 0 36px;
+    margin: 0 0 22px;
+  }
+  .tour-hero .tour-hero-team {
+    font: 400 12px/1.5 'Source Sans Pro', system-ui, sans-serif;
+    color: rgba(244,237,225,0.55);
+    margin: 0 0 18px;
+  }
+  .tour-hero .tour-hero-audience {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-left: 1px solid rgba(244,237,225,0.18);
+  }
+  .tour-hero .tour-hero-audience-row {
+    display: block;
+  }
+  .tour-hero .tour-hero-audience-label {
+    font: 600 12px/1 'Source Sans Pro', system-ui, sans-serif;
+    color: rgba(244,237,225,0.85);
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    margin: 0 0 6px;
+  }
+  .tour-hero .tour-hero-audience-desc {
+    font: 400 13px/1.55 'Source Sans Pro', system-ui, sans-serif;
+    color: rgba(244,237,225,0.7);
+    margin: 0;
+  }
+  .tour-hero .tour-hero-mapc {
+    font: 400 11px/1.5 'Source Sans Pro', system-ui, sans-serif;
+    font-style: italic;
+    color: rgba(244,237,225,0.5);
+    margin: 0 0 24px;
   }
   .tour-hero .tour-hero-actions {
     display: flex;
@@ -4728,6 +4762,18 @@
         <div class="tour-hero-inner">
           <h1 class="tour-headline">The Boston Social Sphere<br />Discourse of Reddit</h1>
           <p class="tour-lede">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</p>
+          <p class="tour-hero-team">Team Early Bird Gets the Work &mdash; Andre Ye &middot; Garbrielle Cohn &middot; Carmel Schare &middot; Kendall Nakai</p>
+          <div class="tour-hero-audience">
+            <div class="tour-hero-audience-row">
+              <p class="tour-hero-audience-label">Boston residents</p>
+              <p class="tour-hero-audience-desc">An interactive view of local conversations, allowing residents to explore what&rsquo;s being discussed, follow how discussions evolve over time, and see how their own perspectives compare within the broader community.</p>
+            </div>
+            <div class="tour-hero-audience-row">
+              <p class="tour-hero-audience-label">Government officials</p>
+              <p class="tour-hero-audience-desc">A high-level view of community priorities highlighting dominant topics, their relative weight, and how opinions cluster so officials can quickly identify trends and inform policy decisions.</p>
+            </div>
+          </div>
+          <p class="tour-hero-mapc">Thanks to the Metropolitan Area Planning Council (MAPC) for input shaping this project.</p>
           <div class="tour-hero-actions">
             <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
             <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Skip &amp; explore</button>
@@ -4881,51 +4927,29 @@
 </div>
 
 <script>
-  // Title slide first on cold load; guided tour starts after Continue.
-  // Deep-links (#cl=…) skip both. If the user clicks Continue before main.js
-  // loads, __presentationContinueRequested lets the module call tour.start().
+  // Cold load goes straight to the tour hero (presentation overlay disabled).
+  // Deep-links (#cl=…) still skip the auto tour.
   (function () {
     if (location.hash) return;
     var overlay = document.getElementById('presentation-title-overlay');
-    if (overlay) overlay.classList.remove('hidden');
-    document.body.classList.add('presentation-title-active');
-
-    var presPage = 1;
-
-    function goToPage2() {
-      if (presPage !== 1) return;
-      presPage = 2;
-      document.getElementById('pres-page-1').classList.add('hidden');
-      document.getElementById('pres-page-2').classList.remove('hidden');
-    }
-
-    function presentationTitleContinue() {
-      if (window.__presentationTitleContinueDone) return;
-      window.__presentationTitleContinueDone = true;
-      window.__presentationContinueRequested = true;
-      if (overlay) overlay.classList.add('hidden');
-      document.body.classList.remove('presentation-title-active');
-      document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
-      var tourOv = document.getElementById('tour-overlay');
-      if (tourOv) tourOv.classList.remove('hidden');
+    if (overlay) overlay.classList.add('hidden');
+    document.body.classList.remove('presentation-title-active');
+    window.__presentationContinueRequested = true;
+    document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
+    var tourOv = document.getElementById('tour-overlay');
+    if (tourOv) tourOv.classList.remove('hidden');
+    var tryStart = function () {
       var t = window.App && window.App.tour;
-      if (t && typeof t.start === 'function') t.start();
+      if (t && typeof t.start === 'function') { t.start(); return true; }
+      return false;
+    };
+    if (!tryStart()) {
+      var attempts = 0;
+      var iv = setInterval(function () {
+        attempts++;
+        if (tryStart() || attempts > 200) clearInterval(iv);
+      }, 50);
     }
-
-    document.getElementById('pres-page-1-next')
-      ?.addEventListener('click', goToPage2);
-    document.getElementById('presentation-title-continue')
-      ?.addEventListener('click', presentationTitleContinue);
-    document.addEventListener('keydown', function presTitleKey(e) {
-      if (!overlay || overlay.classList.contains('hidden')) return;
-      if (e.key !== 'Enter' && e.key !== 'Escape') return;
-      var tag = document.activeElement && document.activeElement.tagName;
-      if (e.key === 'Enter' && (tag === 'INPUT' || tag === 'TEXTAREA')) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (presPage === 1) goToPage2();
-      else presentationTitleContinue();
-    }, true);
   })();
 </script>
 <script type="module" src="./js/main.js?v=323"></script>
