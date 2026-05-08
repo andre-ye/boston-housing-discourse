@@ -482,7 +482,7 @@
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"],
   body.tour-pulse-l1-8:not(.tour-step-done) #stack-l1 .bar-seg[data-key="8"],
   body.tour-pulse-l2-8_2:not(.tour-step-done) #stack-l2 .bar-seg[data-key="8_2"],
-  body.tour-pulse-l3-32_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_2"] {
+  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"] {
     animation: tour-step-bar-pulse 1.35s ease-in-out infinite;
     z-index: 4;
     /* `.bar-seg` already has overflow:hidden, which clips outer
