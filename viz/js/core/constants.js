@@ -80,6 +80,30 @@ export const TOUR_CAMERA_TWEEN_MS = 600;
 export const TOUR_SNAPPY_SLERP_RATE = 0.18;
 export const TOUR_SNAPPY_ZOOM_RATE = 0.14;
 
+// ── Scattershot ("R" five-random) layout (#9) ───────────────────────────
+// Selection drops the outermost ring of on-screen candidates so sprouts
+// don't sit on the cluster edge where they read as "nearly off-screen".
+// Pool is sorted by angular distance from the camera focal point; this
+// fraction of the farthest candidates is discarded before picking.
+export const SPROUT_EDGE_TRIM_FRAC = 0.20;
+// Card sizing — keep all five cards visually uniform.
+export const SPROUT_MAX_WIDTH_PX = 280;
+export const SPROUT_BODY_MAX_CHARS = 160;
+// Repulsion layout pass: how many iterations to shove cards apart and
+// away from anchor points, and how strong each push is (per-iter px).
+export const SPROUT_REPEL_ITERATIONS = 24;
+export const SPROUT_REPEL_STEP_PX = 6;
+// Anchor avoidance radius — cards repel from any anchor (chosen point's
+// projected position) within this many px so cards don't sit on top of
+// dense point regions.
+export const SPROUT_ANCHOR_AVOID_PX = 36;
+// Buffer between cards (px) maintained by the repulsion pass.
+export const SPROUT_CARD_GAP_PX = 14;
+// Minimum gap from any viewport edge for a card.
+export const SPROUT_VIEWPORT_MARGIN_PX = 16;
+// Initial radial offset from the anchor when seeding card positions.
+export const SPROUT_INITIAL_OFFSET_PX = 84;
+
 // ── Subtopic luminance shading (#32 #40) ─────────────────────────────────
 // When drilled into a single cluster, sub-points are recolored by sub-id
 // to a luminance step within the parent hue. BRIGHT_FACTOR is applied to

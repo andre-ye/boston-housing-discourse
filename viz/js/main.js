@@ -11,6 +11,9 @@ import { store } from './core/store.js';
 import {
   POINT_RADIUS, DEFAULT_DISTANCE,
   TOPIC_FRAMING, SUB_FRAMING, STANCE_FRAMING, CLOSE_FRAMING, ZOOM_TO_POINT_FRAMING,
+  SPROUT_EDGE_TRIM_FRAC, SPROUT_MAX_WIDTH_PX, SPROUT_BODY_MAX_CHARS,
+  SPROUT_REPEL_ITERATIONS, SPROUT_REPEL_STEP_PX, SPROUT_ANCHOR_AVOID_PX,
+  SPROUT_CARD_GAP_PX, SPROUT_VIEWPORT_MARGIN_PX, SPROUT_INITIAL_OFFSET_PX,
 } from './core/constants.js';
 import * as THREE from 'three';
 import { escapeHtml, redditScoreInlineHtml, formatRedditKindLabel, highlightSearchHits, getActiveSearchParsed } from './features/html-utils.js';
@@ -1122,8 +1125,9 @@ async function boot() {
   const sproutsEl = document.getElementById('sprouts');
   const sproutLinesEl = document.getElementById('sprout-lines');
   const SPROUT_COUNT = 5;   // always exactly 5
-  const SPROUT_BODY_CAP = 240;
-  const SPROUT_MARGIN_PX = 14;
+  // SPROUT_BODY_MAX_CHARS / SPROUT_VIEWPORT_MARGIN_PX live in core/constants.js.
+  const SPROUT_BODY_CAP = SPROUT_BODY_MAX_CHARS;
+  const SPROUT_MARGIN_PX = SPROUT_VIEWPORT_MARGIN_PX;
   let activeSprouts = [];   // { idx, lat, lon, el, line, offX, offY, w, h }
   // Space is a toggle: first press opens a five-post spread, next press clears.
   let sproutClearTimer = null;
@@ -1200,12 +1204,9 @@ async function boot() {
     if (pool.length === 0) return;
     if (token !== sproutRenderToken) return;
 
-    // 2) Pick 5 with progressive spatial diversity. Start with a generous
-    //    min-distance threshold and relax if we can't fill the quota.
+    // 2) Pick 5 with margin-aware + greedy max-min spatial diversity.
     const W = globe.canvas.clientWidth;
     const H = globe.canvas.clientHeight;
-    const minAxis = Math.min(W, H);
-    const diversitySteps = [0.18, 0.13, 0.08, 0.04, 0];   // fractions of minAxis
     let kept = [];
 
     // ── Tutorial override hook ────────────────────────────────────────
@@ -1227,29 +1228,79 @@ async function boot() {
         kept.push({ idx, lat, lon, sx: s.x, sy: s.y });
       }
     } else {
-      for (const frac of diversitySteps) {
-        const min2 = (minAxis * frac) ** 2;
-        const order = pool.slice().sort(() => Math.random() - 0.5);
-        kept = [];
-        for (const c of order) {
-          if (kept.length >= n) break;
-          let ok = true;
+      // 2a) Margin-aware inner pool: drop the outermost SPROUT_EDGE_TRIM_FRAC
+      //     of candidates by angular distance to the visible-region center.
+      //     The center is the centroid of unit-vectors of every pool point —
+      //     equivalent to "what the camera is looking at" given the pool was
+      //     already filtered to forward-facing on-screen points.
+      let cx = 0, cy = 0, cz = 0;
+      for (const c of pool) {
+        const cl = Math.cos(c.lat);
+        cx += cl * Math.cos(c.lon);
+        cy += Math.sin(c.lat);
+        cz += cl * Math.sin(c.lon);
+      }
+      const cmag = Math.hypot(cx, cy, cz) || 1;
+      cx /= cmag; cy /= cmag; cz /= cmag;
+      // Angular distance ~ 1 - dot(unit, center). Sort ascending (closest
+      // to center first), then trim the tail.
+      const scored = pool.map((c) => {
+        const cl = Math.cos(c.lat);
+        const ux = cl * Math.cos(c.lon);
+        const uy = Math.sin(c.lat);
+        const uz = cl * Math.sin(c.lon);
+        const dot = ux * cx + uy * cy + uz * cz;
+        return { c, dot };
+      });
+      scored.sort((a, b) => b.dot - a.dot);   // higher dot = closer to center
+      const trim = Math.max(0, Math.min(scored.length - n,
+        Math.floor(scored.length * SPROUT_EDGE_TRIM_FRAC)));
+      const inner = scored.slice(0, scored.length - trim).map((s) => ({
+        ...s.c,
+        // Cache unit-vec for greedy angular distance below.
+        ux: Math.cos(s.c.lat) * Math.cos(s.c.lon),
+        uy: Math.sin(s.c.lat),
+        uz: Math.cos(s.c.lat) * Math.sin(s.c.lon),
+      }));
+      // If trimming left fewer than n, fall back to the full pool with the
+      // same unit-vec annotation.
+      const candidates = inner.length >= n ? inner : pool.map((c) => ({
+        ...c,
+        ux: Math.cos(c.lat) * Math.cos(c.lon),
+        uy: Math.sin(c.lat),
+        uz: Math.cos(c.lat) * Math.sin(c.lon),
+      }));
+
+      // 2b) Greedy max-min angular distance.
+      //     Seed with a random candidate (so each R press gives different
+      //     compositions); thereafter pick the candidate that maximizes its
+      //     minimum angular distance to anything already chosen.
+      const seed = candidates[Math.floor(Math.random() * candidates.length)];
+      kept = [seed];
+      const used = new Set([seed.idx]);
+      while (kept.length < n) {
+        let best = null;
+        let bestMinDot = 2;   // dot is in [-1, 1]; lower dot = larger angle
+        for (const c of candidates) {
+          if (used.has(c.idx)) continue;
+          let maxDot = -2;
           for (const k of kept) {
-            const dx = k.sx - c.sx, dy = k.sy - c.sy;
-            if (dx*dx + dy*dy < min2) { ok = false; break; }
+            const d = c.ux * k.ux + c.uy * k.uy + c.uz * k.uz;
+            if (d > maxDot) maxDot = d;
           }
-          if (ok) kept.push(c);
+          // We want minimum angular distance from c to any kept point to be
+          // as large as possible — equivalently, the maximum dot to be as
+          // small as possible.
+          if (maxDot < bestMinDot) { bestMinDot = maxDot; best = c; }
         }
-        if (kept.length >= n) break;
+        if (!best) break;
+        kept.push(best);
+        used.add(best.idx);
       }
     }
     // If the viewport is literally so small we can't fit n distinct points,
     // keep whatever we have.
     if (kept.length === 0) return;
-
-    // Fetch details and build DOM boxes.
-    const placed = [];   // {x,y,w,h} already-placed boxes
-    const margin = 8;
 
     // Preload details serially to keep DOM in sample-kept order.
     const details = [];
@@ -1262,8 +1313,11 @@ async function boot() {
     }
     if (token !== sproutRenderToken) return;
 
-    // Layout + render.
+    // ── Phase 1: build DOM + measure ────────────────────────────────────
+    // Each "rec" carries the anchor screen pos, measured card box, and the
+    // current proposed (bx, by) — repulsion mutates bx/by in place.
     activeSprouts = [];
+    const recs = [];
     for (const { k, d } of details) {
       if (token !== sproutRenderToken) return;
       if (!d) continue;
@@ -1272,13 +1326,14 @@ async function boot() {
       const bodyShort = body.length > SPROUT_BODY_CAP ? body.slice(0, SPROUT_BODY_CAP).trim() + '…' : body;
       if (!title && !bodyShort) continue;
 
-      const pointClEarly = App.state.cluster?.[k.idx];
-      const anchorColorEarly = pointClEarly != null ? sphereColor(pointClEarly) : '#ffffff';
+      const pointCl = App.state.cluster?.[k.idx];
+      const anchorColor = pointCl != null ? sphereColor(pointCl) : '#ffffff';
 
       const el = document.createElement('div');
       el.className = 'sprout';
       el.setAttribute('role', 'button');
       el.tabIndex = 0;
+      el.style.maxWidth = `${SPROUT_MAX_WIDTH_PX}px`;
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
         cancelSproutClearTimer();
@@ -1291,81 +1346,111 @@ async function boot() {
       });
       // Border + thin glow in the cluster color so the caption reads as
       // belonging to the same cluster as its tether + halo.
-      el.style.borderColor = anchorColorEarly;
+      el.style.borderColor = anchorColor;
       el.style.boxShadow =
-        `0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px ${anchorColorEarly}55, 0 0 12px ${anchorColorEarly}44`;
+        `0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px ${anchorColor}55, 0 0 12px ${anchorColor}44`;
       el.innerHTML = `
         <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))}${d.month ? ' · ' + escapeHtml(d.month) : ''}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="sp-title">${escapeHtml(title)}</div>` : ''}
         ${bodyShort ? `<div class="sp-body">${escapeHtml(bodyShort)}</div>` : ''}
       `;
+      // Place off-screen for measurement so an unpolished position never
+      // flashes on screen (we set the real coords after layout below).
+      el.style.left = '-9999px';
+      el.style.top = '-9999px';
       sproutsEl.appendChild(el);
-      // Measure.
       const bw = el.offsetWidth || 200;
       const bh = el.offsetHeight || 80;
 
-      // Try many offsets radially around the anchor to find a spot that
-      // both fits inside the viewport and doesn't overlap any previously
-      // placed box (with a 12 px buffer). If nothing works on the first
-      // pass, expand the search radius up to 6× — guarantees no overlap
-      // so long as the viewport has room.
-      const BUFFER = 12;
-      const overlaps = (bx, by) => {
-        for (const p of placed) {
-          if (bx < p.x + p.w + BUFFER &&
-              bx + bw + BUFFER > p.x &&
-              by < p.y + p.h + BUFFER &&
-              by + bh + BUFFER > p.y) {
-            return true;
+      // Seed: place card SPROUT_INITIAL_OFFSET_PX from anchor on the side
+      // that has the most room (toward viewport center). The repulsion pass
+      // will refine. Card top-left is positioned so the anchor sits roughly
+      // along the card's nearest edge.
+      const cxv = W * 0.5, cyv = H * 0.5;
+      const dirX = (cxv - k.sx) || 0.001;
+      const dirY = (cyv - k.sy) || 0.001;
+      const dlen = Math.hypot(dirX, dirY);
+      const ox = (dirX / dlen) * SPROUT_INITIAL_OFFSET_PX;
+      const oy = (dirY / dlen) * SPROUT_INITIAL_OFFSET_PX;
+      // Anchor sits at near edge: shift box so its near edge is offset by ox/oy.
+      let bx = k.sx + ox - (ox < 0 ? bw : 0);
+      let by = k.sy + oy - (oy < 0 ? bh : 0);
+      recs.push({
+        k, d, el, bw, bh, bx, by, anchorColor,
+        ax: k.sx, ay: k.sy,
+      });
+    }
+
+    // ── Phase 2: iterative repulsion ───────────────────────────────────
+    // Push each card away from every other card's bbox + every anchor
+    // (so cards don't sit on dense point regions). Clamp inside viewport.
+    const m = SPROUT_VIEWPORT_MARGIN_PX;
+    const gap = SPROUT_CARD_GAP_PX;
+    const anchors = recs.map((r) => ({ x: r.ax, y: r.ay }));
+    for (let it = 0; it < SPROUT_REPEL_ITERATIONS; it++) {
+      let moved = 0;
+      for (let i = 0; i < recs.length; i++) {
+        const r = recs[i];
+        let dx = 0, dy = 0;
+        // Card-vs-card AABB overlap → push apart along centroid axis.
+        for (let j = 0; j < recs.length; j++) {
+          if (i === j) continue;
+          const o = recs[j];
+          const overlapX = Math.min(r.bx + r.bw + gap, o.bx + o.bw + gap)
+                        - Math.max(r.bx - gap, o.bx - gap);
+          const overlapY = Math.min(r.by + r.bh + gap, o.by + o.bh + gap)
+                        - Math.max(r.by - gap, o.by - gap);
+          if (overlapX > 0 && overlapY > 0) {
+            const rcx = r.bx + r.bw * 0.5, rcy = r.by + r.bh * 0.5;
+            const ocx = o.bx + o.bw * 0.5, ocy = o.by + o.bh * 0.5;
+            const vx = rcx - ocx, vy = rcy - ocy;
+            const vlen = Math.hypot(vx, vy) || 1;
+            const push = SPROUT_REPEL_STEP_PX;
+            dx += (vx / vlen) * push;
+            dy += (vy / vlen) * push;
           }
         }
-        return false;
-      };
-      const R = Math.max(60, Math.min(bw, bh) * 0.8);
-      const anchor = { x: k.sx, y: k.sy };
-      let bestPos = null;
-      for (let r = R; r < R * 6 && !bestPos; r *= 1.25) {
-        const angleJitter = Math.random() * Math.PI * 2;
-        for (let a = 0; a < 24 && !bestPos; a++) {
-          const ang = (a / 24) * Math.PI * 2 + angleJitter;
-          const ox = Math.cos(ang) * r;
-          const oy = Math.sin(ang) * r;
-          const bx = anchor.x + ox - (ox < 0 ? bw : 0);
-          const by = anchor.y + oy - (oy < 0 ? bh : 0);
-          if (bx < margin || by < margin || bx + bw > W - margin || by + bh > H - margin) continue;
-          if (overlaps(bx, by)) continue;
-          bestPos = { bx, by };
-        }
-      }
-      // Last-ditch: scan the canvas on a 40 px grid for any non-overlapping
-      // spot, even if it's far from the anchor. Guarantees we never draw
-      // overlapping boxes (at worst, the tether line is long).
-      if (!bestPos) {
-        outer:
-        for (let by = margin; by + bh <= H - margin; by += 40) {
-          for (let bx = margin; bx + bw <= W - margin; bx += 40) {
-            if (!overlaps(bx, by)) { bestPos = { bx, by }; break outer; }
+        // Anchor avoidance: push away from any anchor inside the card+pad.
+        for (let a = 0; a < anchors.length; a++) {
+          const ax = anchors[a].x, ay = anchors[a].y;
+          // Closest point on card rect to anchor.
+          const px = Math.max(r.bx, Math.min(ax, r.bx + r.bw));
+          const py = Math.max(r.by, Math.min(ay, r.by + r.bh));
+          const ddx = (r.bx + r.bw * 0.5) - ax;
+          const ddy = (r.by + r.bh * 0.5) - ay;
+          const dist = Math.hypot(px - ax, py - ay);
+          // Skip the card's own anchor — the leader line connects to it; we
+          // don't want to repel the card off its own point.
+          if (a === i) continue;
+          if (dist < SPROUT_ANCHOR_AVOID_PX) {
+            const vlen = Math.hypot(ddx, ddy) || 1;
+            const strength = (SPROUT_ANCHOR_AVOID_PX - dist) / SPROUT_ANCHOR_AVOID_PX;
+            dx += (ddx / vlen) * SPROUT_REPEL_STEP_PX * strength;
+            dy += (ddy / vlen) * SPROUT_REPEL_STEP_PX * strength;
           }
         }
+        if (dx === 0 && dy === 0) continue;
+        const nbx = Math.max(m, Math.min(W - m - r.bw, r.bx + dx));
+        const nby = Math.max(m, Math.min(H - m - r.bh, r.by + dy));
+        if (nbx !== r.bx || nby !== r.by) moved++;
+        r.bx = nbx; r.by = nby;
       }
-      if (!bestPos) { el.remove(); continue; }
+      if (moved === 0) break;
+    }
 
-      el.style.left = `${bestPos.bx}px`;
-      el.style.top = `${bestPos.by}px`;
-      placed.push({ x: bestPos.bx, y: bestPos.by, w: bw, h: bh });
-      requestAnimationFrame(() => el.classList.add('show'));
-
-      // Per-anchor cluster color so line + halo visually tie back to the
-      // matching point.
-      const pointCl = App.state.cluster?.[k.idx];
-      const anchorColor = pointCl != null ? sphereColor(pointCl) : '#ffffff';
+    // ── Phase 3: commit positions + render leader lines + halos ─────────
+    for (const r of recs) {
+      if (token !== sproutRenderToken) return;
+      r.el.style.left = `${r.bx}px`;
+      r.el.style.top = `${r.by}px`;
+      requestAnimationFrame(() => r.el.classList.add('show'));
 
       // Tether line from anchor to nearest box edge. Made bold + tinted
       // to the cluster color so the link between caption and point reads
       // at a glance. Opacity is controlled by the .show class so spawn /
       // clear fade it in lockstep with the caption box.
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('stroke', anchorColor);
+      line.setAttribute('stroke', r.anchorColor);
       line.setAttribute('stroke-width', '2.5');
       line.setAttribute('stroke-opacity', '0.85');
       sproutLinesEl.appendChild(line);
@@ -1374,16 +1459,16 @@ async function boot() {
       // Halo around the anchor point itself.
       const halo = document.createElement('div');
       halo.className = 'sprout-anchor';
-      halo.style.borderColor = anchorColor;
+      halo.style.borderColor = r.anchorColor;
       halo.style.boxShadow =
-        `0 0 0 2px rgba(0,0,0,0.5), 0 0 18px 4px ${anchorColor}aa`;
+        `0 0 0 2px rgba(0,0,0,0.5), 0 0 18px 4px ${r.anchorColor}aa`;
       sproutsEl.appendChild(halo);
       requestAnimationFrame(() => halo.classList.add('show'));
 
       activeSprouts.push({
-        idx: k.idx, lat: k.lat, lon: k.lon,
-        el, line, halo,
-        bx: bestPos.bx, by: bestPos.by, bw, bh,
+        idx: r.k.idx, lat: r.k.lat, lon: r.k.lon,
+        el: r.el, line, halo,
+        bx: r.bx, by: r.by, bw: r.bw, bh: r.bh,
       });
     }
     // Set SVG viewBox so line coords are in CSS pixels.
