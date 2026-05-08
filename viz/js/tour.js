@@ -531,23 +531,6 @@ const BEATS = [
       },
     ],
   },
-  {
-    kind: 'position',
-    cl: 32,
-    gid: 131,
-    posIdx: 2,
-    title: 'Rent control makes the shortage worse',
-    prose:
-      'This stance \u2014 756 posts \u2014 argues rent control shrinks supply ' +
-      'by disincentivizing construction and causing landlords to convert or neglect ' +
-      'units. The highlighted points are every post the model tagged with exactly ' +
-      'this argument.',
-    pullquotes: [
-      '"Rent control keeps prices low for current tenants but kills the stock ' +
-       'available for everyone else."',
-    ],
-  },
-
   // Part 2, Step pin-a-post: with the subset filtered, click any dot.
   {
     kind: 'interstitial',
@@ -563,7 +546,7 @@ const BEATS = [
         manualContinue: true,
         setup: ({ App }) => {
           try { App?.clearPinnedPoint?.(); } catch {}
-          ['focus-card', 'position-card', 'interview-card', 'detail-card']
+          ['focus-card', 'interview-card', 'detail-card']
             .forEach(id => document.getElementById(id)?.classList.add('hidden'));
           return () => {};
         },
@@ -767,7 +750,7 @@ export function createTour({ globe, App, nav }) {
     try { App?.clearPinnedPoint?.(); } catch {}
     try { globe.setSpotlight?.(null); } catch {}
     document.body.classList.remove('tour-pin-spotlight');
-    ['detail-card', 'interview-card', 'position-card', 'focus-card']
+    ['detail-card', 'interview-card', 'focus-card']
       .forEach(id => document.getElementById(id)?.classList.add('hidden'));
     try {
       const input = document.getElementById('search-input');
@@ -1267,7 +1250,7 @@ export function createTour({ globe, App, nav }) {
     if (e.key !== 'Escape') return;
     const overlayVisible = !overlay.classList.contains('hidden');
     if (!active && !overlayVisible) return;
-    const cards = ['interview-card', 'detail-card', 'position-card']
+    const cards = ['interview-card', 'detail-card']
       .map(id => document.getElementById(id))
       .filter(c => c && !c.classList.contains('hidden'));
     if (cards.length > 0) {

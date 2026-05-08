@@ -251,14 +251,8 @@ export class NavController extends EventTarget {
       // (the global handler used to return early for INPUT, so Esc never
       // reached help / detail / tour).
       if (e.key === 'Escape') {
-        // Priority-ordered Esc: title slide → (tour swallows Esc) → help →
-        // cards → search/paint → camera reset.
-        const presTitle = document.getElementById('presentation-title-overlay');
-        if (presTitle && !presTitle.classList.contains('hidden')) {
-          document.getElementById('presentation-title-continue')?.click();
-          e.preventDefault();
-          return;
-        }
+        // Priority-ordered Esc: tour swallows Esc → help → cards →
+        // search/paint → camera reset.
         const tourApi = window.App?.tour;
         const tourOv = document.getElementById('tour-overlay');
         const tourUp = tourOv && !tourOv.classList.contains('hidden');
@@ -279,15 +273,6 @@ export class NavController extends EventTarget {
           dc.classList.add('hidden');
           e.preventDefault();
           return;
-        }
-        const posCard = document.getElementById('position-card');
-        if (posCard && !posCard.classList.contains('hidden')) {
-          const close = document.getElementById('pc2-close');
-          if (close) {
-            close.click();
-            e.preventDefault();
-            return;
-          }
         }
         const ivCard = document.getElementById('interview-card');
         if (ivCard && !ivCard.classList.contains('hidden')) {

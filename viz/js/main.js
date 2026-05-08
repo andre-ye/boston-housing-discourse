@@ -120,16 +120,10 @@ async function boot() {
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
-    // Cold load: index.html shows a title slide first; tour starts after Continue
-    // (or immediately if the user continued before this module finished loading).
-    // Deep-links (#cl=…) skip the title slide and the auto tour.
-    if (!location.hash) {
-      const titleEl = document.getElementById('presentation-title-overlay');
-      const stillOnTitle = titleEl && !titleEl.classList.contains('hidden');
-      if (!stillOnTitle || window.__presentationContinueRequested) {
-        tour.start();
-      }
-    }
+    // Cold load auto-opens the tour; deep-links (#cl=…) skip it. The inline
+    // boot script in index.html may have already painted the hero overlay
+    // before this module loaded — calling start() here is idempotent.
+    if (!location.hash) tour.start();
   } catch (e) { console.warn('tour init failed:', e); }
 
   // Empty-state + intro live here (not inside #insp-body, which is display:none
@@ -267,7 +261,7 @@ async function boot() {
         if (rows.length) stancesBlock = '\n**Loudest points of view:**\n' + rows.join('\n');
       }
       // Shareable link — carry every active filter so the recipient lands
-      // on the exact view (matches the position-card link in v=193).
+      // on the exact view.
       const parts = [`cl=${cl}`];
       if (gid != null) parts.push(`gid=${gid}`);
       if (range) { parts.push(`from=${range.lo}`); parts.push(`to=${range.hi}`); }
@@ -372,7 +366,6 @@ async function boot() {
     renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
     if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
     if (typeof writeHash === 'function') writeHash();
-    if (typeof refreshCaptions === 'function') setTimeout(refreshCaptions, 200);
     return true;
   }
   function toggleSubredditFilter(id, name, contextCl, contextGid) {
@@ -390,7 +383,6 @@ async function boot() {
     // Cluster-level stance list now gates by the active sub.
     if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
     if (typeof writeHash === 'function') writeHash();
-    if (typeof refreshCaptions === 'function') setTimeout(refreshCaptions, 200);
   }
   function _updateSubredditFilterChip() {
     const header = document.getElementById('nav-header');
@@ -834,7 +826,6 @@ async function boot() {
       !focusCard.classList.contains('hidden') ||
       !document.getElementById('detail-card').classList.contains('hidden') ||
       !document.getElementById('interview-card').classList.contains('hidden') ||
-      !document.getElementById('position-card').classList.contains('hidden') ||
       !document.getElementById('voices-list-inline').classList.contains('hidden');
     if (!anyOpen && inspEmpty) inspEmpty.classList.remove('hidden');
     syncIntroGlobeHighlight();
@@ -940,7 +931,7 @@ async function boot() {
   // currently over an opaque panel. Listener is in capture phase so
   // panel-internal pointermoves still register.
   const _cardSelectors = [
-    '.detail-card', '.interview-card', '.position-card', '.focus-card',
+    '.detail-card', '.interview-card', '.focus-card',
     '#tour-overlay .tour-card', '#tour-overlay .tour-hero', '#tour-overlay .tour-outro',
     '#bookmarks-panel', '#search-suggestions', '#nav', '.timeline',
   ].join(', ');
@@ -1407,8 +1398,6 @@ async function boot() {
     const t = ae?.tagName;
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON' || t === 'A') return false;
     if (ae?.isContentEditable) return false;
-    const pres = document.getElementById('presentation-title-overlay');
-    if (pres && !pres.classList.contains('hidden')) return false;
     if (window.App?.tour?.isActive?.()) return false;
     return true;
   }
@@ -1421,8 +1410,6 @@ async function boot() {
     const t = ae?.tagName;
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return false;
     if (ae?.isContentEditable) return false;
-    const pres = document.getElementById('presentation-title-overlay');
-    if (pres && !pres.classList.contains('hidden')) return false;
     return true;
   }
   window.addEventListener('keydown', (e) => {
@@ -1521,9 +1508,8 @@ async function boot() {
     if (si) { si.value = ''; si.blur(); }
     const ss = document.getElementById('search-suggestions');
     ss?.classList.add('hidden');
-    // Close position card if open
+    // Close detail card if open
     document.getElementById('detail-card')?.classList.add('hidden');
-    document.getElementById('position-card')?.classList.add('hidden');
     // Clear hash last — after all state changes
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     globe?.resetCanonicalZoom?.();
@@ -1683,10 +1669,6 @@ async function boot() {
       }
       // Persist to URL hash so deep-links carry timeline state.
       if (typeof writeHash === 'function') writeHash();
-      // Refresh zoom captions so they surface posts from the new period.
-      if (typeof refreshCaptions === 'function') {
-        setTimeout(refreshCaptions, 200);
-      }
     }
     // Let freshly-rendered sparklines pick up the current range.
     window._tlApplyBands = () => updateSparklineBands(lo, hi, N - 1);
@@ -1960,19 +1942,6 @@ async function boot() {
       nav.focus({ cl: pick.cl, gid: pick.gid });
       setTimeout(() => {
         focusPosition(pick.cl, pick.gid, pick.posIdx);
-        // Append next-surprise hint on a delay so showPositionCard's
-        // innerHTML replace has finished. Otherwise the hint gets wiped.
-        setTimeout(() => {
-          const pc = document.getElementById('position-card');
-          if (!pc || pc.classList.contains('hidden')) return;
-          if (pc.querySelector('.pc2-next-hint')) return;
-          const hint = document.createElement('button');
-          hint.className = 'pc2-next-hint';
-          hint.innerHTML = '✦ next surprise';
-          hint.type = 'button';
-          hint.onclick = () => pickSurprise();
-          pc.appendChild(hint);
-        }, 60);
       }, 250);
       btnSurprise.classList.add('flashing');
       setTimeout(() => btnSurprise.classList.remove('flashing'), 600);
@@ -2165,7 +2134,6 @@ async function boot() {
       globe.rotateTo(pos.lat, pos.lon, 1.35);
       pulseAt(pos.lat, pos.lon, sphereColor(cl));
     }
-    showPositionCard(cl, gid, posIdx);
     // Mark the selected flag
     posLabelEls.forEach(p => p.el.classList.toggle('selected', p.posIdx === posIdx));
     if (typeof writeHash === 'function') writeHash();
@@ -2179,355 +2147,6 @@ async function boot() {
     globe.setHighlight({ cl, gid, posIdx });
   }
 
-  // Position-card lives in the same corner as the interview/detail card.
-  // Shows the LLM statement + three real attributed sample posts so the
-  // reader can judge whether the abstraction actually matches the data.
-  async function showPositionCard(cl, gid, posIdx) {
-    // Position card disabled — clicking a position still highlights points
-    // in the globe but no longer pops a detail panel.
-    document.getElementById('position-card')?.classList.add('hidden');
-    return;
-    const doc = App.state.positionAnchors?.[String(gid)];
-    if (!doc) return;
-    const pos = doc.positions?.[posIdx];
-    if (!pos) return;
-    dc.classList.add('hidden');
-    if (ic) ic.classList.add('hidden');
-    if (voicesInline) voicesInline.classList.add('hidden');
-    // Position card stacks in the same top-right region as focus-card in
-    // the minimal layout, so hide focus-card when a position opens.
-    focusCard.classList.add('hidden');
-    const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
-    hideInspectorEmpty();
-    const color = sphereColor(cl);
-    const el = document.getElementById('position-card');
-    if (!el) return;
-
-    // Sample up to 3 attributed points for this position (approximates
-    // "show me the evidence").
-    const sampleIdxs = [];
-    if (App.state.positionAssignments) {
-      const assign = App.state.positionAssignments;
-      const st = App.state;
-      const sub = App.subGidMap.byGid[gid];
-      if (sub) {
-        let tries = 0;
-        // Collect up to 60 candidates then pick 3 at random for variety.
-        // Respect the active timeline filter — evidence should come from
-        // the period the user is looking at.
-        const monthAssign = st.monthAssignments;
-        const mr = globe._filter?.monthRange;
-        const hasMonthFilter = !!(mr && monthAssign);
-        const pool = [];
-        for (let i = 0; i < st.N && pool.length < 60 && tries < 300000; i++, tries++) {
-          if (assign[i] === posIdx && st.cluster[i] === sub.cl && st.subLocal[i] === sub.sub) {
-            if (hasMonthFilter) {
-              const m = monthAssign[i];
-              if (m < mr.lo || m > mr.hi) continue;
-            }
-            pool.push(i);
-          }
-        }
-        // Fallback: if the filter zeroed the pool, show unfiltered samples
-        // so the card isn't empty.
-        if (hasMonthFilter && pool.length === 0) {
-          for (let i = 0; i < st.N && pool.length < 60; i++) {
-            if (assign[i] === posIdx && st.cluster[i] === sub.cl && st.subLocal[i] === sub.sub) {
-              pool.push(i);
-            }
-          }
-        }
-        // Randomly pick up to 3
-        while (sampleIdxs.length < 3 && pool.length > 0) {
-          const r = Math.floor(Math.random() * pool.length);
-          sampleIdxs.push(pool[r]);
-          pool.splice(r, 1);
-        }
-      }
-    }
-
-    el.innerHTML = `
-      <button class="pc2-close" id="pc2-close" aria-label="Close">×</button>
-      <button class="pc2-copy-md" id="pc2-copy-md" aria-label="Copy as markdown" title="Copy point-of-view summary as markdown (for notes / writeups)">📋</button>
-      <nav class="pc2-breadcrumbs">
-        <button class="pc2-up" data-level="all" aria-label="All topics">All</button>
-        <span class="pc2-sep">›</span>
-        <button class="pc2-up" data-level="cluster" style="color:${color}">${escapeHtml(doc.cluster_name)}</button>
-        <span class="pc2-sep">›</span>
-        <button class="pc2-up" data-level="sub">${escapeHtml(doc.sub_name)}</button>
-      </nav>
-      <h3 class="pc2-title">${escapeHtml(pos.name)} ${renderTrendBadge(getPositionSeries(gid, posIdx))}</h3>
-      <p class="pc2-description">${escapeHtml(pos.description || '')}</p>
-      ${pos.keywords && pos.keywords.length ? `
-        <div class="pc2-kw-label">signal phrases</div>
-        <div class="pc2-kws">${pos.keywords.slice(0, 6).map(k => `<span class="pc2-kw">${escapeHtml(k)}</span>`).join('')}</div>
-      ` : ''}
-      <div class="pc2-samples" id="pc2-samples">
-        <div class="pc2-kw-label">evidence · attributed posts</div>
-        <div class="pc2-sample-list" id="pc2-sample-list"></div>
-      </div>
-      <div class="pc2-stats">
-        <span><b>${pos.count.toLocaleString()}</b> posts match</span>
-        <span class="pc2-sep">·</span>
-        <span>${Math.round(100 * pos.count / (doc.total_in_sub || 1))}% of <i>${doc.sub_name}</i></span>
-      </div>
-      ${renderPositionSparkline(gid, posIdx, color) || ''}
-      ${(() => {
-        // Sibling positions in the same sub — enables lateral exploration
-        // of alternative stances without going back out to the bar. Shown as
-        // small chips, colored like the sub. Each chip also surfaces its
-        // dominant subreddit — if that differs from the current stance's
-        // top community, a ⇋ marker flags it as a cross-community foil.
-        const siblings = (doc.positions || []).map((p, i) => ({ p, i })).filter(o => o.i !== posIdx && o.p.count > 0);
-        if (siblings.length === 0) return '';
-        siblings.sort((a, b) => (b.p.count || 0) - (a.p.count || 0));
-        const myDom = getPositionDominantSub(gid, posIdx);
-        const chips = siblings.slice(0, 6).map(o => {
-          const s = getPositionSeries(gid, o.i);
-          const dir = getTrendInfo(s).dir;
-          const arrow = dir === 'up' ? '<span class="pc2-sib-up" title="trending up">▲</span>'
-                      : dir === 'down' ? '<span class="pc2-sib-down" title="fading">▼</span>' : '';
-          const dom = getPositionDominantSub(gid, o.i);
-          const different = dom && myDom && dom.id !== myDom.id;
-          const voiceBadge = dom ? `
-            <span class="pc2-sib-voice${different ? ' pc2-sib-voice-diff' : ''}"
-                  title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — a different community from this stance's r/${myDom.name}` : `voiced mostly in r/${dom.name}`)}">
-              ${different ? '<span class="pc2-sib-voice-cross">⇋</span>' : ''}r/${escapeHtml(dom.name)}
-            </span>` : '';
-          // Include the full stance name in the tooltip so users see the
-          // tail of ellipsized names (pc2-sib-name clamps to 180px).
-          const titleTxt = o.p.description ? `${o.p.name} — ${o.p.description}` : o.p.name;
-          return `
-            <button class="pc2-sibling${different ? ' pc2-sibling-diff' : ''}" data-idx="${o.i}"
-                    title="${escapeHtml(titleTxt)}">
-              <span class="pc2-sib-name">${escapeHtml(o.p.name)}</span>
-              ${arrow}
-              ${voiceBadge}
-              <span class="pc2-sib-count">${(o.p.count || 0).toLocaleString()}</span>
-            </button>
-          `;
-        }).join('');
-        return `
-          <div class="pc2-sibling-label">other points of view in this subtopic</div>
-          <div class="pc2-siblings">${chips}</div>
-        `;
-      })()}
-      ${renderPositionSubreddits(gid, posIdx, color) || ''}
-      ${(() => {
-        // Cross-sub resonance: positions in OTHER subs that share
-        // keyword/description tokens with this one. This surfaces lateral
-        // connections (e.g. "Desperate City Brain Drain" ↔ "Middle-Class
-        // Squeeze" in a different sub) for true serendipity. Each chip
-        // includes the other stance's dominant community so the reader can
-        // see whether a shared idea travels between communities or stays put.
-        const resonant = findResonantPositions(gid, posIdx, pos, 3);
-        if (!resonant.length) return '';
-        const myDom = getPositionDominantSub(gid, posIdx);
-        const chips = resonant.map(r => {
-          const col = sphereColor(r.cl);
-          const dir = getTrendInfo(getPositionSeries(r.gid, r.posIdx)).dir;
-          const arrow = dir === 'up' ? '<span class="pc2-sib-up" title="trending up">▲</span>'
-                      : dir === 'down' ? '<span class="pc2-sib-down" title="fading">▼</span>' : '';
-          const dom = getPositionDominantSub(r.gid, r.posIdx);
-          const different = dom && myDom && dom.id !== myDom.id;
-          const voice = dom ? `<span class="pc2-res-voice${different ? ' pc2-res-voice-diff' : ''}"
-            title="${escapeHtml(different ? `voiced in r/${dom.name} — different from this stance's r/${myDom.name}` : `voiced in r/${dom.name}`)}">${different ? '⇋ ' : ''}r/${escapeHtml(dom.name)}</span>` : '';
-          // Full name in tooltip since pc2-res-name clamps to 160px.
-          const titleTxt = r.description ? `${r.name} — ${r.description}` : r.name;
-          return `
-            <button class="pc2-resonant${different ? ' pc2-resonant-diff' : ''}" data-gid="${r.gid}" data-pos-idx="${r.posIdx}" data-cl="${r.cl}"
-                    style="--rc-color:${col}"
-                    title="${escapeHtml(titleTxt)}">
-              <span class="pc2-res-dot" style="background:${col}"></span>
-              <span class="pc2-res-name">${escapeHtml(r.name)}</span>
-              ${arrow}
-              ${voice}
-              <span class="pc2-res-sub">${escapeHtml(r.sub_name)}</span>
-            </button>
-          `;
-        }).join('');
-        return `
-          <div class="pc2-sibling-label">resonates in other subtopics</div>
-          <div class="pc2-siblings">${chips}</div>
-        `;
-      })()}
-    `;
-    el.classList.remove('hidden');
-    scrollCardIntoView(el);
-
-    // Wire sibling chips — each jumps to that position via focusPosition.
-    el.querySelectorAll('.pc2-sibling').forEach(btn => {
-      btn.onclick = () => {
-        const idx = +btn.dataset.idx;
-        focusPosition(cl, gid, idx);
-      };
-    });
-    // Subreddit chips: intersect the current position highlight with a
-    // subreddit filter so the user sees only posts from that community
-    // attributed to this stance.
-    el.querySelectorAll('.pc2-sr-lbl').forEach(btn => {
-      btn.onclick = () => {
-        const id = +btn.dataset.srId;
-        const name = btn.dataset.srName;
-        if (id >= 0 && name) toggleSubredditFilter(id, name, cl, gid);
-      };
-    });
-    // Resonant chips (cross-sub) — drill to the other sub first, then the
-    // position, so the breadcrumbs + globe rotate together.
-    el.querySelectorAll('.pc2-resonant').forEach(btn => {
-      btn.onclick = () => {
-        const targetGid = +btn.dataset.gid;
-        const targetCl = +btn.dataset.cl;
-        const targetPos = +btn.dataset.posIdx;
-        nav.focus({ cl: targetCl, gid: targetGid });
-        setTimeout(() => focusPosition(targetCl, targetGid, targetPos), 220);
-      };
-    });
-
-    const closeBtn = document.getElementById('pc2-close');
-    closeBtn.onclick = () => {
-      el.classList.add('hidden');
-      currentFocusedPosition = null;
-      posLabelEls.forEach(p => p.el.classList.remove('selected'));
-      if (nav.focusCl != null && nav.focusGid != null) {
-        globe.setHighlight({ cl: nav.focusCl, gid: nav.focusGid });
-      } else {
-        globe.setHighlight({});
-      }
-    };
-
-    // "Copy as markdown" — gives researchers a pasteable stance summary
-    // (cluster ▸ sub ▸ stance, description, subreddit mix, 3 evidence
-    // quotes, shareable link) so they can lift a finding straight into
-    // notes or a writeup without retyping.
-    const copyBtn = document.getElementById('pc2-copy-md');
-    if (copyBtn) {
-      copyBtn.onclick = async () => {
-        const subArr = getPositionSubredditCounts(gid, posIdx) || [];
-        const subTotal = subArr.reduce((s, e) => s + e.n, 0);
-        // Match the visible card's threshold — when attributed points < 5
-        // the subreddit signal is too thin to report honestly.
-        const mixLine = subTotal >= 5 ? subArr.slice(0, 3)
-          .map(s => `r/${s.name} ${Math.round(100 * s.n / subTotal)}%`)
-          .join(' · ') : '';
-        const t = getTrendInfo(getPositionSeries(gid, posIdx));
-        const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
-        const kwStr = (pos.keywords || []).slice(0, 6).join(', ');
-        // Sample items have class .pc2-sample; we want just their text,
-        // stripping any footer bylines we rendered inside.
-        const sampleEls = Array.from(document.querySelectorAll('#pc2-sample-list .pc2-sample'))
-          .slice(0, 3)
-          .map(e => {
-            const clone = e.cloneNode(true);
-            clone.querySelectorAll('.pc2-sample-meta, .pc2-sample-sub, [class*="byline"]').forEach(n => n.remove());
-            return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-          })
-          .filter(Boolean);
-        const sampleLines = sampleEls.map(s => `- ${s.length > 280 ? s.slice(0, 277) + '…' : s}`);
-        // Carry active filter state into the link so the recipient lands
-        // on the same view (matches focus-card copy-md behavior in v=146).
-        const linkParts = [`cl=${cl}`, `gid=${gid}`, `pos=${posIdx}`];
-        const mr = globe._filter?.monthRange;
-        if (mr) { linkParts.push(`from=${mr.lo}`); linkParts.push(`to=${mr.hi}`); }
-        if (_activeSubredditFilter) linkParts.push(`sr=${_activeSubredditFilter.id}`);
-        const qNow = document.getElementById('search-input')?.value?.trim();
-        if (qNow) linkParts.push(`q=${encodeURIComponent(qNow)}`);
-        const link = `${location.origin}${location.pathname}#${linkParts.join('&')}`;
-        const md = [
-          `## ${pos.name}${trendStr}`,
-          `*${doc.cluster_name} ▸ ${doc.sub_name}*`,
-          '',
-          (pos.description || '').trim(),
-          '',
-          mixLine ? `**Voiced by:** ${mixLine}` : '',
-          kwStr ? `**Signal phrases:** ${kwStr}` : '',
-          `**Volume:** ${pos.count.toLocaleString()} posts (${Math.round(100 * pos.count / (doc.total_in_sub || 1))}% of *${doc.sub_name}*)`,
-          sampleLines.length ? '\n**Evidence:**\n' + sampleLines.join('\n') : '',
-          `\n[View on globe](${link})`,
-        ].filter(Boolean).join('\n').trim();
-        let ok = false;
-        try {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(md);
-            ok = true;
-          }
-        } catch (e) { /* fallback below */ }
-        if (!ok) {
-          const ta = document.createElement('textarea');
-          ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
-          document.body.appendChild(ta); ta.select();
-          try { ok = document.execCommand('copy'); } catch {}
-          ta.remove();
-        }
-        copyBtn.classList.toggle('copied', ok);
-        copyBtn.classList.toggle('copy-err', !ok);
-        copyBtn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
-        setTimeout(() => {
-          copyBtn.classList.remove('copied', 'copy-err');
-          copyBtn.removeAttribute('data-msg');
-        }, 1600);
-      };
-    }
-    // Inline breadcrumb buttons — direct jump up the hierarchy without
-    // having to reach for the small crumbs in the header.
-    el.querySelectorAll('.pc2-up').forEach(b => {
-      b.onclick = () => {
-        const lvl = b.dataset.level;
-        if (lvl === 'all') nav.focus({});
-        else if (lvl === 'cluster') nav.focus({ cl });
-        else if (lvl === 'sub') nav.focus({ cl, gid });
-        el.classList.add('hidden');
-        currentFocusedPosition = null;
-      };
-    });
-
-    // Populate evidence async
-    const sampleList = document.getElementById('pc2-sample-list');
-    if (sampleList) {
-      if (sampleIdxs.length === 0) {
-        sampleList.innerHTML = `<div class="pc2-sample-empty">No attributed posts — this point of view is largely inferred from the subtopic's top samples.</div>`;
-      } else {
-        for (const idx of sampleIdxs) {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'pc2-sample';
-          placeholder.textContent = '…';
-          sampleList.appendChild(placeholder);
-          (async () => {
-            try {
-              const d = await getPointDetails(App.state, idx);
-              const title = (d.title || '').trim();
-              const bodyRaw = (d.body || '').trim().replace(/\n+/g, ' ');
-              // Reddit bodies come in markdown with some HTML-entity-encoded
-              // quote markers — strip both so the preview reads like prose,
-              // then escape before injecting. Prevents both visible
-              // backslash-escaped chars and embedded HTML from affecting
-              // the card.
-              const body = bodyRaw
-                .replace(/&gt;/g, '>').replace(/&lt;/g, '<')
-                .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
-                .replace(/!\[[^\]]*\]\([^)]+\)/g, '')      // drop image refs
-                .replace(/`([^`]+)`/g, '$1')               // inline code
-                .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')   // bold/italic
-                .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')     // bold/italic (underscore)
-                .replace(/(^|\s)>\s?/g, '$1')              // quote markers
-                .replace(/\\([_*`\[\]()#.+!-])/g, '$1')    // escaped chars
-                .replace(/\s+/g, ' ')
-                .trim();
-              const bodyClip = body.slice(0, 220) + (body.length > 220 ? '…' : '');
-              placeholder.innerHTML = `
-                ${title ? `<div class="pc2-sample-title">${escapeHtml(title)}</div>` : ''}
-                <div class="pc2-sample-body">${escapeHtml(bodyClip)}</div>
-                <div class="pc2-sample-meta">r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
-              `;
-              placeholder.onclick = () => openRedditThreadOrDetail(d);
-              placeholder.style.cursor = 'pointer';
-            } catch (e) {}
-          })();
-        }
-      }
-    }
-  }
   window.App.focusPosition = focusPosition;
   window.App.showSnippetCard = (hit) => {
     const label = hit.context || hit.clusterName || '';
@@ -2725,9 +2344,10 @@ async function boot() {
     }
   }
   // In the minimal layout, clicking an L3 position bar emits a nav 'focus'
-  // with posIdx set but nothing else wires that to showPositionCard. Route
-  // it here so the card actually appears. Guarded on posIdx change to
-  // avoid re-calling for the same position on every filter tweak.
+  // with posIdx set but nothing else wires that to focusPosition. Route
+  // it here so the position drill (highlight + zoom) actually fires.
+  // Guarded on posIdx change to avoid re-calling for the same position on
+  // every filter tweak.
   let _lastFocusPosKey = null;
   nav.addEventListener('focus', (ev) => {
     const { cl, gid, posIdx } = ev.detail || {};
@@ -2849,9 +2469,8 @@ async function boot() {
   globe._onFrame = () => {
     const rvHint = document.getElementById('reset-view-hint');
     if (rvHint) rvHint.classList.toggle('rv-away', !!globe.isZoomedAwayFromCanonical?.());
-    // Drive pins + captions + position flags every frame.
+    // Drive pins + position flags every frame.
     globe._updatePinScreenPositions?.();
-    updateZoomCaptions?.();
     updatePositionFlags?.();
     updateFocusCompass?.();
     updateHoverHalo?.();
@@ -3001,13 +2620,9 @@ async function boot() {
   nav.addEventListener('focus', (ev) => {
     rebuildSubLabels(ev.detail.cl);
     rebuildPositionLabels(ev.detail.cl, ev.detail.gid);
-    // Only clear prior position focus when the NEW focus has no posIdx.
-    // Otherwise, drilling into L3 (cl+gid+posIdx) ends up re-hiding the
-    // card that the L3 click flow just opened.
+    // Clear prior position focus when the new focus has no posIdx.
     if (ev.detail.posIdx == null) {
       currentFocusedPosition = null;
-      const pc2 = document.getElementById('position-card');
-      if (pc2) pc2.classList.add('hidden');
     }
   });
 
@@ -3118,7 +2733,6 @@ async function boot() {
       focusCard.classList.add('hidden');
       document.getElementById('detail-card').classList.add('hidden');
       document.getElementById('interview-card').classList.add('hidden');
-      document.getElementById('position-card').classList.add('hidden');
       hideInspectorEmpty();
       clearSelectedPoint();
     } else {
@@ -3163,10 +2777,6 @@ async function boot() {
   if (ic && ic.parentElement?.id === 'insp-body') {
     document.body.appendChild(ic);
   }
-  const pc2 = document.getElementById('position-card');
-  if (pc2 && pc2.parentElement?.id === 'insp-body') {
-    document.body.appendChild(pc2);
-  }
   const dcEl = document.getElementById('detail-card');
   if (dcEl && dcEl.parentElement?.id === 'insp-body') {
     document.body.appendChild(dcEl);
@@ -3183,7 +2793,7 @@ async function boot() {
   // keyboard hints when a card covers that top-right region. Uses a
   // single MutationObserver watching each card's class attribute.
   (() => {
-    const cards = [ic, pc2, dcEl, fcEl].filter(Boolean);
+    const cards = [ic, dcEl, fcEl].filter(Boolean);
     if (cards.length === 0) return;
     const refresh = () => {
       const anyVisible = cards.some(c => !c.classList.contains('hidden'));
@@ -3204,7 +2814,6 @@ async function boot() {
     dc.classList.add('hidden');
     clearSelectedPoint();
     focusCard.classList.add('hidden');
-    document.getElementById('position-card').classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
@@ -3279,11 +2888,9 @@ async function boot() {
         setTimeout(() => focusPosition(clb, gid, pos), 220);
       };
     });
-    // Rotate the globe so the pin faces the camera, then drop the pulse +
-    // auto-load serendipitous nearby voices (zoom <1.65 triggers captions).
+    // Rotate the globe so the pin faces the camera, then drop the pulse.
     globe.rotateTo(pin.lat, pin.lon, 1.5);
     pulseAt(pin.lat, pin.lon, sphereColor(pin.cluster));
-    setTimeout(() => { try { refreshCaptions(); } catch(e){} }, 560);
   }
 
   // ─── Landing-pulse: fires once when we rotate to a target, giving the
@@ -3320,228 +2927,6 @@ async function boot() {
     setTimeout(() => el.remove(), 1100);
   }
 
-  // ─── Serendipitous zoom-in captions ────────────────────────────
-  let captionEpoch = 0;
-  const captionLayer = (() => {
-    let el = document.getElementById('zoom-captions');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'zoom-captions';
-      el.className = 'zoom-captions';
-      document.getElementById('globe-overlay').appendChild(el);
-    }
-    return el;
-  })();
-  // SVG overlay for leader lines connecting each caption box to its point.
-  let captionLines = document.getElementById('caption-lines');
-  if (!captionLines) {
-    captionLines = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    captionLines.setAttribute('id', 'caption-lines');
-    captionLines.setAttribute('class', 'caption-lines');
-    captionLines.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:5;';
-    document.getElementById('globe-overlay').appendChild(captionLines);
-  }
-
-  let activeCaptions = [];   // { idx, el, line, lat, lon, cluster, subLocal, offX, offY }
-  let captionTimer = null;
-  // How many captions should be visible at a given zoom distance?
-  //   dist 1.8+  → 0 (far-away zoom: clean view)
-  //   dist 1.6   → 5
-  //   dist 1.35  → 10
-  //   dist 1.18  → 20
-  // Auto-popping post captions were removed per user request. The cursor
-  // tooltip is the only surface for post content now.
-  function captionBudget() { return 0; }
-  async function refreshCaptions() {
-    const budget = captionBudget();
-    if (budget === 0) {
-      for (const c of activeCaptions) { c.el.classList.remove('show'); c.line?.setAttribute('stroke-opacity', '0'); }
-      setTimeout(() => {
-        for (const c of activeCaptions) { c.el.remove(); c.line?.remove(); }
-        activeCaptions = [];
-      }, 320);
-      return;
-    }
-    const myEpoch = ++captionEpoch;
-    const targetV = globe.lookTargetWorld();
-    const st = App.state;
-    const camPos = globe.camera.position;
-    // If the user has drilled, respect the focus — only sample points that
-    // belong to that cluster (or sub). Makes the captions show "what's
-    // actually in this region" rather than random noise.
-    // Filter by CLUSTER only — a sub-level filter left too few candidates
-    // to fill the budget at close zoom. Cluster gives the useful framing:
-    // "what's around me in this topic".
-    const focusCl = nav.focusCl;
-    // Respect the active timeline filter + subreddit filter so captions
-    // don't surface 2015 posts when the user is looking at a 2024 window,
-    // or r/boston posts when they've filtered to r/mbta.
-    const monthAssign = st.monthAssignments;
-    const mr = globe._filter?.monthRange;
-    const hasMonthFilter = !!(mr && monthAssign);
-    const srFilter = globe._filter?.subredditIds;
-    const srAssign = st.subredditAssignments;
-    const hasSRFilter = !!(srFilter && srFilter.size > 0 && srAssign);
-
-    const acceptDist = Math.min(0.9, 0.35 + (globe.distanceTarget - 1.18) * 0.6);
-    const tries = 30000;
-    const cands = [];
-    for (let i = 0; i < tries && cands.length < 600; i++) {
-      const ri = Math.floor(Math.random() * st.N);
-      if (focusCl != null && st.cluster[ri] !== focusCl) continue;
-      if (hasMonthFilter) {
-        const m = monthAssign[ri];
-        if (m < mr.lo || m > mr.hi) continue;
-      }
-      if (hasSRFilter && !srFilter.has(srAssign[ri])) continue;
-      const lat = st.coords[2*ri], lon = st.coords[2*ri+1];
-      const wp = globe.worldPositionOf(lat, lon, 1.012);
-      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
-      if (facing <= 0.15) continue;
-      const d = wp.distanceTo(targetV);
-      if (d > acceptDist) continue;
-      cands.push({ idx: ri, dist: d, lat, lon, cluster: st.cluster[ri] });
-    }
-    cands.sort((a, b) => a.dist - b.dist);
-
-    // Greedy pack with min screen-space separation so boxes don't overlap.
-    const W = globe.canvas.clientWidth, H = globe.canvas.clientHeight;
-    const MIN_SEP = 150;   // uniform box spacing; boxes are ~180px wide
-    const chosen = [];
-    for (const c of cands) {
-      if (chosen.length >= budget) break;
-      const wp = globe.worldPositionOf(c.lat, c.lon, 1.012);
-      const p = wp.clone().project(globe.camera);
-      const sx = (p.x * 0.5 + 0.5) * W;
-      const sy = (-p.y * 0.5 + 0.5) * H;
-      // Reject points near other pinned ones on screen.
-      if (chosen.some(ch => Math.hypot(ch.sx - sx, ch.sy - sy) < MIN_SEP)) continue;
-      // Push the box away from the point in the direction away from screen
-      // center, so leader lines don't cross through the sphere's silhouette.
-      const dx = sx - W * 0.5, dy = sy - H * 0.5;
-      const mag = Math.hypot(dx, dy) || 1;
-      const offX = (dx / mag) * 70;
-      const offY = (dy / mag) * 50 - 20;
-      chosen.push({ ...c, sx, sy, offX, offY });
-    }
-
-    // Diff existing vs. chosen; keep stable ones, transition the rest.
-    const existingIdx = new Set(activeCaptions.map(a => a.idx));
-    const nextIdx = new Set(chosen.map(c => c.idx));
-    for (const a of activeCaptions) {
-      if (!nextIdx.has(a.idx)) {
-        a.el.classList.remove('show');
-        a.line?.setAttribute('stroke-opacity', '0');
-        setTimeout(() => { a.el.remove(); a.line?.remove(); }, 320);
-      }
-    }
-    activeCaptions = activeCaptions.filter(a => nextIdx.has(a.idx));
-    for (const c of chosen) {
-      if (existingIdx.has(c.idx)) {
-        // Update offX/offY in case zoom changed.
-        const existing = activeCaptions.find(a => a.idx === c.idx);
-        if (existing) { existing.offX = c.offX; existing.offY = c.offY; }
-        continue;
-      }
-      const el = document.createElement('div');
-      el.className = 'zcap';
-      el.innerHTML = '<div class="zcap-meta"></div><div class="zcap-text">…</div>';
-      captionLayer.appendChild(el);
-      // SVG leader line.
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('stroke-width', '1');
-      line.setAttribute('stroke-opacity', '0');
-      captionLines.appendChild(line);
-      const entry = { idx: c.idx, lat: c.lat, lon: c.lon, cluster: c.cluster,
-                      subLocal: st.subLocal[c.idx], el, line,
-                      offX: c.offX, offY: c.offY };
-      activeCaptions.push(entry);
-      (async () => {
-        try {
-          const d = await getPointDetails(App.state, c.idx);
-          if (myEpoch !== captionEpoch && !activeCaptions.find(a => a.idx === c.idx)) return;
-          const title = (d.title || '').trim();
-          const body = (d.body || '').trim().replace(/\s+/g, ' ');
-          const text = title && body
-            ? `${title} — ${body}`.slice(0, 220)
-            : (title || body).slice(0, 220);
-          const meta = `r/${d.subreddit} · ${d.month}`;
-          el.querySelector('.zcap-meta').textContent = meta;
-          el.querySelector('.zcap-text').textContent = text || '…';
-          el.dataset.cluster = d.cluster;
-          const col = sphereColor(d.cluster);
-          el.style.setProperty('--cap-color', col);
-          line.setAttribute('stroke', col);
-          el.onclick = () => openRedditThreadOrDetail(d);
-          setTimeout(() => {
-            el.classList.add('show');
-            line.setAttribute('stroke-opacity', '0.55');
-          }, 20);
-        } catch (e) {}
-      })();
-    }
-  }
-  function updateZoomCaptions() {
-    // Every-frame projection so boxes and leader lines track globe rotation.
-    const W = globe.canvas.clientWidth, H = globe.canvas.clientHeight;
-    captionLines.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    captionLines.setAttribute('width', W);
-    captionLines.setAttribute('height', H);
-    for (const c of activeCaptions) {
-      const wp = globe.worldPositionOf(c.lat, c.lon, 1.012);
-      const camPos = globe.camera.position;
-      const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
-      const p = wp.clone().project(globe.camera);
-      const sx = (p.x * 0.5 + 0.5) * W;
-      const sy = (-p.y * 0.5 + 0.5) * H;
-      if (facing <= 0 || p.z > 1) {
-        c.el.style.opacity = '0';
-        c.line?.setAttribute('stroke-opacity', '0');
-        continue;
-      }
-      const bx = sx + c.offX, by = sy + c.offY;
-      c.el.style.left = `${bx}px`;
-      c.el.style.top = `${by}px`;
-      c.el.style.opacity = '';
-      if (c.line) {
-        c.line.setAttribute('x1', sx);
-        c.line.setAttribute('y1', sy);
-        c.line.setAttribute('x2', bx);
-        c.line.setAttribute('y2', by);
-        c.line.setAttribute('stroke-opacity', '0.55');
-      }
-    }
-  }
-  function maybeScheduleCaptions() {
-    if (captionTimer) clearTimeout(captionTimer);
-    captionTimer = setTimeout(refreshCaptions, 320);
-  }
-  // Refresh the set only after ZOOM has SETTLED (distance == distanceTarget
-  // and hasn't changed for 500ms). Firing during a smooth zoom causes
-  // flicker — captions fade in/out mid-animation every time the distance
-  // crosses a caption-budget threshold.
-  let lastDistTarget = globe.distanceTarget;
-  let lastDistActual = globe.distance;
-  let stableSince = performance.now();
-  let lastRefreshDist = globe.distanceTarget;
-  setInterval(() => {
-    const now = performance.now();
-    const targetChanged = Math.abs(globe.distanceTarget - lastDistTarget) > 0.01;
-    const stillAnimating = Math.abs(globe.distance - globe.distanceTarget) > 0.01;
-    if (targetChanged || stillAnimating) {
-      lastDistTarget = globe.distanceTarget;
-      lastDistActual = globe.distance;
-      stableSince = now;
-      return;
-    }
-    // Target unchanged AND actual close to target — we've been steady for
-    // at least (now - stableSince)ms.
-    if (now - stableSince >= 500 && Math.abs(globe.distanceTarget - lastRefreshDist) > 0.05) {
-      lastRefreshDist = globe.distanceTarget;
-      refreshCaptions();
-    }
-  }, 160);
-  nav.addEventListener('focus', () => { setTimeout(refreshCaptions, 650); });
   // Connections mode redraws on focus change so the visible-pool
   // sampler stays in sync with whatever filter is now active. Wait
   // for the dim buffer to settle before re-sampling (focus changes
@@ -3551,9 +2936,6 @@ async function boot() {
     if (!_shiftActive) return;
     setTimeout(() => { try { refreshConnectionsIfActive(); } catch {} }, 600);
   });
-  refreshCaptions();
-  // Expose for debugging from the console.
-  window.App.refreshCaptions = refreshCaptions;
 
   // ─── Hover arcs (per-point thread connections) ────────────────
   let hoverEpoch = 0;
@@ -3714,11 +3096,23 @@ async function boot() {
     if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
     if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
   }
-  window.App.toggleConnectionsMode = () => false;
-  window.App.connectionsModeActive = () => false;
+  window.App.toggleConnectionsMode = () => {
+    if (_shiftActive) shiftHideRelations();
+    else shiftShowRelations();
+    return _shiftActive;
+  };
+  window.App.connectionsModeActive = () => _shiftActive;
   window.App.refreshConnections = refreshConnectionsIfActive;
   window.App.emphasizeDetailContextForConnections = emphasizeDetailContextForConnections;
 
+  window.addEventListener('keydown', (e) => {
+    if ((e.key || '').toLowerCase() !== 'c' || e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    window.App.toggleConnectionsMode();
+  });
 
   // Make the connections chip a real button. Click toggles the mode;
   // its visual `is-on` state is owned by `_syncShiftHint()` so it
@@ -3742,7 +3136,6 @@ async function boot() {
     clearSelectedPoint({ refreshRelations: false });
     hideTooltip();
     hideInterviewCard();
-    document.getElementById('position-card')?.classList.add('hidden');
     document.getElementById('detail-card')?.classList.add('hidden');
   };
   // Escape is the universal "back out of transient modes" key. Run in capture
@@ -3770,8 +3163,8 @@ async function boot() {
     if (handled) {
       e.preventDefault();
       const layerOpen = [
-        'presentation-title-overlay', 'tour-overlay', 'help-overlay',
-        'detail-card', 'position-card', 'interview-card',
+        'tour-overlay', 'help-overlay',
+        'detail-card', 'interview-card',
       ].some(id => {
         const el = document.getElementById(id);
         return el && !el.classList.contains('hidden');
@@ -3856,7 +3249,6 @@ async function boot() {
   function showDetailCard(d) {
     if (ic) ic.classList.add('hidden');
     focusCard.classList.add('hidden');
-    document.getElementById('position-card').classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
@@ -4331,61 +3723,6 @@ function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// ─── Cross-position keyword resonance ──────────────────────────
-//
-// For a given position, find the top-K positions in OTHER subs whose
-// keywords + name + description tokens overlap the most. Caches the
-// tokenization per (gid, posIdx) so repeated lookups are cheap.
-const STOPWORDS = new Set('the and a an in of to for with on at is are as by from this that it its be have has can do not but or if more than about over under into'.split(' '));
-const _resonanceCache = new Map();
-function _tokenizePosition(p) {
-  const text = [
-    (p.name || ''),
-    (p.description || ''),
-    ((p.keywords || []).join(' ')),
-  ].join(' ').toLowerCase();
-  const toks = text.match(/[a-z][a-z'-]{2,}/g) || [];
-  const set = new Set();
-  for (const t of toks) if (!STOPWORDS.has(t) && t.length > 2) set.add(t);
-  return set;
-}
-function _positionTokens(gid, idx, pos) {
-  const key = `${gid}:${idx}`;
-  let s = _resonanceCache.get(key);
-  if (!s) { s = _tokenizePosition(pos); _resonanceCache.set(key, s); }
-  return s;
-}
-function findResonantPositions(gid, posIdx, pos, limit = 3) {
-  const anchors = window.App?.state?.positionAnchors;
-  if (!anchors) return [];
-  const base = _positionTokens(gid, posIdx, pos);
-  if (base.size < 2) return [];
-  const results = [];
-  for (const [otherGidStr, otherDoc] of Object.entries(anchors)) {
-    const otherGid = +otherGidStr;
-    if (otherGid === gid) continue;   // skip same sub — siblings cover that
-    const positions = otherDoc.positions || [];
-    for (let i = 0; i < positions.length; i++) {
-      const op = positions[i];
-      if (!op.count || op.count < 20) continue;
-      const otherSet = _positionTokens(otherGid, i, op);
-      // Jaccard-like overlap with a boost for absolute shared count.
-      let shared = 0;
-      for (const t of otherSet) if (base.has(t)) shared++;
-      if (shared < 2) continue;
-      const score = shared * shared / (base.size + otherSet.size);
-      results.push({
-        gid: otherGid, posIdx: i, cl: otherDoc.cl,
-        name: op.name, description: op.description,
-        sub_name: otherDoc.sub_name, cluster_name: otherDoc.cluster_name,
-        score, shared,
-      });
-    }
-  }
-  results.sort((a, b) => b.score - a.score);
-  return results.slice(0, limit);
-}
-
 // Compact SVG sparkline from a pre-baked monthly series. Used in both the
 // position card and the cluster/sub focus card.
 // Paint a translucent band on every mini-sparkline indicating the
@@ -4566,18 +3903,6 @@ function renderSubSparkline(gid, color) {
   const hist = window.App?.state?.timeHist;
   const html = renderSparklineBySeries(hist?.by_sub_gid?.[String(gid)], hist?.labels || [], color, 'in sub');
   // Re-apply any active timeline range after this re-renders.
-  _scheduleBandUpdate();
-  return html;
-}
-// Position-level sparkline — shows the stance's own temporal curve
-// rather than its parent sub's. Falls back to sub sparkline if the
-// per-position bake hasn't been run.
-function renderPositionSparkline(gid, posIdx, color) {
-  const ph = window.App?.state?.positionTimeHist;
-  const key = `${gid}:${posIdx}`;
-  const series = ph?.by_position?.[key];
-  if (!series || !series.length) return renderSubSparkline(gid, color);
-  const html = renderSparklineBySeries(series, ph.labels || [], color, 'in point of view');
   _scheduleBandUpdate();
   return html;
 }
@@ -4776,45 +4101,6 @@ function getTopStancesForSubreddit(srId, limit = 8) {
   }
   out.sort((a, b) => b.score - a.score);
   return out.slice(0, limit);
-}
-
-function renderPositionSubreddits(gid, posIdx, color) {
-  const arr = getPositionSubredditCounts(gid, posIdx);
-  if (!arr || arr.length === 0) return '';
-  const total = arr.reduce((s, e) => s + e.n, 0);
-  if (total < 5) return '';
-  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  // Stacked segmented bar — same color, stepped opacity by rank. Keeps the
-  // visual tied to the position's identity while still showing dominance.
-  const top5 = arr.slice(0, 5);
-  const otherN = arr.slice(5).reduce((s, e) => s + e.n, 0);
-  const segs = top5.map((e, i) => {
-    const op = 1 - i * 0.13;
-    const pct = (100 * e.n / total).toFixed(1);
-    return `<span class="pc2-sr-seg" title="r/${esc(e.name)} — ${e.n.toLocaleString()} (${pct}%)"
-             style="flex:${e.n}; background:${color}; opacity:${op}"></span>`;
-  }).join('');
-  const otherSeg = otherN > 0
-    ? `<span class="pc2-sr-seg pc2-sr-other"
-         title="${arr.length - 5} other subreddits — ${otherN.toLocaleString()} (${(100*otherN/total).toFixed(1)}%)"
-         style="flex:${otherN}"></span>`
-    : '';
-  // Labels for top 3 only — the bar carries the rest visually.
-  const labels = top5.slice(0, 3).map(e => `
-    <button class="pc2-sr-lbl" data-sr-id="${e.id}" data-sr-name="${esc(e.name)}"
-            title="${e.n.toLocaleString()} posts · click to filter globe to r/${esc(e.name)}">
-      <span class="pc2-sr-name">r/${esc(e.name)}</span>
-      <span class="pc2-sr-pct">${Math.round(100 * e.n / total)}%</span>
-    </button>
-  `).join('');
-  const subCount = arr.length > 5 ? ` <span class="pc2-sr-more">+${arr.length - 5} more</span>` : '';
-  return `
-    <div class="pc2-sr-section">
-      <div class="pc2-kw-label">who voiced this point of view${subCount}</div>
-      <div class="pc2-sr-bar">${segs}${otherSeg}</div>
-      <div class="pc2-sr-labels">${labels}</div>
-    </div>
-  `;
 }
 
 function positionCard(card, cx, cy) {

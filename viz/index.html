@@ -974,13 +974,13 @@
   #focus-card .meta {
     font-size: 11px; color: var(--fg-dim);
   }
-  /* Back-navigation breadcrumbs inside focus + point-of-view cards. Big enough
-     to reliably click, colored for continuity. */
-  .fc-breadcrumbs, .pc2-breadcrumbs {
+  /* Back-navigation breadcrumbs inside the focus card. Big enough to
+     reliably click, colored for continuity. */
+  .fc-breadcrumbs {
     display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
     margin-bottom: 8px;
   }
-  .fc-up, .pc2-up {
+  .fc-up {
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 999px;
@@ -990,12 +990,12 @@
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
   }
-  .fc-up:hover, .pc2-up:hover {
+  .fc-up:hover {
     background: rgba(255,255,255,0.1);
     color: var(--fg);
     border-color: rgba(255,255,255,0.24);
   }
-  .fc-sep, .pc2-breadcrumbs .pc2-sep {
+  .fc-sep {
     color: var(--fg-mute);
     font-size: 10px;
   }
@@ -1980,153 +1980,13 @@
     box-shadow: 0 0 0 2px #fff, 0 0 8px currentColor;
   }
 
-  /* ─── Point-of-view card ────────────────────────────────── */
-  .position-card {
-    position: absolute;
-    right: 22px; top: 22px;
-    width: 400px;
-    max-height: calc(100vh - 44px);
-    overflow-y: auto;
-    pointer-events: auto;
-    padding: 18px 22px 20px;
-    background: linear-gradient(170deg, rgba(18,22,33,0.98), rgba(10,12,18,0.98));
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px;
-    backdrop-filter: blur(14px);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.55);
-    z-index: 13;
-    animation: ic-fadein 0.22s ease;
-  }
-  .position-card.hidden { display: none; }
-  .position-card .pc2-close {
-    position: absolute; right: 10px; top: 8px;
-    background: none; border: none; color: var(--fg-dim);
-    font-size: 20px; line-height: 1; cursor: pointer; padding: 4px 8px;
-  }
-  .position-card .pc2-close:hover { color: var(--fg); }
-  /* Copy-as-markdown — sits left of the close button. Shows a flash of
-     "Copied!" text (as an ::after pseudo-element) when the clipboard
-     action completes, matching the share-button convention. */
-  .position-card .pc2-copy-md {
-    position: absolute; right: 38px; top: 10px;
-    background: none; border: none;
-    color: var(--fg-mute);
-    font-size: 13px; line-height: 1;
-    cursor: pointer; padding: 3px 6px;
-    opacity: 0.7;
-    transition: opacity 0.12s, color 0.12s;
-  }
-  .position-card .pc2-copy-md:hover { opacity: 1; color: var(--fg); }
-  .position-card .pc2-copy-md.copied,
-  .position-card .pc2-copy-md.copy-err {
-    position: absolute;
-    right: 38px; top: 10px;
-    background: rgba(124,240,201,0.18);
-    border-radius: 4px;
-    padding: 3px 8px;
-  }
-  .position-card .pc2-copy-md.copy-err { background: rgba(255,120,120,0.22); }
-  .position-card .pc2-copy-md.copied::after,
-  .position-card .pc2-copy-md.copy-err::after {
-    content: attr(data-msg);
-    margin-left: 4px;
-    font: 500 10.5px 'Inter', system-ui, sans-serif;
-    color: var(--fg);
-  }
-  .position-card .pc2-eyebrow {
-    font-size: 10.5px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-    font-weight: 500;
-  }
-  .position-card .pc2-title {
-    margin: 0 0 10px;
-    font: 600 17px/1.25 'Source Serif Pro', Georgia, serif;
-    color: #fff;
-  }
-  .position-card .pc2-description {
-    margin: 0 0 14px;
-    color: var(--fg);
-    font-size: 13px;
-    line-height: 1.55;
-  }
-  .position-card .pc2-kw-label {
-    font-size: 10px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    color: var(--fg-mute);
-    margin-bottom: 6px;
-  }
-  .position-card .pc2-kws {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    margin-bottom: 14px;
-  }
-  .position-card .pc2-kw {
-    font: 500 11px 'Inter', system-ui, sans-serif;
-    padding: 2px 8px;
-    background: rgba(255,255,255,0.06);
-    border-radius: 10px;
-    color: var(--fg);
-  }
-  .position-card .pc2-samples {
-    margin: 4px 0 14px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-  }
-  .position-card .pc2-sample-list {
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .position-card .pc2-sample {
-    padding: 8px 10px;
-    background: rgba(255,255,255,0.035);
-    border-radius: 6px;
-    font-size: 11.5px;
-    color: var(--fg-dim);
-    transition: background 0.15s;
-  }
-  .position-card .pc2-sample:hover {
-    background: rgba(255,255,255,0.065);
-  }
-  .position-card .pc2-sample-title {
-    color: var(--fg); font-weight: 600;
-    margin-bottom: 4px;
-    font-size: 12px;
-    line-height: 1.3;
-  }
-  .position-card .pc2-sample-body {
-    line-height: 1.4;
-  }
-  .position-card .pc2-sample-meta {
-    font-size: 10px;
-    color: var(--fg-mute);
-    margin-top: 4px;
-    letter-spacing: 0.3px;
-  }
-  .position-card .pc2-sample-empty {
-    padding: 8px 10px;
-    font-size: 11.5px; color: var(--fg-dim);
-    background: rgba(255,183,100,0.06);
-    border-left: 2px solid rgba(255,183,100,0.4);
-    border-radius: 4px;
-    line-height: 1.45;
-  }
-  .position-card .pc2-stats {
-    font-size: 12px;
-    color: var(--fg-dim);
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-  }
-  .position-card .pc2-sep {
-    margin: 0 8px;
-    color: var(--fg-mute);
-  }
-  .position-card .pc2-spark {
+  /* ─── Sparkline (focus card monthly volume) ─────────────── */
+  .pc2-spark {
     margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid rgba(255,255,255,0.05);
   }
-  .position-card .pc2-spark-head {
+  .pc2-spark-head {
     display: flex; align-items: center; justify-content: space-between;
     font: 700 9.5px 'Inter', system-ui, sans-serif;
     letter-spacing: 0.6px;
@@ -2134,23 +1994,22 @@
     color: var(--fg-mute);
     margin-bottom: 4px;
   }
-  .position-card .pc2-spark-range {
+  .pc2-spark-range {
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.4px;
     color: var(--fg-dim);
     text-transform: none;
   }
-  .position-card .pc2-spark-svg {
+  .pc2-spark-svg {
     display: block; width: 100%; height: 36px; overflow: visible;
+    cursor: crosshair;
   }
-  .position-card .pc2-spark-foot {
+  .pc2-spark-foot {
     margin-top: 4px;
     font-size: 10.5px; color: var(--fg-dim);
     font-variant-numeric: tabular-nums;
   }
-  .position-card .pc2-spark-foot b { color: var(--fg); font-weight: 600; }
-  /* "Peak MMMM" as a one-click shortcut to zoom the timeline to the
-     stance's hottest period. Styled as a text button so it reads inline. */
+  .pc2-spark-foot b { color: var(--fg); font-weight: 600; }
   .pc2-spark-peak-btn {
     background: none; border: none; padding: 0 2px; margin: 0 -2px;
     color: var(--fg); font: 600 inherit; font-size: inherit;
@@ -2162,225 +2021,6 @@
     background: rgba(124,240,201,0.15);
     color: rgba(124,240,201,1);
   }
-  /* Sparkline SVG itself is now clickable — cursor hint signals it. */
-  .pc2-spark-svg { cursor: crosshair; }
-  .position-card .pc2-sibling-label {
-    margin-top: 14px; margin-bottom: 6px;
-    font: 700 9.5px 'Inter', system-ui, sans-serif;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: var(--fg-mute);
-  }
-  /* Per–point-of-view subreddit breakdown — answers "who voiced this stance?" */
-  .position-card .pc2-sr-section { margin-top: 12px; }
-  .position-card .pc2-sr-more {
-    color: var(--fg-mute); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 9.5px;
-  }
-  .position-card .pc2-sr-bar {
-    display: flex; width: 100%; height: 8px;
-    border-radius: 3px; overflow: hidden;
-    background: rgba(255,255,255,0.04);
-    margin-top: 4px;
-  }
-  .position-card .pc2-sr-seg { display: block; height: 100%; }
-  .position-card .pc2-sr-seg + .pc2-sr-seg { margin-left: 1px; }
-  .position-card .pc2-sr-other { background: rgba(255,255,255,0.14) !important; }
-  .position-card .pc2-sr-labels {
-    display: flex; flex-wrap: wrap; gap: 4px 6px;
-    margin-top: 6px;
-  }
-  .position-card .pc2-sr-lbl {
-    display: inline-flex; align-items: baseline; gap: 5px;
-    padding: 2px 7px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 999px;
-    color: var(--fg-dim);
-    font: 500 10.5px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, color 0.12s;
-  }
-  .position-card .pc2-sr-lbl:hover {
-    background: rgba(255,255,255,0.09);
-    border-color: rgba(255,255,255,0.22);
-    color: var(--fg);
-  }
-  .position-card .pc2-sr-name { white-space: nowrap; }
-  .position-card .pc2-sr-pct {
-    font-variant-numeric: tabular-nums;
-    font-size: 9.5px; color: var(--fg-mute);
-  }
-  .position-card .pc2-siblings {
-    display: flex; flex-wrap: wrap; gap: 5px;
-  }
-  .position-card .pc2-sibling {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 9px 4px 10px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 999px;
-    color: var(--fg-dim);
-    font: 500 11px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, transform 0.12s, color 0.12s;
-  }
-  .position-card .pc2-sibling:hover {
-    background: rgba(255,255,255,0.09);
-    border-color: rgba(255,255,255,0.22);
-    color: var(--fg);
-    transform: translateY(-1px);
-  }
-  .position-card .pc2-sib-name {
-    max-width: 180px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .position-card .pc2-sib-count {
-    font-variant-numeric: tabular-nums;
-    font-size: 9.5px;
-    color: var(--fg-mute);
-  }
-  .position-card .pc2-sib-up,
-  .position-card .pc2-sib-down {
-    font-size: 9px; line-height: 1;
-    padding: 0 2px;
-  }
-  .position-card .pc2-sib-up   { color: rgba(255,198,125,0.95); text-shadow: 0 0 3px rgba(255,160,95,0.4); }
-  .position-card .pc2-sib-down { color: rgba(160,175,200,0.85); }
-  .position-card .pc2-sib-voice,
-  .position-card .pc2-res-voice {
-    font: 500 9.5px 'Inter', system-ui, sans-serif;
-    color: var(--fg-mute);
-    letter-spacing: 0.2px;
-    padding: 1px 5px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-  .position-card .pc2-sib-voice-diff,
-  .position-card .pc2-res-voice-diff {
-    color: rgba(255,200,140,0.9);
-    background: rgba(255,160,100,0.07);
-    border-color: rgba(255,160,100,0.25);
-  }
-  .position-card .pc2-sib-voice-cross { margin-right: 2px; }
-  .position-card .pc2-sibling-diff,
-  .position-card .pc2-resonant-diff {
-    border-color: rgba(255,160,100,0.22);
-  }
-  /* Resonant chips surface points of view in OTHER subs sharing keywords.
-     Two-part pill: stance name + which subtopic it lives in. */
-  .position-card .pc2-resonant {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 5px 10px 5px 9px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 8px;
-    color: var(--fg-dim);
-    font: 500 11px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, transform 0.12s, color 0.12s;
-  }
-  .position-card .pc2-resonant:hover {
-    background: rgba(255,255,255,0.08);
-    border-color: var(--rc-color, rgba(255,255,255,0.28));
-    color: var(--fg);
-    transform: translateY(-1px);
-  }
-  .position-card .pc2-res-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    flex-shrink: 0; box-shadow: 0 0 4px currentColor;
-  }
-  .position-card .pc2-res-name {
-    max-width: 160px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    color: var(--fg);
-    font-weight: 600;
-  }
-  .position-card .pc2-res-sub {
-    font-size: 9.5px;
-    color: var(--fg-mute);
-    letter-spacing: 0.2px;
-    border-left: 1px solid rgba(255,255,255,0.12);
-    padding-left: 8px;
-    max-width: 100px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .position-card .pc2-next-hint {
-    display: inline-flex; align-items: center; gap: 8px;
-    margin-top: 10px;
-    padding: 6px 11px;
-    background: linear-gradient(135deg, rgba(255,210,120,0.10), rgba(255,170,90,0.06));
-    border: 1px solid rgba(255,210,120,0.35);
-    border-radius: 8px;
-    color: rgba(255,220,160,0.95);
-    font: 500 11.5px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-    transition: transform 0.12s, background 0.12s;
-  }
-  .position-card .pc2-next-hint:hover {
-    background: linear-gradient(135deg, rgba(255,210,120,0.18), rgba(255,170,90,0.1));
-    transform: translateY(-1px);
-  }
-  .position-card .pc2-next-hint kbd {
-    font: 600 10.5px 'JetBrains Mono', ui-monospace, Menlo, monospace;
-    padding: 1px 6px;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 4px;
-    color: #fff;
-  }
-
-  /* ─── Zoom-in captions ───────────────────────────────────── */
-  .zoom-captions {
-    position: absolute; inset: 0;
-    pointer-events: none;
-    z-index: 4;
-  }
-  .zcap {
-    position: absolute; left: 0; top: 0;
-    --cap-color: #7cf0c9;
-    transform: translate(-50%, -50%);
-    width: 200px;                /* uniform fixed width */
-    padding: 6px 10px 7px;
-    background: rgba(10,12,20,0.94);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-left: 3px solid var(--cap-color);
-    border-radius: 5px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-    backdrop-filter: blur(4px);
-    pointer-events: auto;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.32s ease, border-color 0.12s, transform 0.12s;
-    font: 400 10.5px/1.4 'Inter', system-ui, sans-serif;
-    color: var(--fg);
-  }
-  .zcap.show { opacity: 0.94; }
-  .zcap:hover {
-    opacity: 1;
-    border-color: var(--cap-color);
-    transform: translate(-50%, -50%) scale(1.03);
-    z-index: 10;
-  }
-  .zcap-meta {
-    font-size: 9.5px;
-    letter-spacing: 0.2px;
-    color: var(--cap-color);
-    margin-bottom: 2px;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .zcap-text {
-    display: -webkit-box;
-    -webkit-line-clamp: 4;        /* more text — up from 2 lines */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.35;
-  }
-  /* Tiny dot at the actual point on the globe — the leader line ends here */
-  .caption-lines { overflow: visible; }
 
   .detail-card {
     position: absolute;
@@ -2728,9 +2368,8 @@
     .intro-toast { animation: none !important; }
     .bar-seg, .bar-seg:hover, .bar-seg.link-hover,
     #focus-compass, #focus-compass .fc-arrow,
-    .pc2-sibling, .help-cluster-chip,
+    .help-cluster-chip,
     #breadcrumbs .crumb,
-    .zcap, .zcap.show,
     #focus-card, #search-input, #help-overlay {
       transition: none !important;
     }
@@ -2855,120 +2494,6 @@
   @keyframes share-pop {
     from { transform: translateX(-50%) translateY(4px); opacity: 0; }
     to   { transform: translateX(-50%) translateY(0);   opacity: 1; }
-  }
-
-  /* ── Class presentation title slide (before guided tour) ─────────── */
-  .presentation-title-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 120;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-             max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
-    background: var(--bg);
-    border: none;
-    pointer-events: auto;
-    animation: presentation-title-in 0.5s ease;
-  }
-  .presentation-title-overlay.hidden { display: none; }
-  @keyframes presentation-title-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-  .presentation-title-inner {
-    max-width: 520px;
-    width: 100%;
-    text-align: center;
-    color: #f4ede1;
-  }
-  .presentation-title-inner h1 {
-    font: 400 clamp(28px, 5vw, 40px)/1.15 'Source Serif Pro', Georgia, serif;
-    color: #fff;
-    margin: 0 0 12px;
-    letter-spacing: -0.5px;
-  }
-  .presentation-title-inner .presentation-team-name {
-    font: 600 14px/1.3 'Inter', system-ui, sans-serif;
-    letter-spacing: 0.5px;
-    color: rgba(244,237,225,0.92);
-    margin: 28px 0 10px;
-  }
-  .presentation-title-inner .presentation-team-list {
-    list-style: none;
-    margin: 0 0 28px;
-    padding: 0;
-    font: 400 15px/1.55 'Source Serif Pro', Georgia, serif;
-    color: rgba(244,237,225,0.82);
-  }
-  .presentation-title-inner .presentation-team-list li + li {
-    margin-top: 4px;
-  }
-  .presentation-title-btn {
-    font: 600 11px/1 'Inter', system-ui, sans-serif;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 14px 28px;
-    border-radius: 3px;
-    cursor: pointer;
-    border: 1px solid rgba(124,240,201,0.45);
-    background: rgba(124,240,201,0.14);
-    color: #e8fff8;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-  }
-  .presentation-title-btn:hover {
-    background: rgba(124,240,201,0.26);
-    border-color: rgba(124,240,201,0.7);
-    color: #fff;
-  }
-  .presentation-title-hint {
-    margin: 14px 0 0;
-    font: 400 11px/1.4 'Inter', system-ui, sans-serif;
-    color: rgba(244,237,225,0.38);
-  }
-  .presentation-title-hint kbd {
-    font: 600 10px 'JetBrains Mono', ui-monospace, Menlo, monospace;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.06);
-    color: rgba(244,237,225,0.65);
-  }
-  @media (max-width: 560px) {
-    .presentation-title-inner .presentation-team-list {
-      font-size: 14px;
-    }
-    .presentation-title-btn {
-      width: 100%;
-      max-width: 320px;
-    }
-  }
-  .pres-page { animation: presentation-title-in 0.3s ease; }
-  .pres-page.hidden { display: none; }
-  .pres-audience-title {
-    font: 400 clamp(20px, 3.5vw, 28px)/1.2 'Source Serif Pro', Georgia, serif;
-    color: #fff;
-    margin: 0 0 24px;
-    letter-spacing: -0.3px;
-  }
-  .pres-audience-block {
-    text-align: left;
-    margin-bottom: 18px;
-  }
-  .pres-audience-block:last-of-type {
-    margin-bottom: 28px;
-  }
-  .pres-audience-label {
-    font: 600 13px/1.3 'Inter', system-ui, sans-serif;
-    color: rgba(244,237,225,0.95);
-    margin: 0 0 5px;
-    letter-spacing: 0.2px;
-  }
-  .pres-audience-desc {
-    font: 400 14px/1.6 'Source Serif Pro', Georgia, serif;
-    color: rgba(244,237,225,0.72);
-    margin: 0;
   }
 
   .help-overlay {
@@ -3274,7 +2799,6 @@
      above defaults them off, and this per-step opt-in re-enables them. */
   body.tour-step-mode.tour-step-show-cards .interview-card,
   body.tour-step-mode.tour-step-show-cards .detail-card,
-  body.tour-step-mode.tour-step-show-cards .position-card,
   body.tour-step-mode.tour-step-show-cards .focus-card {
     pointer-events: auto !important;
     opacity: 1 !important;
@@ -3638,8 +3162,7 @@
      via `showChrome: ['cards']` (the P-pin click step). */
   body.tour-active .focus-card,
   body.tour-active .detail-card,
-  body.tour-active .interview-card,
-  body.tour-active .position-card {
+  body.tour-active .interview-card {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -3647,8 +3170,7 @@
   }
   body.tour-active.tour-step-mode.tour-step-show-cards .focus-card,
   body.tour-active.tour-step-mode.tour-step-show-cards .detail-card,
-  body.tour-active.tour-step-mode.tour-step-show-cards .interview-card,
-  body.tour-active.tour-step-mode.tour-step-show-cards .position-card {
+  body.tour-active.tour-step-mode.tour-step-show-cards .interview-card {
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
@@ -4151,8 +3673,7 @@
   /* They now live inside #insp-body and stack naturally. */
   #focus-card,
   #detail-card,
-  #interview-card,
-  #position-card {
+  #interview-card {
     position: static !important;
     width: auto !important;
     max-width: none !important;
@@ -4165,12 +3686,11 @@
     backdrop-filter: none !important;
     animation: none !important;
   }
-  /* Exception: interview-card + position-card + detail-card + focus-card
-     are moved to document.body at boot (because #insp-body is display:none
-     in the minimal layout). When they live at body-level, restore the
-     original floating-card styling so clicks actually show content. */
+  /* Exception: interview-card + detail-card + focus-card are moved to
+     document.body at boot (because #insp-body is display:none in the
+     minimal layout). When they live at body-level, restore the original
+     floating-card styling so clicks actually show content. */
   body > #interview-card,
-  body > #position-card,
   body > #detail-card,
   body > #focus-card {
     position: absolute !important;
@@ -4187,7 +3707,6 @@
     animation: ic-fadein 0.24s ease !important;
     z-index: 13;
   }
-  body > #position-card.hidden,
   body > #interview-card.hidden,
   body > #detail-card.hidden,
   body > #focus-card.hidden { display: none !important; }
@@ -4221,7 +3740,7 @@
   #focus-card .meta { font-size: 11px; color: var(--fg-dim); }
 
   /* Close "x" inside inspector cards → small square top-right */
-  .dc-close, .ic-close, .pc2-close {
+  .dc-close, .ic-close {
     position: absolute !important;
     right: 6px !important; top: 4px !important;
   }
@@ -4273,21 +3792,6 @@
   #interview-card .ic-reddit-label { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 4px; }
   #interview-card .ic-reddit-btn { background: none; border: none; color: var(--accent); font-size: 12px; padding: 2px 0; cursor: pointer; border-bottom: 1px dashed currentColor; }
 
-  /* Point-of-view card inside inspector */
-  #position-card { max-height: none !important; overflow: visible !important; }
-  #position-card.hidden { display: none; }
-  #position-card .pc2-eyebrow { font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 4px; }
-  #position-card .pc2-title { font: 600 15px/1.25 'Source Serif Pro', Georgia, serif; margin: 0 0 8px; color: #fff; }
-  #position-card .pc2-description { font-size: 12px; line-height: 1.45; color: var(--fg); margin: 0 0 10px; }
-  #position-card .pc2-kw-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--fg-mute); margin-bottom: 5px; }
-  #position-card .pc2-kws { gap: 5px; margin-bottom: 12px; }
-  #position-card .pc2-kw { font-size: 10.5px; padding: 2px 7px; }
-  #position-card .pc2-samples { margin-top: 0; padding-top: 10px; }
-  #position-card .pc2-sample { font-size: 11px; padding: 6px 8px; }
-  #position-card .pc2-sample-title { font-size: 11.5px; margin-bottom: 2px; }
-  #position-card .pc2-sample-body { font-size: 10.5px; line-height: 1.35; }
-  #position-card .pc2-sample-meta { font-size: 9.5px; margin-top: 3px; }
-  #position-card .pc2-stats { font-size: 11px; }
 
   /* Hide original HUD since toolbar replaces it; also hide ctrlpad (arrow keys suffice). */
   #hud, #ctrlpad { display: none !important; }
@@ -4671,7 +4175,6 @@
         <a class="dc-link" id="dc-link" href="#" target="_blank" rel="noopener">Open on Reddit ↗</a>
       </div>
       <div id="interview-card" class="interview-card hidden"></div>
-      <div id="position-card" class="position-card hidden"></div>
       <div id="voices-list-inline" class="voices-list-inline hidden"></div>
       <div id="bookmarks-card" class="bookmarks-card hidden" role="region" aria-label="Saved points">
         <button class="bm-close" id="bm-close" aria-label="Close bookmarks">×</button>
@@ -4701,6 +4204,10 @@
               aria-label="Sample 5 random posts or comments from visible dots on the sphere. Press Escape to dismiss the floating cards">
         <kbd class="sh-key">R</kbd>
         <span class="sh-text">5 random · Esc clears</span>
+      </button>
+      <button type="button" id="shift-hint" aria-keyshortcuts="C" aria-label="Toggle connections view">
+        <kbd class="sh-key">C</kbd>
+        <span class="sh-text">connections</span>
       </button>
       <button type="button" id="reset-view-hint" aria-keyshortcuts="Escape"
               title="Clears pinned cards, floating random excerpts, drill &amp; filters, timeline, zoom"
@@ -4739,36 +4246,6 @@
       <div class="msg" id="loading-msg">Loading sphere coordinates…</div>
     </div>
   </section>
-  <div id="presentation-title-overlay" class="presentation-title-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="presentation-project-title">
-    <div class="presentation-title-inner">
-      <!-- Page 1: title + team -->
-      <div class="pres-page" id="pres-page-1">
-        <h1 id="presentation-project-title">Boston Housing Discourse</h1>
-        <p class="presentation-team-name">Team: Early Bird Gets the Work</p>
-        <ul class="presentation-team-list" aria-label="Team members">
-          <li>Andre Ye</li>
-          <li>Garbrielle Cohn</li>
-          <li>Carmel Schare</li>
-          <li>Kendall Nakai</li>
-        </ul>
-        <button type="button" id="pres-page-1-next" class="presentation-title-btn">Next &rarr;</button>
-      </div>
-      <!-- Page 2: target audience -->
-      <div class="pres-page hidden" id="pres-page-2">
-        <h2 class="pres-audience-title">Target Audience</h2>
-        <div class="pres-audience-block">
-          <p class="pres-audience-label">Boston residents</p>
-          <p class="pres-audience-desc">An interactive view of local conversations, allowing residents to explore what's being discussed, follow how discussions evolve over time, and see how their own perspectives compare within the broader community.</p>
-        </div>
-        <div class="pres-audience-block">
-          <p class="pres-audience-label">Government officials</p>
-          <p class="pres-audience-desc">A high-level view of community priorities highlighting dominant topics, their relative weight, and how opinions cluster so officials can quickly identify trends and inform policy decisions.</p>
-        </div>
-        <button type="button" id="presentation-title-continue" class="presentation-title-btn">Continue to demo</button>
-        <p class="presentation-title-hint"><kbd>Enter</kbd> or <kbd>Esc</kbd> to continue</p>
-      </div>
-    </div>
-  </div>
   <button id="tour-launcher" class="tour-launcher" aria-label="Take the guided tour">✦ Take the tour</button>
   <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-label="Guided tour">
     <!-- Step 0: Split hero — left text, right live globe -->
@@ -4941,27 +4418,24 @@
 </div>
 
 <script>
-  // Cold load goes straight to the tour hero (presentation overlay disabled).
-  // Deep-links (#cl=…) still skip the auto tour.
+  // Cold-load boot: paint the tour overlay's hero immediately so there's no
+  // flash of bare globe before main.js finishes loading + calls tour.start().
+  // Deep-links (#cl=…) skip the auto-tour entirely. If main.js wins the race
+  // and calls start() first, this runs as a no-op (tour-active already set).
   (function () {
     if (location.hash) return;
-    var overlay = document.getElementById('presentation-title-overlay');
-    if (overlay) overlay.classList.add('hidden');
-    document.body.classList.remove('presentation-title-active');
-    window.__presentationContinueRequested = true;
     document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
     var tourOv = document.getElementById('tour-overlay');
     if (tourOv) tourOv.classList.remove('hidden');
-    var tryStart = function () {
+    function tryStart() {
       var t = window.App && window.App.tour;
       if (t && typeof t.start === 'function') { t.start(); return true; }
       return false;
-    };
+    }
     if (!tryStart()) {
-      var attempts = 0;
+      var tries = 0;
       var iv = setInterval(function () {
-        attempts++;
-        if (tryStart() || attempts > 200) clearInterval(iv);
+        if (tryStart() || ++tries > 80) clearInterval(iv);
       }, 50);
     }
   })();
