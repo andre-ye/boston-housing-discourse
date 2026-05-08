@@ -14,9 +14,9 @@ import { beat as openerAlgorithm } from './04-opener-algorithm.js';
 import { beat as cluster1HoverTrio } from './05-cluster1-hover-trio.js';
 import { beat as fiveRandom }      from './07-five-random.js';
 import { beat as cluster1PinDemo } from './11-cluster1-pin-demo.js';
-import { beat as pickTopic }       from './08-pick-topic.js';
-import { beat as pickSubtopic }    from './09-pick-subtopic.js';
-import { beat as pickStance }      from './10-pick-stance.js';
+import { beat as cluster2PickTopic }   from './08-cluster2-pick-topic.js';
+import { beat as cluster2Narration }   from './09-cluster2-narration.js';
+import { beat as cluster2Stance }      from './10-cluster2-stance.js';
 import { beat as connections }     from './12-connections.js';
 import { beat as searchCovid }     from './13-search-covid.js';
 import { beat as openTimeline }    from './14-open-timeline.js';
@@ -30,9 +30,9 @@ export const BEATS = [
   cluster1HoverTrio,
   fiveRandom,
   cluster1PinDemo,
-  pickTopic,
-  pickSubtopic,
-  pickStance,
+  cluster2PickTopic,
+  cluster2Narration,
+  cluster2Stance,
   connections,
   searchCovid,
   openTimeline,
