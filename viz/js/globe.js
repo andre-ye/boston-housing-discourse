@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=233';
+import { raf } from './core/raf.js';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -42,7 +43,7 @@ export class GlobeView extends EventTarget {
     this._initPins();
     this._bindInteraction();
     this._tick = this._tick.bind(this);
-    requestAnimationFrame(this._tick);
+    raf.add('globe', this._tick);
   }
 
   _initPins() {
@@ -816,6 +817,5 @@ export class GlobeView extends EventTarget {
 
     if (this._onFrame) this._onFrame();
     this.renderer.render(this.scene, this.camera);
-    requestAnimationFrame(this._tick);
   }
 }

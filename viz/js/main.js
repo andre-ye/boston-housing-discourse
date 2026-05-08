@@ -23,6 +23,9 @@ function formatRedditKindLabel(_type) {
 }
 import { NavController } from './nav.js?v=255';
 import { GlobeView } from './globe.js?v=272';
+import { dom } from './core/dom.js';
+import { storage } from './core/storage.js';
+import { raf } from './core/raf.js';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -31,6 +34,10 @@ const loadingMsg = document.getElementById('loading-msg');
 function updateMsg(m) { loadingMsg.textContent = m; }
 
 async function boot() {
+  // Initialize core infrastructure first: storage migrates legacy keys
+  // before any feature reads them; dom warms its element cache.
+  storage.init();
+  dom.init();
   updateMsg('Loading sphere coordinates…');
   try {
     App.state = await loadData(updateMsg);
@@ -190,13 +197,16 @@ async function boot() {
     canvas.addEventListener('wheel', stop, true);
     window.addEventListener('keydown', onKey, true);
     nav?.addEventListener?.('focus', stop);
+    let _disposeIdle = null;
     const tick = () => {
-      if (!spinning) return;
+      if (!spinning) {
+        if (_disposeIdle) { _disposeIdle(); _disposeIdle = null; }
+        return;
+      }
       // Pause idle drift while the guided tour is driving the camera.
       if (!window.App?.tour?.isActive()) globe.nudge?.(DX, DY);
-      requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    _disposeIdle = raf.add('idle-rotate', tick);
   })();
 
   function _rangeSum(series, lo, hi) {
@@ -337,7 +347,7 @@ async function boot() {
     }).join('');
     // Hint shown only to first-time visitors; localStorage flag below marks
     // seen after the user actually clicks one.
-    const hintSeen = (() => { try { return localStorage.getItem('vizFsHintSeen') === '1'; } catch(e) { return false; } })();
+    const hintSeen = storage.get('fs-hint-seen') === '1';
     const hintHtml = hintSeen ? '' : ' <span class="fs-hint">· click to filter globe</span>';
     fsubs.innerHTML = `
       <div class="fs-head">where it lives${hintHtml}</div>
@@ -348,7 +358,7 @@ async function boot() {
       btn.onclick = () => {
         const id = +btn.dataset.srId;
         if (id < 0) return;
-        try { localStorage.setItem('vizFsHintSeen', '1'); } catch(e) {}
+        storage.set('fs-hint-seen', '1');
         toggleSubredditFilter(id, btn.dataset.srName, cl, gid);
       };
     });
@@ -783,11 +793,9 @@ async function boot() {
   // Returning users who've already drilled in get a compact empty state
   // (intro copy hidden). Tracked in localStorage.
   function _markEmptyCompactIfSeen() {
-    try {
-      if (localStorage.getItem('vizIntroSeen') === '1') {
-        inspEmpty?.classList.add('compact');
-      }
-    } catch {}
+    if (storage.get('intro-seen') === '1') {
+      inspEmpty?.classList.add('compact');
+    }
   }
   _markEmptyCompactIfSeen();
 
@@ -817,16 +825,16 @@ async function boot() {
       inspEmpty.classList.add('hidden');
       // First real navigation marks the intro as seen so future empty-state
       // visits are compact.
-      try { localStorage.setItem('vizIntroSeen', '1'); } catch {}
+      storage.set('intro-seen', '1');
       inspEmpty.classList.add('compact');
     }
   }
   function showInspectorEmpty() {
     const anyOpen =
       !focusCard.classList.contains('hidden') ||
-      !document.getElementById('detail-card').classList.contains('hidden') ||
-      !document.getElementById('interview-card').classList.contains('hidden') ||
-      !document.getElementById('voices-list-inline').classList.contains('hidden');
+      !dom.el('detailCard').classList.contains('hidden') ||
+      !dom.el('interviewCard').classList.contains('hidden') ||
+      !dom.el('voicesListInline').classList.contains('hidden');
     if (!anyOpen && inspEmpty) inspEmpty.classList.remove('hidden');
     syncIntroGlobeHighlight();
   }
@@ -1437,13 +1445,10 @@ async function boot() {
   // Per-toggle preferences persist so the user doesn't have to re-disable
   // labels / pins / threads on every reload. Keys: vizPref.labels, .pins,
   // .threads — each 'on' | 'off'. Defaults: labels on, pins on, threads off.
-  const _prefKey = 'vizPref';
-  const _prefs = (() => {
-    try { return JSON.parse(localStorage.getItem(_prefKey) || '{}'); }
-    catch { return {}; }
-  })();
+  const _prefKey = 'pref';
+  const _prefs = storage.getJSON(_prefKey, {}) || {};
   function _savePrefs() {
-    try { localStorage.setItem(_prefKey, JSON.stringify(_prefs)); } catch {}
+    storage.setJSON(_prefKey, _prefs);
   }
   if (btnThreads) btnThreads.onclick = () => {
     const next = !globe.threadArcsEnabled;
@@ -1801,11 +1806,11 @@ async function boot() {
       tl.classList.add('hidden');
       toggle.classList.remove('active');
       syncTimelineBodyClass();
-      try {
-        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+      {
+        const p = storage.getJSON('pref', {}) || {};
         p.timeline = 'off';
-        localStorage.setItem('vizPref', JSON.stringify(p));
-      } catch {}
+        storage.setJSON('pref', p);
+      }
     };
     // Expose for the global Reset button so it can unwind the time filter
     // alongside everything else.
@@ -1816,11 +1821,11 @@ async function boot() {
       tl.classList.add('hidden');
       toggle.classList.remove('active');
       syncTimelineBodyClass();
-      try {
-        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+      {
+        const p = storage.getJSON('pref', {}) || {};
         p.timeline = 'off';
-        localStorage.setItem('vizPref', JSON.stringify(p));
-      } catch {}
+        storage.setJSON('pref', p);
+      }
     };
     const syncTimelineBodyClass = () => {
       document.body.classList.toggle('has-timeline-open', !tl.classList.contains('hidden'));
@@ -1838,11 +1843,11 @@ async function boot() {
       }
       // Persist open/closed state so returning users pick up where they
       // left off — parallel to the other toolbar prefs.
-      try {
-        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
+      {
+        const p = storage.getJSON('pref', {}) || {};
         p.timeline = tl.classList.contains('hidden') ? 'off' : 'on';
-        localStorage.setItem('vizPref', JSON.stringify(p));
-      } catch {}
+        storage.setJSON('pref', p);
+      }
     };
     // Restore on first load if previously open. Skip if the tour will
     // be running — the tour decides when the timeline is allowed on
@@ -1850,13 +1855,11 @@ async function boot() {
     // and the user can't dismiss it (tour-active disables tl-toggle's
     // pointer-events). We re-check on tour close via App._timelineRestore.
     const tryRestore = () => {
-      try {
-        const p = JSON.parse(localStorage.getItem('vizPref') || '{}');
-        if (p.timeline !== 'on') return;
-        if (!tl.classList.contains('hidden')) return;
-        if (document.body.classList.contains('tour-active')) return;
-        toggle.click();
-      } catch {}
+      const p = storage.getJSON('pref', {}) || {};
+      if (p.timeline !== 'on') return;
+      if (!tl.classList.contains('hidden')) return;
+      if (document.body.classList.contains('tour-active')) return;
+      toggle.click();
     };
     queueMicrotask(tryRestore);
     App._timelineRestore = tryRestore;
@@ -3163,10 +3166,10 @@ async function boot() {
     if (handled) {
       e.preventDefault();
       const layerOpen = [
-        'tour-overlay', 'help-overlay',
-        'detail-card', 'interview-card',
-      ].some(id => {
-        const el = document.getElementById(id);
+        'tourOverlay', 'helpOverlay',
+        'detailCard', 'interviewCard',
+      ].some(name => {
+        const el = dom.el(name);
         return el && !el.classList.contains('hidden');
       });
       if (!layerOpen) e.stopImmediatePropagation();
@@ -3415,7 +3418,7 @@ async function boot() {
   // enough metadata to render the list without re-fetching the chunk before
   // the user clicks the row; clicking re-pins via pinPointByIndex which
   // refreshes the live detail card.
-  const BOOKMARKS_KEY = 'bhd-bookmarks-v1';
+  const BOOKMARKS_KEY = 'bookmarks-v1';
   const BOOKMARKS_MAX = 200;
   const dcBookmarkBtn = document.getElementById('dc-bookmark');
   const bmCard = document.getElementById('bookmarks-card');
@@ -3427,16 +3430,11 @@ async function boot() {
   const bmToggleCount = document.getElementById('bookmarks-toggle-count');
 
   function loadBookmarks() {
-    try {
-      const raw = localStorage.getItem(BOOKMARKS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch { return []; }
+    const parsed = storage.getJSON(BOOKMARKS_KEY, []);
+    return Array.isArray(parsed) ? parsed : [];
   }
   function saveBookmarks(list) {
-    try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(list.slice(0, BOOKMARKS_MAX))); }
-    catch {}
+    storage.setJSON(BOOKMARKS_KEY, list.slice(0, BOOKMARKS_MAX));
   }
   let _bookmarks = loadBookmarks();
   function isBookmarked(idx) {

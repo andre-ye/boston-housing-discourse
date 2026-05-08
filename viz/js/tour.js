@@ -19,6 +19,7 @@
 // Version 303.
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
+import { raf } from './core/raf.js';
 
 // ─── Demo-point picker ─────────────────────────────────────────────────────
 // Part 1 needs three live points: two in the same cluster (semantically
@@ -728,7 +729,7 @@ function pulseElement(selector) {
 export function createTour({ globe, App, nav }) {
   let idx = 0;
   let active = false;
-  let _heroSpinRAF = null;
+  let _heroSpinDispose = null;
 
   const overlay = document.getElementById('tour-overlay');
   if (!overlay) return { start() {}, close() {}, isActive: () => false };
@@ -773,18 +774,20 @@ export function createTour({ globe, App, nav }) {
   // half of the split screen shows a live, gently rotating globe.
   function startHeroSpin() {
     stopHeroSpin();
-    const spin = () => {
-      if (!active || idx !== 0) return;
+    const step = () => {
+      if (!active || idx !== 0) {
+        if (_heroSpinDispose) { _heroSpinDispose(); _heroSpinDispose = null; }
+        return;
+      }
       globe.nudge?.(0.22, -0.06);
-      _heroSpinRAF = requestAnimationFrame(spin);
     };
-    _heroSpinRAF = requestAnimationFrame(spin);
+    _heroSpinDispose = raf.add('tour:hero-spin', step);
   }
 
   function stopHeroSpin() {
-    if (_heroSpinRAF != null) {
-      cancelAnimationFrame(_heroSpinRAF);
-      _heroSpinRAF = null;
+    if (_heroSpinDispose) {
+      _heroSpinDispose();
+      _heroSpinDispose = null;
     }
   }
 

@@ -2,6 +2,7 @@
 // with Sankey-style ribbons connecting parent segments to their children.
 
 import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=234';
+import { storage } from './core/storage.js';
 
 // Each segment must be tall enough for a 2-line label. We use a readable
 // floor (30px) rather than the old 3px — the bar grows vertically and
@@ -195,9 +196,7 @@ export class NavController extends EventTarget {
   _maybeShowIntroToast() {
     // Only show on the very first visit; suppressed if the help panel has
     // ever been opened in this browser (strong signal they know it exists).
-    try {
-      if (localStorage.getItem('vizIntroSeen') === '1') return;
-    } catch (e) { /* private mode: fine to show each time */ }
+    if (storage.get('intro-seen') === '1') return;
     const el = document.createElement('div');
     el.className = 'intro-toast';
     el.innerHTML = `
@@ -209,7 +208,7 @@ export class NavController extends EventTarget {
     const dismiss = () => {
       el.classList.add('out');
       setTimeout(() => el.remove(), 400);
-      try { localStorage.setItem('vizIntroSeen', '1'); } catch (e) {}
+      storage.set('intro-seen', '1');
     };
     el.querySelector('.it-x').onclick = dismiss;
     setTimeout(() => el.classList.add('show'), 60);
@@ -441,18 +440,18 @@ export class NavController extends EventTarget {
     // ── Search history (localStorage). Shown as a "recent" list when the
     // user focuses an empty input — click or keyboard-select re-runs the
     // query. Stored in newest-first order, de-duped, capped at 20.
-    const HIST_KEY = 'vizSearchHist';
+    const HIST_KEY = 'search-hist';
     const HIST_MAX = 20;
     const loadHist = () => {
-      try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }
-      catch { return []; }
+      const arr = storage.getJSON(HIST_KEY, []);
+      return Array.isArray(arr) ? arr : [];
     };
     const pushHist = (q) => {
       if (!q || !q.trim()) return;
       const qq = q.trim();
       const prev = loadHist().filter(x => x !== qq);
       const next = [qq, ...prev].slice(0, HIST_MAX);
-      try { localStorage.setItem(HIST_KEY, JSON.stringify(next)); } catch {}
+      storage.setJSON(HIST_KEY, next);
     };
 
     let activeIdx = -1;
@@ -543,7 +542,7 @@ export class NavController extends EventTarget {
         clearBtn.addEventListener('mousedown', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          try { localStorage.removeItem(HIST_KEY); } catch {}
+          storage.remove(HIST_KEY);
           suggestions.classList.add('hidden');
           currentMatches = [];
         });
