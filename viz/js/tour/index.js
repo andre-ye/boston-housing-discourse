@@ -3,7 +3,7 @@
 import { keys } from '../core/keys.js?v=1';
 import { overlayManager } from '../core/overlays.js';
 import { dom } from '../core/dom.js';
-import { HERO_FRAMING } from '../core/constants.js';
+import { HERO_FRAMING, TOUR_NEXT_FADE_MS } from '../core/constants.js';
 import { BEATS } from './beats/index.js';
 import { createTourRunner } from './runner.js';
 import { escHtml } from './helpers.js';
@@ -105,10 +105,18 @@ export function createTour({ globe, App, nav }) {
     btnPrev?.classList.toggle('hidden', !meta.hasPrev);
     if (btnNext) {
       btnNext.classList.remove('tour-btn-continue');
+      btnNext.classList.remove('tour-btn-disabled');
+      btnNext.removeAttribute('aria-disabled');
+      btnNext.style.opacity = '';
+      btnNext.style.transition = '';
       if (beat.kind === 'step' && beat.manualContinue) {
-        // Step beats: Next is "Skip this step" until the user completes the
-        // action (then markStepDone() promotes it to "Continue").
-        btnNext.textContent = beat.nextLabel || 'Skip this step →';
+        // Step beats: Next is gated until the user completes the action.
+        // We render it disabled (visually + aria) — the click handler and
+        // Enter keybind no-op while disabled. markStepDone() lifts the gate
+        // and fades in the promoted "Nicely done — Continue →" copy.
+        btnNext.textContent = beat.nextLabel || 'Continue →';
+        btnNext.classList.add('tour-btn-disabled');
+        btnNext.setAttribute('aria-disabled', 'true');
       } else if (meta.isLastBeforeOutro) {
         btnNext.textContent = beat.nextLabel || 'Finish tour →';
       } else {
@@ -134,17 +142,33 @@ export function createTour({ globe, App, nav }) {
   }
 
   // ── markStepDone: a beat calls this when the user has completed the
-  // affordance and we're in manualContinue mode. We paint a "✓ Got it" hint
-  // and promote the Next button. The actual advance still requires Next/Enter.
+  // affordance and we're in manualContinue mode. We paint a "Nicely done"
+  // hint, lift the disabled gate on Next, and fade in the promoted
+  // "Nicely done — Continue →" copy over TOUR_NEXT_FADE_MS so the user has
+  // time to register the affordance change before clicking forward.
   function markStepDone() {
     document.body.classList.add('tour-step-done');
     const quotesEl = cardEl?.querySelector('.tour-quotes');
     if (quotesEl) {
-      quotesEl.innerHTML = '<div class="tour-step-hint tour-step-hint-done">✓ Got it</div>';
+      quotesEl.innerHTML = '<div class="tour-step-hint tour-step-hint-done">Nicely done.</div>';
     }
     if (btnNext) {
-      btnNext.textContent = 'Continue →';
-      btnNext.classList.add('tour-btn-continue');
+      // Fade out → swap copy → fade in. The gap between fades lets the
+      // copy change land on the eye instead of the user catching it
+      // mid-transition.
+      const fade = TOUR_NEXT_FADE_MS;
+      btnNext.style.transition = `opacity ${fade}ms ease`;
+      btnNext.style.opacity = '0';
+      setTimeout(() => {
+        btnNext.textContent = 'Nicely done — Continue →';
+        btnNext.classList.remove('tour-btn-disabled');
+        btnNext.classList.add('tour-btn-continue');
+        btnNext.removeAttribute('aria-disabled');
+        // Force reflow so the opacity transition replays in the other
+        // direction rather than collapsing into a single frame.
+        void btnNext.offsetWidth;
+        btnNext.style.opacity = '1';
+      }, fade);
     }
   }
 
@@ -204,8 +228,17 @@ export function createTour({ globe, App, nav }) {
   const runner = createTourRunner({ BEATS, ctx, ui });
 
   // ── Wire chrome buttons ──────────────────────────────────────────────
+  // Disabled-aware click — a manualContinue beat that hasn't fired
+  // markStepDone() yet leaves Next aria-disabled. Clicking does nothing
+  // (the user must complete the task first).
+  function isNextDisabled() {
+    return btnNext?.getAttribute('aria-disabled') === 'true';
+  }
   btnBegin?.addEventListener('click', () => runner.next());
-  btnNext?.addEventListener('click', () => runner.next());
+  btnNext?.addEventListener('click', () => {
+    if (isNextDisabled()) return;
+    runner.next();
+  });
   btnPrev?.addEventListener('click', () => runner.prev());
   btnSkip?.addEventListener('click', () => runner.close());
   skipHero?.addEventListener('click', () => runner.close());
@@ -268,7 +301,10 @@ export function createTour({ globe, App, nav }) {
     label: 'tour:next',
     allowInInput: true,
     when: () => runner.active,
-    handler: (e) => { runner.next(); e.preventDefault(); return true; },
+    handler: (e) => {
+      if (isNextDisabled()) { e.preventDefault(); return true; }
+      runner.next(); e.preventDefault(); return true;
+    },
   });
   keys.bind({
     keys: ['ArrowLeft'],
@@ -292,6 +328,7 @@ export function createTour({ globe, App, nav }) {
           || obId === 'tour-skip-hero' || obId === 'tour-skip' || obId === 'tour-explore') {
         return false;
       }
+      if (isNextDisabled()) { e.preventDefault(); return true; }
       runner.next();
       e.preventDefault();
       return true;

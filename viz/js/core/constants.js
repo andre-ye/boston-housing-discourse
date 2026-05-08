@@ -53,6 +53,24 @@ export const BAR_SEG_GAP_PX = 1;
 // fall back to a log-scale rank instead of strict proportional).
 export const BAR_SEG_PROPORTIONAL_BONUS_PX = 34;
 
+// ── Tour navigation pacing (Phase C1) ────────────────────────────────────
+// Promoted "Continue" button fades in this slow when a step task completes
+// so the user actually registers the affordance change.
+export const TOUR_NEXT_FADE_MS = 500;
+// Spotlight dot pulse cycle on beat 5 — slower than the tour-step pulse glow
+// so a stationary cluster of three numbered halos doesn't read as nervous
+// flicker.
+export const TOUR_GLOWING_PULSE_MS = 1400;
+// Long-distance camera moves during step beats. The global tour slerp/zoom
+// rate is intentionally slow (creates "deliberate camera moves") but for the
+// "compare three voices" beat the user reads the rotation as too sluggish —
+// snappier short-burst tween wins. Beats opt in by setting beat.cameraSnappy.
+export const TOUR_CAMERA_TWEEN_MS = 600;
+// Ease rates the globe applies when beat.cameraSnappy is true (per-frame).
+// 0.18/0.14 are the non-tour defaults — same feel as normal nav.
+export const TOUR_SNAPPY_SLERP_RATE = 0.18;
+export const TOUR_SNAPPY_ZOOM_RATE = 0.14;
+
 // ── Subtopic luminance shading (#32 #40) ─────────────────────────────────
 // When drilled into a single cluster, sub-points are recolored by sub-id
 // to a luminance step within the parent hue. BRIGHT_FACTOR is applied to
