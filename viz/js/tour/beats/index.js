@@ -21,10 +21,10 @@ import { beat as cluster3Search }  from './13-cluster3-search.js';
 import { beat as cluster3Time }    from './14-cluster3-time.js';
 import { beat as outro }           from './15-outro.js';
 
-// Note: 12-connections.js exists on disk but is intentionally NOT imported.
-// The connections feature still ships in the UI (toggleable via C key); it is
-// just not narrated in the tour. Per the tutorial-plan, the cluster flow goes
-// cluster1 → cluster2 → cluster3 → outro with no connections beat in between.
+// Note: a connections beat (12-connections.js) used to live here. The
+// connections feature still ships in the UI (toggleable via C key); the
+// tour just doesn't narrate it. Per the tutorial-plan the cluster flow is
+// cluster1 → cluster2 → cluster3 → outro with no connections beat between.
 
 export const BEATS = [
   hero,
