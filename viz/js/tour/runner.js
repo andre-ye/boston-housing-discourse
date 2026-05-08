@@ -58,11 +58,15 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     // chrome-off when the beat is purely narration (no user action, no chrome
     // whitelist). Step beats opt back into chrome via showChrome[].
     const chromeOff =
-      (beat.kind === 'hero' || beat.kind === 'card' || beat.kind === 'outro')
+      (beat.kind === 'hero' || beat.kind === 'card' || beat.kind === 'outro' || beat.kind === 'opener')
       && !(Array.isArray(beat.showChrome) && beat.showChrome.length > 0)
       && !beat.keepChrome;
     document.body.classList.toggle('tour-chrome-off', chromeOff);
     document.body.classList.toggle('tour-at-hero', beat.kind === 'hero');
+    // The 3-page opener wears a distinct body class so its card chrome can
+    // breathe (longer max-width, generous leading) without leaking into the
+    // tighter mid-tour narration cards.
+    document.body.classList.toggle('tour-at-opener', beat.kind === 'opener');
 
     if (beat.kind === 'step') {
       document.body.classList.add('tour-step-mode');
@@ -129,6 +133,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     _active = false;
     teardown();
     document.body.classList.remove('tour-at-hero');
+    document.body.classList.remove('tour-at-opener');
     document.body.classList.remove('tour-chrome-off');
     document.body.classList.remove('tour-morphing');
     try { store.set({ tour: { active: false, beat: 0 } }); } catch {}

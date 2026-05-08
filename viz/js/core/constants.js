@@ -21,6 +21,11 @@ export const ZOOM_TO_POINT_FRAMING = 1.8;
 export const HERO_NUDGE_LON = 0.22;
 export const HERO_NUDGE_LAT = -0.06;
 
+// ── Opener idle nudge — slightly slower than the hero so the spinning
+// globe behind the 3-page reading card doesn't pull the eye off the prose.
+export const OPENER_NUDGE_LON = 0.14;
+export const OPENER_NUDGE_LAT = -0.04;
+
 // ── Tour spatial picks (radians on the unit sphere) ─────────────────────
 export const TOUR_SAME_CLUSTER_MIN_RAD = 0.035;
 export const TOUR_SAME_CLUSTER_MAX_RAD = 0.12;

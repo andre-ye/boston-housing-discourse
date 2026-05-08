@@ -769,3 +769,132 @@
     opacity: 0;
     pointer-events: none;
   }
+
+  /* ── Tour opener — 3-page reading card ────────────────────────────────
+     Pages 1 / 2 / 3 of the tour-opener (data sources, why-sphere, the
+     algorithm). The shared .tour-card chrome gets a wider, more generous
+     treatment so the prose actually reads like prose: longer line length,
+     larger leading, real headings inside the body, room to breathe at
+     paragraph boundaries. The globe keeps spinning behind. */
+  .tour-card.tour-card--opener {
+    width: min(720px, calc(100vw - 96px));
+    max-width: calc(100vw - 96px);
+    padding: 28px 36px 22px;
+    bottom: 32px;
+    /* Generous max-height so all three pages fit without overflow even at
+       laptop heights. If a viewport is shorter than this, scroll inside. */
+    max-height: min(72vh, 620px);
+    overflow-y: auto;
+  }
+  body.tour-active.tour-chrome-off:not(.tour-at-hero) .tour-card.tour-card--opener,
+  body.tour-at-opener .tour-card.tour-card--opener {
+    /* Centred against the full viewport (chrome-off path) but pulled up
+       a touch so the spinning globe is visible above the card. */
+    left: 50vw;
+    width: min(720px, calc(100vw - 96px));
+    max-width: calc(100vw - 96px);
+  }
+  /* Eyebrow ("WHERE THIS CAME FROM · 1 / 3") — the opener wants this
+     visible. The base .tour-eyebrow rule hides it across the rest of the
+     tour, so re-show it explicitly inside the opener variant. */
+  .tour-card.tour-card--opener .tour-eyebrow {
+    display: block;
+    font: 600 10.5px/1 'Source Sans Pro', sans-serif;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: rgba(244,237,225,0.5);
+    margin: 0 0 12px;
+  }
+  .tour-card.tour-card--opener .tour-title {
+    font: 400 30px/1.18 'Source Serif Pro', Georgia, serif;
+    color: #fff;
+    margin: 0 0 16px;
+    letter-spacing: -0.3px;
+    /* `text-wrap: balance` is broadly supported in current Chrome/Firefox/
+       Safari; fixes the "widow word on its own line" issue (#21) on
+       short/medium-length opener titles without measuring. */
+    text-wrap: balance;
+    max-width: 36ch;
+  }
+  /* Body prose — paragraphs, h3 sections, opener-specific asides. The
+     existing .tour-prose sets margin/font-size; we override here so the
+     opener reads at a comfortable longform size. */
+  .tour-card.tour-card--opener .tour-prose {
+    font: 400 14.5px/1.7 'Source Serif Pro', Georgia, serif;
+    color: rgba(244,237,225,0.86);
+    margin: 0;
+    /* Hold line length to ~66ch — the comfortable reading band for
+       longform serif at this size. */
+    max-width: 66ch;
+    hyphens: auto;
+  }
+  .tour-card.tour-card--opener .tour-prose p {
+    margin: 0 0 12px;
+    text-wrap: pretty;
+  }
+  .tour-card.tour-card--opener .tour-prose p:last-child {
+    margin-bottom: 0;
+  }
+  .tour-card.tour-card--opener .tour-prose h3 {
+    font: 600 11px/1 'Source Sans Pro', system-ui, sans-serif;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: #f4ede1;
+    margin: 18px 0 8px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(244,237,225,0.12);
+  }
+  /* First h3 inside the prose follows the lede paragraph — give it a hair
+     more space and skip the top border so it doesn't double-rule under
+     the paragraph spacing. */
+  .tour-card.tour-card--opener .tour-prose h3:first-child {
+    margin-top: 4px;
+    padding-top: 0;
+    border-top: none;
+  }
+  .tour-card.tour-card--opener .tour-prose a {
+    color: #7cf0c9;
+    text-decoration: underline;
+    text-decoration-color: rgba(124,240,201,0.4);
+    text-underline-offset: 2px;
+  }
+  .tour-card.tour-card--opener .tour-prose a:hover {
+    text-decoration-color: #7cf0c9;
+  }
+  .tour-card.tour-card--opener .tour-prose em {
+    color: #f4ede1;
+    font-style: italic;
+  }
+  /* Inline P-pin token used in opener page 1 to gloss "P-pins". */
+  .tour-card.tour-card--opener .tour-prose .opener-pin {
+    display: inline-block;
+    font: 600 10px/1 'Source Sans Pro', sans-serif;
+    letter-spacing: 0.5px;
+    color: #0a1812;
+    background: #f4ede1;
+    border-radius: 999px;
+    padding: 2px 7px;
+    vertical-align: 1px;
+  }
+  /* Aside — used for "this is not a map of Boston" on page 2. Sets it
+     apart from the surrounding paragraphs without breaking flow. */
+  .tour-card.tour-card--opener .tour-prose .opener-aside {
+    margin: 14px 0;
+    padding: 10px 14px;
+    border-left: 2px solid rgba(244,237,225,0.28);
+    background: rgba(244,237,225,0.04);
+    color: rgba(244,237,225,0.78);
+    font-size: 13.5px;
+  }
+  /* Hide the dashed "quotes" rule line for opener beats — there are no
+     pullquotes/hints to introduce on these pages. */
+  .tour-card.tour-card--opener .tour-quotes:empty {
+    display: none;
+  }
+  /* Globe canvas pointer-events are off during the opener so the user
+     can't accidentally hover-pin or rotate the spinning backdrop while
+     reading. The card itself stays interactive (default for .tour-card). */
+  body.tour-at-opener #globe-canvas,
+  body.tour-at-opener #globe-overlay {
+    pointer-events: none !important;
+  }

@@ -73,10 +73,23 @@ export function createTour({ globe, App, nav }) {
     const proEl     = cardEl.querySelector('.tour-prose');
     const quotesEl  = cardEl.querySelector('.tour-quotes');
 
+    // Opener pages get a richer body (paragraphs, h3s, source links) via
+    // beat.bodyHtml. Tighter narration cards still set beat.prose as plain
+    // text. The eyebrow doubles as the page indicator (1/3, 2/3, 3/3) on
+    // opener beats and is shown via CSS only when .tour-card.tour-card--opener.
+    const isOpener = beat.kind === 'opener';
+    cardEl.classList.toggle('tour-card--opener', isOpener);
+
     if (eyebrowEl) eyebrowEl.textContent = beat.eyebrow || '';
     if (stepEl)    stepEl.textContent    = beat.stepLabel || '';
     if (titEl)     titEl.textContent     = beat.title || '';
-    if (proEl)     proEl.textContent     = beat.prose || '';
+    if (proEl) {
+      if (typeof beat.bodyHtml === 'string' && beat.bodyHtml) {
+        proEl.innerHTML = beat.bodyHtml;
+      } else {
+        proEl.textContent = beat.prose || '';
+      }
+    }
     if (quotesEl) {
       if (Array.isArray(beat.pullquotes) && beat.pullquotes.length) {
         quotesEl.innerHTML = beat.pullquotes
@@ -117,7 +130,7 @@ export function createTour({ globe, App, nav }) {
   function renderCardForBeat(beat, meta) {
     if (beat.kind === 'hero') renderHero(beat);
     else if (beat.kind === 'outro') renderOutro(beat);
-    else renderCard(beat, meta);
+    else renderCard(beat, meta);  // 'card', 'opener', 'step' all share chrome
   }
 
   // ── markStepDone: a beat calls this when the user has completed the
