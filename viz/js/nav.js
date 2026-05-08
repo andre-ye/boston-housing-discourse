@@ -3,6 +3,7 @@
 
 import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=234';
 import { storage } from './core/storage.js';
+import { keys } from './core/keys.js?v=1';
 
 // Each segment must be tall enough for a 2-line label. We use a readable
 // floor (30px) rather than the old 3px — the bar grows vertically and
@@ -214,14 +215,36 @@ export class NavController extends EventTarget {
     setTimeout(() => el.classList.add('show'), 60);
     setTimeout(dismiss, 9000);
     // Also dismiss on any click, keypress, or pointer move — user is engaged.
-    const onInteract = () => {
+    let unbindKeys = null;
+    const onMouseDown = () => {
       dismiss();
-      window.removeEventListener('keydown', onInteract, true);
-      window.removeEventListener('mousedown', onInteract, true);
+      if (unbindKeys) { unbindKeys(); unbindKeys = null; }
+      window.removeEventListener('mousedown', onMouseDown, true);
     };
     setTimeout(() => {
-      window.addEventListener('keydown', onInteract, true);
-      window.addEventListener('mousedown', onInteract, true);
+      // Wildcard low-priority key listener: any non-modifier key dismisses
+      // the toast. allowInInput so the toast disappears even if focus is
+      // already in the search box.
+      unbindKeys = keys.bind({
+        keys: [
+          'Escape', ' ', 'Enter', 'Tab',
+          'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+          '/', '?', 's', 't', 'x', 'r', 'c',
+          '[', ']', '{', '}',
+        ],
+        priority: 5,
+        label: 'intro-toast-dismiss',
+        allowInInput: true,
+        allowModifiers: true,
+        allowRepeat: true,
+        handler: () => {
+          dismiss();
+          if (unbindKeys) { unbindKeys(); unbindKeys = null; }
+          window.removeEventListener('mousedown', onMouseDown, true);
+          return false;   // never consume; just observe
+        },
+      });
+      window.addEventListener('mousedown', onMouseDown, true);
     }, 1500);   // grace period before interaction dismisses it
   }
 
@@ -242,135 +265,200 @@ export class NavController extends EventTarget {
       if (e.target === helpOverlay) toggleHelp(false);
     });
 
-    window.addEventListener('keydown', (e) => {
-      const tag = document.activeElement?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+    // ─── Escape cascade ─────────────────────────────────────────────
+    //
+    // The original implementation was one giant if-else cascade (tour →
+    // help → detail → interview → bookmarks → search → camera reset).
+    // Under the unified registry the cascade is split into ordered binds
+    // at three priorities so the same precedence falls out of the
+    // dispatcher's stable sort:
+    //
+    //   200 — tour swallows Esc (no-op while active).
+    //   100 — overlay closers: help.
+    //    50 — card closers: detail, interview, bookmarks,
+    //         search-state, camera-zoom-reset.
+    //
+    // Each bind is allowInInput: true so Esc still escapes the search box
+    // (the original used a single window listener that ran before the
+    // typing-bypass check — we preserve that behavior explicitly).
 
-      // Escape dismisses layered UI even when focus is in the search box
-      // (the global handler used to return early for INPUT, so Esc never
-      // reached help / detail / tour).
-      if (e.key === 'Escape') {
-        // Priority-ordered Esc: tour swallows Esc → help → cards →
-        // search/paint → camera reset.
+    // Tour (priority 200). Esc is intentionally a no-op while the tour
+    // overlay is up — Skip is the only way out.
+    keys.bind({
+      keys: ['Escape'], priority: 200, label: 'esc-tour-noop',
+      allowInInput: true,
+      handler: (e) => {
         const tourApi = window.App?.tour;
         const tourOv = document.getElementById('tour-overlay');
         const tourUp = tourOv && !tourOv.classList.contains('hidden');
-        if (tourApi?.isActive?.() || tourUp) {
-          // Tour intentionally requires the Skip button to dismiss; Esc is
-          // a no-op so it can't accidentally cut the guided experience short.
-          e.preventDefault();
-          return;
-        }
+        if (!tourApi?.isActive?.() && !tourUp) return false;
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Help overlay close (priority 100).
+    keys.bind({
+      keys: ['Escape'], priority: 100, label: 'esc-help-overlay',
+      allowInInput: true,
+      handler: (e) => {
         const help = document.getElementById('help-overlay');
-        if (help && !help.classList.contains('hidden')) {
-          toggleHelp(false);
-          e.preventDefault();
-          return;
-        }
-        const dc = document.getElementById('detail-card');
-        if (dc && !dc.classList.contains('hidden')) {
-          dc.classList.add('hidden');
-          e.preventDefault();
-          return;
-        }
+        if (!help || help.classList.contains('hidden')) return false;
+        toggleHelp(false);
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Detail card close (priority 50).
+    keys.bind({
+      keys: ['Escape'], priority: 50, label: 'esc-detail-card',
+      allowInInput: true,
+      handler: (e) => {
+        if (!dc || dc.classList.contains('hidden')) return false;
+        dc.classList.add('hidden');
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Interview card close (priority 50).
+    keys.bind({
+      keys: ['Escape'], priority: 50, label: 'esc-interview-card',
+      allowInInput: true,
+      handler: (e) => {
         const ivCard = document.getElementById('interview-card');
-        if (ivCard && !ivCard.classList.contains('hidden')) {
-          const close = ivCard.querySelector('.ic-close');
-          if (close) {
-            close.click();
-            e.preventDefault();
-            return;
-          }
-          ivCard.classList.add('hidden');
+        if (!ivCard || ivCard.classList.contains('hidden')) return false;
+        const close = ivCard.querySelector('.ic-close');
+        if (close) {
+          close.click();
           e.preventDefault();
-          return;
+          return true;
         }
-        if (window.App?.closeBookmarksCard?.()) {
-          e.preventDefault();
-          return;
-        }
-        if (this._clearSearchState?.()) {
-          e.preventDefault();
-          return;
-        }
+        ivCard.classList.add('hidden');
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Bookmarks card close (priority 50).
+    keys.bind({
+      keys: ['Escape'], priority: 50, label: 'esc-bookmarks-card',
+      allowInInput: true,
+      handler: (e) => {
+        if (!window.App?.closeBookmarksCard?.()) return false;
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Search state clear (priority 50).
+    keys.bind({
+      keys: ['Escape'], priority: 50, label: 'esc-search-state',
+      allowInInput: true,
+      handler: (e) => {
+        if (!this._clearSearchState?.()) return false;
+        e.preventDefault();
+        return true;
+      },
+    });
+    // Camera zoom reset (priority 50, runs last in the cascade).
+    keys.bind({
+      keys: ['Escape'], priority: 50, label: 'esc-camera-reset',
+      allowInInput: true,
+      handler: (e) => {
         const gl = window.App?.globe;
-        if (gl && typeof gl.isZoomedAwayFromCanonical === 'function' && gl.isZoomedAwayFromCanonical()) {
-          gl.resetCanonicalZoom();
-          e.preventDefault();
-          return;
-        }
-        return;
-      }
+        if (!gl || typeof gl.isZoomedAwayFromCanonical !== 'function') return false;
+        if (!gl.isZoomedAwayFromCanonical()) return false;
+        gl.resetCanonicalZoom();
+        e.preventDefault();
+        return true;
+      },
+    });
 
-      if (typing) return;
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // ─── Top-level shortcuts (priority 20) ──────────────────────────
+    keys.bind({
+      keys: ['/'], priority: 20, label: 'focus-search',
+      handler: (e) => {
         const input = document.getElementById('search-input');
-        if (input) { input.focus(); input.select(); e.preventDefault(); }
-      }
-      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (!input) return false;
+        input.focus();
+        input.select();
+        e.preventDefault();
+        return true;
+      },
+    });
+    keys.bind({
+      keys: ['?'], priority: 20, label: 'toggle-help',
+      handler: (e) => {
         toggleHelp();
         e.preventDefault();
-      }
-      if (e.key === 't' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        return true;
+      },
+    });
+    keys.bind({
+      keys: ['t'], priority: 20, label: 'toggle-timeline',
+      handler: (e) => {
         const tlToggle = document.getElementById('tl-toggle');
-        if (tlToggle) { tlToggle.click(); e.preventDefault(); }
-      }
-      if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (!tlToggle) return false;
+        tlToggle.click();
+        e.preventDefault();
+        return true;
+      },
+    });
+    keys.bind({
+      keys: ['s'], priority: 20, label: 'surprise-me',
+      handler: (e) => {
         const btn = document.getElementById('btn-surprise');
-        if (btn) { btn.click(); e.preventDefault(); }
-        else {
-          // Minimal-layout fallback: no surprise button surfaced, so
-          // reach directly into the app for a random well-supported
-          // subtopic drill (cl+gid). Going two levels deep is more
-          // meaningful than just picking a cluster — the user lands on
-          // a concrete topic, not an abstract bucket.
-          // Soft anti-repeat: avoid the last few clusters so consecutive
-          // presses don't pile up in one area.
-          if (!this._recentSurpriseCls) this._recentSurpriseCls = [];
-          const recent = this._recentSurpriseCls;
-          const byGid = window.App?.subGidMap?.byGid || {};
-          const hist = window.App?.state?.timeHist?.by_sub_gid || {};
-          const weighted = [];
-          for (const gidStr of Object.keys(byGid)) {
-            const gid = +gidStr;
-            const g = byGid[gid];
-            if (!g) continue;
-            const series = hist[gidStr];
-            const n = series ? series.reduce((s, v) => s + v, 0) : (g.count || 0);
-            if (n < 80) continue; // well-supported only
-            const dampen = recent.includes(g.cl) ? 0.4 : 1;
-            weighted.push({ cl: g.cl, gid, w: Math.sqrt(n) * dampen });
-          }
-          if (weighted.length) {
-            const total = weighted.reduce((s, c) => s + c.w, 0);
-            let r = Math.random() * total;
-            let pick = weighted[0];
-            for (const c of weighted) { r -= c.w; if (r <= 0) { pick = c; break; } }
-            recent.push(pick.cl);
-            if (recent.length > 3) recent.shift();
-            // Clear any active regex paint before drilling — otherwise the
-            // surprise target intersects with the paint set and the globe
-            // often renders as empty-bright (or stays dim on an unrelated
-            // topic). Surprise should feel like a fresh start.
-            if (typeof this._clearRegexPaint === 'function') this._clearRegexPaint();
-            this.focus({ cl: pick.cl, gid: pick.gid });
-            e.preventDefault();
-          }
+        if (btn) { btn.click(); e.preventDefault(); return true; }
+        // Minimal-layout fallback: no surprise button surfaced, so
+        // reach directly into the app for a random well-supported
+        // subtopic drill (cl+gid). Going two levels deep is more
+        // meaningful than just picking a cluster — the user lands on
+        // a concrete topic, not an abstract bucket.
+        // Soft anti-repeat: avoid the last few clusters so consecutive
+        // presses don't pile up in one area.
+        if (!this._recentSurpriseCls) this._recentSurpriseCls = [];
+        const recent = this._recentSurpriseCls;
+        const byGid = window.App?.subGidMap?.byGid || {};
+        const hist = window.App?.state?.timeHist?.by_sub_gid || {};
+        const weighted = [];
+        for (const gidStr of Object.keys(byGid)) {
+          const gid = +gidStr;
+          const g = byGid[gid];
+          if (!g) continue;
+          const series = hist[gidStr];
+          const n = series ? series.reduce((s, v) => s + v, 0) : (g.count || 0);
+          if (n < 80) continue; // well-supported only
+          const dampen = recent.includes(g.cl) ? 0.4 : 1;
+          weighted.push({ cl: g.cl, gid, w: Math.sqrt(n) * dampen });
         }
-      }
-      if (e.key === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (!weighted.length) return false;
+        const total = weighted.reduce((s, c) => s + c.w, 0);
+        let r = Math.random() * total;
+        let pick = weighted[0];
+        for (const c of weighted) { r -= c.w; if (r <= 0) { pick = c; break; } }
+        recent.push(pick.cl);
+        if (recent.length > 3) recent.shift();
+        // Clear any active regex paint before drilling — otherwise the
+        // surprise target intersects with the paint set and the globe
+        // often renders as empty-bright (or stays dim on an unrelated
+        // topic). Surprise should feel like a fresh start.
+        if (typeof this._clearRegexPaint === 'function') this._clearRegexPaint();
+        this.focus({ cl: pick.cl, gid: pick.gid });
+        e.preventDefault();
+        return true;
+      },
+    });
+    keys.bind({
+      keys: ['x'], priority: 20, label: 'global-reset',
+      handler: (e) => {
         // Global reset shortcut — unwinds drill + all filters + search.
         const btn = document.getElementById('btn-reset');
-        if (btn) { btn.click(); e.preventDefault(); }
-        else {
-          // Minimal-layout fallback: just unwind drill focus.
-          this.focus({});
-          const input = document.getElementById('search-input');
-          if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
-          if (typeof this._clearRegexPaint === 'function') this._clearRegexPaint();
-          e.preventDefault();
-        }
-      }
+        if (btn) { btn.click(); e.preventDefault(); return true; }
+        // Minimal-layout fallback: just unwind drill focus.
+        this.focus({});
+        const input = document.getElementById('search-input');
+        if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (typeof this._clearRegexPaint === 'function') this._clearRegexPaint();
+        e.preventDefault();
+        return true;
+      },
     });
   }
 

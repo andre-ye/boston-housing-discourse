@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=233';
 import { raf } from './core/raf.js';
+import { keys } from './core/keys.js?v=1';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -385,29 +386,42 @@ export class GlobeView extends EventTarget {
       this.distanceTarget = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.distanceTarget * factor));
     }, { passive: false });
 
-    window.addEventListener('keydown', (e) => {
-      if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
-      let dx = 0, dy = 0;
-      // Arrow direction = direction content moves on screen (push-the-globe).
-      if (e.key === 'ArrowLeft')  dx = -100;
-      if (e.key === 'ArrowRight') dx = 100;
-      if (e.key === 'ArrowUp')    dy = -100;
-      if (e.key === 'ArrowDown')  dy = 100;
-      if (dx || dy) {
-        // Zoom-scaling is now handled inside applyScreenRotation.
-        const mag = (KEY_STEP / ROT_SPEED) * 0.001;
-        applyScreenRotation(dx * mag, dy * mag);
-        e.preventDefault();
-        return;
-      }
-      const tk = (this.distanceTarget - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
-      const stepFactor = 0.04 + 0.12 * Math.max(0, Math.min(1, tk));   // 0.04 in, 0.16 out
-      if (e.key === '+' || e.key === '=' || e.key === 'w' || e.key === 'W') {
-        this.distanceTarget = Math.max(MIN_ZOOM, this.distanceTarget * (1 - stepFactor)); e.preventDefault();
-      }
-      if (e.key === '-' || e.key === '_' || e.key === 's' || e.key === 'S') {
-        this.distanceTarget = Math.min(MAX_ZOOM, this.distanceTarget * (1 + stepFactor)); e.preventDefault();
-      }
+    keys.bind({
+      keys: [
+        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+        '+', '=', '-', '_', 'w', 'W', 's', 'S',
+      ],
+      priority: 10,
+      label: 'globe-arrows-zoom',
+      allowRepeat: true,
+      handler: (e) => {
+        let dx = 0, dy = 0;
+        // Arrow direction = direction content moves on screen (push-the-globe).
+        if (e.key === 'ArrowLeft')  dx = -100;
+        if (e.key === 'ArrowRight') dx = 100;
+        if (e.key === 'ArrowUp')    dy = -100;
+        if (e.key === 'ArrowDown')  dy = 100;
+        if (dx || dy) {
+          // Zoom-scaling is now handled inside applyScreenRotation.
+          const mag = (KEY_STEP / ROT_SPEED) * 0.001;
+          applyScreenRotation(dx * mag, dy * mag);
+          e.preventDefault();
+          return true;
+        }
+        const tk = (this.distanceTarget - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
+        const stepFactor = 0.04 + 0.12 * Math.max(0, Math.min(1, tk));   // 0.04 in, 0.16 out
+        if (e.key === '+' || e.key === '=' || e.key === 'w' || e.key === 'W') {
+          this.distanceTarget = Math.max(MIN_ZOOM, this.distanceTarget * (1 - stepFactor));
+          e.preventDefault();
+          return true;
+        }
+        if (e.key === '-' || e.key === '_' || e.key === 's' || e.key === 'S') {
+          this.distanceTarget = Math.min(MAX_ZOOM, this.distanceTarget * (1 + stepFactor));
+          e.preventDefault();
+          return true;
+        }
+        return false;
+      },
     });
 
     // Programmatic API for the on-screen control pad.

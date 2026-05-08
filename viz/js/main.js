@@ -26,6 +26,7 @@ import { GlobeView } from './globe.js?v=272';
 import { dom } from './core/dom.js';
 import { storage } from './core/storage.js';
 import { raf } from './core/raf.js';
+import { keys } from './core/keys.js?v=1';
 import * as THREE from 'three';
 
 const loadingEl = document.getElementById('loading');
@@ -38,6 +39,7 @@ async function boot() {
   // before any feature reads them; dom warms its element cache.
   storage.init();
   dom.init();
+  keys.init();
   updateMsg('Loading sphere coordinates…');
   try {
     App.state = await loadData(updateMsg);
@@ -176,26 +178,30 @@ async function boot() {
     let spinning = true;
     const DX = 0.18;   // rightward px-equivalent per frame (~11 px/sec @60fps)
     const DY = -0.09;  // upward
-    const STOP_KEYS = new Set([
+    const STOP_KEYS = [
       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
       'w','W','s','S','+','=','-','_',
-    ]);
+    ];
+    let unbindKeys = null;
     const stop = () => {
       if (!spinning) return;
       spinning = false;
       canvas.removeEventListener('pointerdown', stop, true);
       canvas.removeEventListener('wheel', stop, true);
-      window.removeEventListener('keydown', onKey, true);
+      if (unbindKeys) { unbindKeys(); unbindKeys = null; }
       nav?.removeEventListener?.('focus', stop);
-    };
-    const onKey = (e) => {
-      const tag = e.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (STOP_KEYS.has(e.key)) stop();
     };
     canvas.addEventListener('pointerdown', stop, true);
     canvas.addEventListener('wheel', stop, true);
-    window.addEventListener('keydown', onKey, true);
+    // Low priority — never consume the event; just observe and stop drift.
+    unbindKeys = keys.bind({
+      keys: STOP_KEYS,
+      priority: 5,
+      label: 'idle-rotate-stop',
+      allowRepeat: true,
+      allowModifiers: true,
+      handler: () => { stop(); return false; },
+    });
     nav?.addEventListener?.('focus', stop);
     let _disposeIdle = null;
     const tick = () => {
@@ -1420,15 +1426,23 @@ async function boot() {
     if (ae?.isContentEditable) return false;
     return true;
   }
-  window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' && e.key !== ' ') return;
-    if (e.repeat) return;
-    if (!_sproutSpaceAllowed(e)) return;
-    cancelSproutClearTimer();
-    e.preventDefault();
-    _spaceDown = !_spaceDown;
-    if (_spaceDown) sproutSpawn(++sproutRenderToken);
-    else sproutClear({ immediate: true });
+  // Space: toggle sprouts (gated off during tour and on input/button focus).
+  // when() also enforces the not-tour-active gate. Stage 3 will swap the
+  // body-class probe for an overlayManager.isOpen('tour') call.
+  keys.bind({
+    keys: [' '],
+    priority: 25,
+    label: 'sprouts-toggle',
+    when: () => !document.body.classList.contains('tour-active'),
+    handler: (e) => {
+      if (!_sproutSpaceAllowed(e)) return false;
+      cancelSproutClearTimer();
+      e.preventDefault();
+      _spaceDown = !_spaceDown;
+      if (_spaceDown) sproutSpawn(++sproutRenderToken);
+      else sproutClear({ immediate: true });
+      return true;
+    },
   });
   window.addEventListener('blur', () => {
     cancelSproutClearTimer();
@@ -1986,39 +2000,42 @@ async function boot() {
   //   { / } → prev/next sub within the current cluster
   // Registered unconditionally (not gated on btn-surprise existing) so
   // these shortcuts work in the minimal layout too.
-  window.addEventListener('keydown', (e) => {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const k = e.key;
-    if (k === '[' || k === ']') {
-      const gid = nav.focusGid;
-      if (gid == null) return;
-      const doc = App.state.positionAnchors?.[String(gid)];
-      const positions = (doc?.positions || []).filter(p => p.count > 0);
-      if (positions.length === 0) return;
-      const realIdxs = (doc.positions || []).map((p, i) => ({ p, i })).filter(o => o.p.count > 0).map(o => o.i);
-      const currIdx = realIdxs.indexOf(currentFocusedPosition?.posIdx ?? nav.focusPosIdx ?? -1);
-      let nextIdx;
-      if (currIdx < 0) nextIdx = 0;
-      else nextIdx = (currIdx + (k === ']' ? 1 : -1) + realIdxs.length) % realIdxs.length;
-      focusPosition(doc.cl, gid, realIdxs[nextIdx]);
-      e.preventDefault();
-      return;
-    }
-    if (k === '{' || k === '}') {
-      const cl = nav.focusCl;
-      if (cl == null) return;
-      const subs = App.state.subMeta?.[String(cl)] || [];
-      if (subs.length === 0) return;
-      const gidList = subs.map(s => App.subGidMap.byLocal[cl]?.[s.sub]).filter(g => g != null);
-      if (gidList.length === 0) return;
-      const curr = gidList.indexOf(nav.focusGid);
-      const idx = curr < 0 ? 0 : (curr + (k === '}' ? 1 : -1) + gidList.length) % gidList.length;
-      nav.focus({ cl, gid: gidList[idx] });
-      e.preventDefault();
-      return;
-    }
+  keys.bind({
+    keys: ['[', ']', '{', '}'],
+    priority: 20,
+    label: 'lateral-nav',
+    handler: (e) => {
+      const k = e.key;
+      if (k === '[' || k === ']') {
+        const gid = nav.focusGid;
+        if (gid == null) return false;
+        const doc = App.state.positionAnchors?.[String(gid)];
+        const positions = (doc?.positions || []).filter(p => p.count > 0);
+        if (positions.length === 0) return false;
+        const realIdxs = (doc.positions || []).map((p, i) => ({ p, i })).filter(o => o.p.count > 0).map(o => o.i);
+        const currIdx = realIdxs.indexOf(currentFocusedPosition?.posIdx ?? nav.focusPosIdx ?? -1);
+        let nextIdx;
+        if (currIdx < 0) nextIdx = 0;
+        else nextIdx = (currIdx + (k === ']' ? 1 : -1) + realIdxs.length) % realIdxs.length;
+        focusPosition(doc.cl, gid, realIdxs[nextIdx]);
+        e.preventDefault();
+        return true;
+      }
+      if (k === '{' || k === '}') {
+        const cl = nav.focusCl;
+        if (cl == null) return false;
+        const subs = App.state.subMeta?.[String(cl)] || [];
+        if (subs.length === 0) return false;
+        const gidList = subs.map(s => App.subGidMap.byLocal[cl]?.[s.sub]).filter(g => g != null);
+        if (gidList.length === 0) return false;
+        const curr = gidList.indexOf(nav.focusGid);
+        const idx = curr < 0 ? 0 : (curr + (k === '}' ? 1 : -1) + gidList.length) % gidList.length;
+        nav.focus({ cl, gid: gidList[idx] });
+        e.preventDefault();
+        return true;
+      }
+      return false;
+    },
   });
 
   // ─── Control pad ─────────────────────────────────────────────
@@ -3108,13 +3125,15 @@ async function boot() {
   window.App.refreshConnections = refreshConnectionsIfActive;
   window.App.emphasizeDetailContextForConnections = emphasizeDetailContextForConnections;
 
-  window.addEventListener('keydown', (e) => {
-    if ((e.key || '').toLowerCase() !== 'c' || e.repeat) return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    e.preventDefault();
-    window.App.toggleConnectionsMode();
+  keys.bind({
+    keys: ['c'],
+    priority: 25,
+    label: 'connections-toggle',
+    handler: (e) => {
+      e.preventDefault();
+      window.App.toggleConnectionsMode();
+      return true;
+    },
   });
 
   // Make the connections chip a real button. Click toggles the mode;
@@ -3141,40 +3160,55 @@ async function boot() {
     hideInterviewCard();
     document.getElementById('detail-card')?.classList.add('hidden');
   };
-  // Escape is the universal "back out of transient modes" key. Run in capture
-  // so selected-node state clears before NavController hides the detail card.
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    let handled = false;
-    const sproutHang =
-      sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
-    const hasSprouts = _spaceDown || activeSprouts.length > 0 || !!sproutHang;
-    if (hasSprouts) {
+  // Escape: the universal "back out of transient modes" key, split across
+  // three separate bindings (priority 50). All three may run on a single
+  // press because they target distinct, simultaneously-active modes
+  // (sprouts + connections + pinned point). Each handler returns `false`
+  // so the next priority-50 binding still sees the event; this preserves
+  // the original "clear all transient modes at once" behavior.
+  //
+  // Note: the original handler used stopImmediatePropagation() to suppress
+  // layered handlers when no top-level overlay was open. Under the unified
+  // dispatcher there is exactly one window-level keydown listener, so
+  // stopImmediatePropagation is no longer necessary; priority ordering does
+  // the same job.
+  keys.bind({
+    keys: ['Escape'],
+    priority: 50,
+    label: 'esc-clear-sprouts',
+    handler: (e) => {
+      const sproutHang = sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
+      const hasSprouts = _spaceDown || activeSprouts.length > 0 || !!sproutHang;
+      if (!hasSprouts) return false;
       _spaceDown = false;
       cancelSproutClearTimer();
       window.App.clearSprouts({ immediate: true });
-      handled = true;
-    }
-    if (_shiftActive) {
-      shiftHideRelations();
-      handled = true;
-    }
-    if (pinnedPointIdx >= 0) {
-      clearSelectedPoint();
-      handled = true;
-    }
-    if (handled) {
       e.preventDefault();
-      const layerOpen = [
-        'tourOverlay', 'helpOverlay',
-        'detailCard', 'interviewCard',
-      ].some(name => {
-        const el = dom.el(name);
-        return el && !el.classList.contains('hidden');
-      });
-      if (!layerOpen) e.stopImmediatePropagation();
-    }
-  }, true);
+      return false;
+    },
+  });
+  keys.bind({
+    keys: ['Escape'],
+    priority: 50,
+    label: 'esc-clear-connections',
+    handler: (e) => {
+      if (!_shiftActive) return false;
+      shiftHideRelations();
+      e.preventDefault();
+      return false;
+    },
+  });
+  keys.bind({
+    keys: ['Escape'],
+    priority: 50,
+    label: 'esc-clear-pinned-point',
+    handler: (e) => {
+      if (pinnedPointIdx < 0) return false;
+      clearSelectedPoint();
+      e.preventDefault();
+      return false;
+    },
+  });
 
   async function buildHoverArcs(idx, details) {
     const myEpoch = ++hoverEpoch;
@@ -3660,12 +3694,17 @@ async function boot() {
     });
   })();
   // R keybind. Allowed during the guided tour (Space stays gated there).
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'r' && e.key !== 'R') return;
-    if (e.repeat) return;
-    if (!_sproutRandomKeyAllowed(e)) return;
-    e.preventDefault();
-    window.App.sampleFiveRandom();
+  // We don't gate on the body.tour-active class — R should still fire then.
+  keys.bind({
+    keys: ['r'],
+    priority: 25,
+    label: 'random-five',
+    handler: (e) => {
+      if (!_sproutRandomKeyAllowed(e)) return false;
+      e.preventDefault();
+      window.App.sampleFiveRandom();
+      return true;
+    },
   });
 
   syncBookmarksUI();

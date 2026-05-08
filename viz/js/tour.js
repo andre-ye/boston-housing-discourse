@@ -18,6 +18,8 @@
 //
 // Version 303.
 
+import { keys } from './core/keys.js?v=1';
+
 // (data.js helpers not needed — nav.focus() handles routing & camera)
 import { raf } from './core/raf.js';
 
@@ -389,17 +391,18 @@ const BEATS = [
             trigger();
           };
           // sampleFiveRandom is handled by main.js on R; we only advance once
-          // per step (bubble runs after main's listener on the same keydown).
-          const onKeyDown = (e) => {
-            if (e.repeat) return;
-            if (e.key !== 'r' && e.key !== 'R') return;
-            trigger();
-          };
+          // per step. We don't consume the event so the global R binding
+          // still fires (returns false).
           chip?.addEventListener('click', onChipClick);
-          window.addEventListener('keydown', onKeyDown, false);
+          const unbindKey = keys.bind({
+            keys: ['r'],
+            priority: 200,
+            label: 'tour-step:r-advance',
+            handler: () => { trigger(); return false; },
+          });
           return () => {
             chip?.removeEventListener('click', onChipClick);
-            window.removeEventListener('keydown', onKeyDown, false);
+            unbindKey();
             if (collapseTimer != null) {
               clearTimeout(collapseTimer);
               collapseTimer = null;
@@ -592,17 +595,19 @@ const BEATS = [
           };
           const chip = document.getElementById('shift-hint');
           const onClick = () => trigger();
-          const onKeyDown = (e) => {
-            if (e.repeat) return;
-            if ((e.key || '').toLowerCase() !== 'c') return;
-            if (e.metaKey || e.ctrlKey || e.altKey) return;
-            trigger();
-          };
           chip?.addEventListener('click', onClick);
-          window.addEventListener('keydown', onKeyDown, true);
+          // Priority 200 so this fires before the global priority-25 C
+          // toggle. We return false so the global C handler still runs
+          // and actually toggles the connections mode.
+          const unbindKey = keys.bind({
+            keys: ['c'],
+            priority: 200,
+            label: 'tour-step:c-advance',
+            handler: () => { trigger(); return false; },
+          });
           return () => {
             chip?.removeEventListener('click', onClick);
-            window.removeEventListener('keydown', onKeyDown, true);
+            unbindKey();
           };
         },
       },
@@ -1246,68 +1251,109 @@ export function createTour({ globe, App, nav }) {
 
   // ── Keyboard ────────────────────────────────────────────────────────
   // Escape during the tour: closing the tour itself requires Skip. Esc still
-  // closes inspector cards and dismisses floating random sprout captions
-  // (those are handled above; otherwise this listener traps Esc before it
-  // reaches globel-level handlers registered later during boot).
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    const overlayVisible = !overlay.classList.contains('hidden');
-    if (!active && !overlayVisible) return;
-    const cards = ['interview-card', 'detail-card']
-      .map(id => document.getElementById(id))
-      .filter(c => c && !c.classList.contains('hidden'));
-    if (cards.length > 0) {
+  // closes inspector cards and dismisses floating random sprout captions.
+  // Priority 200 means this runs before the priority-100/50 Esc cascades
+  // registered by NavController and main.js, replacing the original
+  // capture-phase listener that used stopPropagation.
+  const tourActiveOrVisible = () => active || !overlay.classList.contains('hidden');
+  keys.bind({
+    keys: ['Escape'],
+    priority: 200,
+    label: 'tour:esc-cards',
+    allowInInput: true,
+    when: tourActiveOrVisible,
+    handler: (e) => {
+      const cards = ['interview-card', 'detail-card']
+        .map(id => document.getElementById(id))
+        .filter(c => c && !c.classList.contains('hidden'));
+      if (cards.length === 0) return false;
       cards.forEach(c => c.classList.add('hidden'));
-      // If a P-pin was selected on the globe overlay, drop the selection
-      // visual too so it doesn't pulse alone.
       document.querySelectorAll('.pin.selected').forEach(el => el.classList.remove('selected'));
       e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    // Random sprout captions: global Esc handler sits *after* this listener,
-    // so we must dismiss them here or Esc is swallowed below.
-    try {
-      const spr = document.getElementById('sprouts')
-        ?.querySelector?.('.sprout, .sprout-anchor');
-      if (spr && typeof App.clearSprouts === 'function') {
-        App.clearSprouts({ immediate: true });
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-    } catch (_) {}
-    // No inspector cards / no sprout layer → Esc deliberately does nothing to
-    // the tour itself while the overlay is active.
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
+      return true;
+    },
+  });
+  keys.bind({
+    keys: ['Escape'],
+    priority: 200,
+    label: 'tour:esc-sprouts',
+    allowInInput: true,
+    when: tourActiveOrVisible,
+    handler: (e) => {
+      try {
+        const spr = document.getElementById('sprouts')
+          ?.querySelector?.('.sprout, .sprout-anchor');
+        if (spr && typeof App.clearSprouts === 'function') {
+          App.clearSprouts({ immediate: true });
+          e.preventDefault();
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    },
+  });
+  keys.bind({
+    keys: ['Escape'],
+    priority: 200,
+    label: 'tour:esc-noop',
+    allowInInput: true,
+    when: tourActiveOrVisible,
+    handler: (e) => {
+      // No cards, no sprouts → Esc deliberately does nothing to the tour
+      // itself while the overlay is active. Consume so lower-priority Esc
+      // handlers (help, search, camera reset) don't fire mid-tour.
+      e.preventDefault();
+      return true;
+    },
+  });
 
-  document.addEventListener('keydown', (e) => {
-    if (!active) return;
-    if (e.key === 'ArrowRight') {
-      if (skipCurrentStep()) { e.preventDefault(); return; }
+  // Tour navigation: ArrowRight/Left/Enter while tour is active.
+  keys.bind({
+    keys: ['ArrowRight'],
+    priority: 200,
+    label: 'tour:next',
+    allowInInput: true,
+    when: () => active,
+    handler: (e) => {
+      if (skipCurrentStep()) { e.preventDefault(); return true; }
       next();
       e.preventDefault();
-    } else if (e.key === 'ArrowLeft') {
-      if (prevCurrentStep()) { e.preventDefault(); return; }
+      return true;
+    },
+  });
+  keys.bind({
+    keys: ['ArrowLeft'],
+    priority: 200,
+    label: 'tour:prev',
+    allowInInput: true,
+    when: () => active,
+    handler: (e) => {
+      if (prevCurrentStep()) { e.preventDefault(); return true; }
       prev();
       e.preventDefault();
-    } else if (e.key === 'Enter') {
-      if (e.repeat) return;
+      return true;
+    },
+  });
+  keys.bind({
+    keys: ['Enter'],
+    priority: 200,
+    label: 'tour:enter-advance',
+    when: () => active,
+    handler: (e) => {
       const ae = document.activeElement;
       const tag = ae?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
       // Let real tour buttons handle their own Enter (avoids double next / back).
       const obId = ae?.closest?.('#tour-overlay') ? ae?.id : null;
       if (obId === 'tour-begin' || obId === 'tour-next' || obId === 'tour-prev'
           || obId === 'tour-skip-hero' || obId === 'tour-skip' || obId === 'tour-explore') {
-        return;
+        return false;
       }
-      if (skipCurrentStep()) { e.preventDefault(); return; }
+      if (skipCurrentStep()) { e.preventDefault(); return true; }
       next();
       e.preventDefault();
-    }
+      return true;
+    },
   });
 
   return { start, close, isActive: () => active || !overlay.classList.contains('hidden') };
