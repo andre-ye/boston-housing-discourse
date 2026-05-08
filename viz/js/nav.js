@@ -4,6 +4,7 @@
 import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=234';
 import { storage } from './core/storage.js';
 import { keys } from './core/keys.js?v=1';
+import { overlayManager } from './core/overlays.js';
 
 // Each segment must be tall enough for a 2-line label. We use a readable
 // floor (30px) rather than the old 3px — the bar grows vertically and
@@ -162,8 +163,7 @@ export class NavController extends EventTarget {
       `;
       chip.onclick = () => {
         this.focus({ cl: d.cl });
-        const ov = document.getElementById('help-overlay');
-        if (ov) ov.classList.add('hidden');
+        overlayManager.close('help');
       };
       frag.appendChild(chip);
     }
@@ -249,20 +249,33 @@ export class NavController extends EventTarget {
   }
 
   _initGlobalShortcuts() {
+    // Register the help overlay with the manager so body-class state lives in
+    // one place. `closeOnEsc: true` means the priority-100 Esc bind below
+    // (the overlay-closer cascade) will hand off to overlayManager.closeTop().
+    const helpOverlayEl = document.getElementById('help-overlay');
+    if (helpOverlayEl) {
+      overlayManager.register({
+        name: 'help',
+        rootEl: helpOverlayEl,
+        bodyClasses: ['help-open'],
+        closeOnEsc: true,
+        priority: 100,
+        onOpen: () => this._populateHelpClusters(),
+      });
+    }
     const toggleHelp = (show) => {
-      const ov = document.getElementById('help-overlay');
-      if (!ov) return;
-      const next = show === undefined ? ov.classList.contains('hidden') : show;
-      ov.classList.toggle('hidden', !next);
-      if (next) this._populateHelpClusters();
+      if (!helpOverlayEl) return;
+      const isOpen = overlayManager.isOpen('help');
+      const next = show === undefined ? !isOpen : !!show;
+      if (next) overlayManager.open('help');
+      else overlayManager.close('help');
     };
     const btnHelp = document.getElementById('btn-help');
     if (btnHelp) btnHelp.onclick = () => toggleHelp();
     const helpClose = document.getElementById('help-close');
     if (helpClose) helpClose.onclick = () => toggleHelp(false);
-    const helpOverlay = document.getElementById('help-overlay');
-    if (helpOverlay) helpOverlay.addEventListener('click', (e) => {
-      if (e.target === helpOverlay) toggleHelp(false);
+    if (helpOverlayEl) helpOverlayEl.addEventListener('click', (e) => {
+      if (e.target === helpOverlayEl) toggleHelp(false);
     });
 
     // ─── Escape cascade ─────────────────────────────────────────────
@@ -296,14 +309,14 @@ export class NavController extends EventTarget {
         return true;
       },
     });
-    // Help overlay close (priority 100).
+    // Help overlay close (priority 100). Delegates to overlayManager.closeTop()
+    // which closes the most recently opened closeOnEsc overlay; today only
+    // help registers with closeOnEsc: true, so behavior is identical.
     keys.bind({
-      keys: ['Escape'], priority: 100, label: 'esc-help-overlay',
+      keys: ['Escape'], priority: 100, label: 'esc-overlay-closeTop',
       allowInInput: true,
       handler: (e) => {
-        const help = document.getElementById('help-overlay');
-        if (!help || help.classList.contains('hidden')) return false;
-        toggleHelp(false);
+        if (!overlayManager.closeTop()) return false;
         e.preventDefault();
         return true;
       },
@@ -385,6 +398,9 @@ export class NavController extends EventTarget {
     });
     keys.bind({
       keys: ['?'], priority: 20, label: 'toggle-help',
+      // Suppress while the tour is active — the tour owns its own help
+      // affordances and ? would compete with the step-mode UI.
+      when: () => !overlayManager.isOpen('tour'),
       handler: (e) => {
         toggleHelp();
         e.preventDefault();

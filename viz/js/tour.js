@@ -22,6 +22,8 @@ import { keys } from './core/keys.js?v=1';
 
 // (data.js helpers not needed — nav.focus() handles routing & camera)
 import { raf } from './core/raf.js';
+import { overlayManager } from './core/overlays.js';
+import { dom } from './core/dom.js';
 
 // ─── Demo-point picker ─────────────────────────────────────────────────────
 // Part 1 needs three live points: two in the same cluster (semantically
@@ -736,8 +738,20 @@ export function createTour({ globe, App, nav }) {
   let active = false;
   let _heroSpinDispose = null;
 
-  const overlay = document.getElementById('tour-overlay');
+  const overlay = dom.el('tourOverlay') || document.getElementById('tour-overlay');
   if (!overlay) return { start() {}, close() {}, isActive: () => false };
+
+  // Register with the overlay manager so the body-class `tour-active` is
+  // owned in one place. The step-scoped classes (tour-at-hero,
+  // tour-chrome-off, tour-step-mode, etc.) remain managed inline by the
+  // beat / step renderers below — they're not overlay-scoped.
+  overlayManager.register({
+    name: 'tour',
+    rootEl: overlay,
+    bodyClasses: ['tour-active'],
+    closeOnEsc: false,   // tour has its own Esc routing for cards/sprouts
+    priority: 200,
+  });
 
   // ── DOM references ──────────────────────────────────────────────────
   const heroEl     = overlay.querySelector('.tour-hero');
@@ -1193,8 +1207,8 @@ export function createTour({ globe, App, nav }) {
     if (active) return;
     active = true;
     idx = 0;
-    overlay.classList.remove('hidden');
-    document.body.classList.add('tour-active');
+    // overlayManager owns `tour-active` and unhides the overlay element.
+    overlayManager.open('tour');
     resetTourState({ full: true });
     render();
   }
@@ -1209,12 +1223,13 @@ export function createTour({ globe, App, nav }) {
     stopPinSpin();
     applyPinSpotlight(false);
     endStep();
-    overlay.classList.add('hidden');
+    // Step-scoped body classes — clear inline. overlayManager.close() drops
+    // the root `tour-active` and re-hides the overlay.
     document.body.classList.remove('tour-at-hero');
     document.body.classList.remove('tour-chrome-off');
     document.body.classList.remove('tour-morphing');
-    document.body.classList.remove('tour-active');
     document.body.classList.remove('tour-step-mode');
+    overlayManager.close('tour');
     // Leave the user in a clean sandbox when they "go forth and explore".
     resetTourState({ full: true });
   }

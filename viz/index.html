@@ -4418,15 +4418,12 @@
 </div>
 
 <script>
-  // Cold-load boot: paint the tour overlay's hero immediately so there's no
-  // flash of bare globe before main.js finishes loading + calls tour.start().
-  // Deep-links (#cl=…) skip the auto-tour entirely. If main.js wins the race
-  // and calls start() first, this runs as a no-op (tour-active already set).
+  // Cold-load boot: poll for App.tour to land, then call start(). The tour
+  // module (via overlayManager) owns the body classes + overlay visibility;
+  // we no longer manipulate them inline here.
+  // Deep-links (#cl=…) skip the auto-tour entirely.
   (function () {
     if (location.hash) return;
-    document.body.classList.add('tour-active', 'tour-at-hero', 'tour-chrome-off');
-    var tourOv = document.getElementById('tour-overlay');
-    if (tourOv) tourOv.classList.remove('hidden');
     function tryStart() {
       var t = window.App && window.App.tour;
       if (t && typeof t.start === 'function') { t.start(); return true; }
