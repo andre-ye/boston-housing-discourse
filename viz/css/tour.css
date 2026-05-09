@@ -701,6 +701,42 @@
     margin: 0 0 32px;
   }
 
+  /* ── Tour pointer arrow (#44 #46) ───────────────────────────────────
+     Floats a curved-tail SVG arrow from off-screen toward the spotlit
+     element so the user finds the click target. Sized at 120×64 with
+     the head near the right edge of the box; we mirror via scaleX(-1)
+     when the target is to the LEFT of the arrow's origin, and scaleY(-1)
+     when the arrow needs to point UP. JS handles positioning. */
+  .tour-arrow {
+    position: fixed;
+    width: 120px;
+    height: 64px;
+    pointer-events: none;
+    z-index: 50;
+    color: #7cf0c9;
+    filter: drop-shadow(0 0 6px rgba(124,240,201,0.55))
+            drop-shadow(0 0 14px rgba(124,240,201,0.30));
+    animation: tour-arrow-bob 1.1s ease-in-out infinite;
+    transform-origin: 50% 50%;
+    will-change: transform, left, top;
+  }
+  .tour-arrow.hidden { display: none; }
+  .tour-arrow svg { width: 100%; height: 100%; display: block; }
+  .tour-arrow--mirror-x { transform: scaleX(-1); }
+  .tour-arrow--mirror-y { transform: scaleY(-1); }
+  .tour-arrow--mirror-x.tour-arrow--mirror-y { transform: scale(-1, -1); }
+  /* The bob anim composes onto the mirroring transforms via a translate
+     keyframe applied to a child wrapper instead of the root. Easier: use
+     a separate transform property via individual transforms (modern
+     browsers) — fall back gracefully when not supported. */
+  @keyframes tour-arrow-bob {
+    0%, 100% { translate: 0 0; }
+    50%      { translate: -4px -4px; }
+  }
+  /* Hide the arrow once the user has done the action — the step-done flag
+     is the same one that quiets the pulse glow. */
+  body.tour-step-done .tour-arrow { display: none; }
+
   /* ── "Virtual click" pulse ring on sidebar segments ──────────────── */
   @keyframes tour-pulse-ring {
     0%   { outline: 2px solid rgba(244,237,225,0.0); outline-offset: 0px; }

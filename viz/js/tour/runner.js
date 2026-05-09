@@ -11,11 +11,118 @@ const STEP_CHROME_CLASSES = [
   'tour-step-show-cards',
 ];
 
+// ── Tour pointer arrow (#44 #46) ────────────────────────────────────────
+// Each step beat with `pulse: 'tour-pulse-...'` already attaches a glow
+// to the click target. The arrow is a separate visual that points AT
+// that same target from off-screen so the user actually finds the
+// element they need to click — the small "Continue →" / "Back" glyphs
+// inside the tour card never pointed at the affordance, just confused
+// users (#44).
+//
+// Each pulse class maps to a CSS selector for the visible target. Order
+// matters for the time beat — we prefer the always-visible toggle button
+// over the scrubber that only renders after the user clicks it.
+const PULSE_TARGETS = {
+  'tour-pulse-l1-8':       '#stack-l1 .bar-seg[data-key="8"]',
+  'tour-pulse-l1-32':      '#stack-l1 .bar-seg[data-key="32"]',
+  'tour-pulse-l2-8_2':     '#stack-l2 .bar-seg[data-key="8_2"]',
+  'tour-pulse-l2-32_4':    '#stack-l2 .bar-seg[data-key="32_4"]',
+  'tour-pulse-l3-32_1':    '#stack-l3 .bar-seg[data-key="32_1"]',
+  'tour-pulse-l3-131_2':   '#stack-l3 .bar-seg[data-key="131_2"]',
+  'tour-pulse-search':     '#search-input',
+  'tour-pulse-time':       '#tl-toggle',
+  'tour-pulse-random':     '#random-hint',
+  'tour-pulse-shift':      '#shift-hint',
+  'tour-pulse-pin-P2':     '.pin[data-id="P2"] .pin-id',
+  'tour-pulse-pin-P18':    '.pin[data-id="P18"] .pin-id',
+  // Spotlight is a transient — DOM markers aren't reliably present, so
+  // we skip the arrow rather than pointing it at empty space.
+  'tour-pulse-spotlight':  null,
+};
+
+function ensureArrowEl() {
+  let el = document.getElementById('tour-arrow');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'tour-arrow';
+  el.className = 'tour-arrow hidden';
+  el.setAttribute('aria-hidden', 'true');
+  // Curved-tail SVG so the arrow has clear directionality at any rotation.
+  // The path is drawn pointing right (tail at left, head at right) and
+  // we rotate the whole element via CSS transform to aim it at the target.
+  el.innerHTML = `
+    <svg width="120" height="64" viewBox="0 0 120 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 36 C 28 8, 60 8, 96 32" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <polygon points="96,32 84,22 88,34 78,42" fill="currentColor"/>
+    </svg>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+function positionArrow(arrow, targetEl) {
+  if (!arrow || !targetEl) return;
+  const r = targetEl.getBoundingClientRect();
+  if (!r.width || !r.height) { arrow.classList.add('hidden'); return; }
+  const tx = r.left + r.width / 2;
+  const ty = r.top + r.height / 2;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Arrow renders at width 120 / height 64 — its "head" is at roughly
+  // (96,32) inside that box. We want the head to land just outside the
+  // target, biased toward whichever screen edge has the most room.
+  const arrowW = 120, arrowH = 64;
+  const padOff = 18;       // gap between the arrow head and the target
+  // Decide which side to come from based on viewport position. We come
+  // from the side opposite the largest empty quadrant so the arrow feels
+  // like it's flying from the open space toward the chip.
+  const fromLeft  = tx > vw * 0.35;          // target is far enough right that we can come from the left
+  const fromAbove = ty > vh * 0.35;          // target sits low enough that we can come from above
+  let headX, headY, ax, ay, rotateDeg;
+  if (fromLeft && fromAbove) {
+    // Diagonal arrow from top-left → target.
+    headX = tx - padOff; headY = ty - padOff;
+    ax = headX - 96; ay = headY - 32;
+    rotateDeg = 0;
+  } else if (!fromLeft && fromAbove) {
+    // From top-right (mirror horizontally).
+    headX = tx + padOff; headY = ty - padOff;
+    ax = headX - (arrowW - 96); ay = headY - 32;
+    rotateDeg = 0; // we'll mirror via scaleX(-1) in CSS via class
+  } else if (fromLeft && !fromAbove) {
+    // From bottom-left (mirror vertically).
+    headX = tx - padOff; headY = ty + padOff;
+    ax = headX - 96; ay = headY - (arrowH - 32);
+    rotateDeg = 0;
+  } else {
+    // From bottom-right.
+    headX = tx + padOff; headY = ty + padOff;
+    ax = headX - (arrowW - 96); ay = headY - (arrowH - 32);
+    rotateDeg = 0;
+  }
+  arrow.style.left = `${Math.round(ax)}px`;
+  arrow.style.top = `${Math.round(ay)}px`;
+  arrow.classList.toggle('tour-arrow--mirror-x', !fromLeft);
+  arrow.classList.toggle('tour-arrow--mirror-y', !fromAbove);
+  arrow.classList.remove('hidden');
+}
+
+function clearArrow() {
+  const el = document.getElementById('tour-arrow');
+  if (el) el.classList.add('hidden');
+}
+
 export function createTourRunner({ BEATS, ctx, ui }) {
   let _idx = 0;
   let _active = false;
   let _cleanup = null;
   let _activePulseClass = null;
+  // Arrow tracking: an interval-based poll re-finds the target each tick
+  // because pulse targets can mount asynchronously (e.g. nav rebuilds the
+  // bar segments after a focus change). The poll is cheap (one
+  // querySelector + one getBoundingClientRect) and only runs while a beat
+  // is active.
+  let _arrowPollId = null;
+  let _arrowResizeHandler = null;
 
   function clearStepChromeClasses() {
     STEP_CHROME_CLASSES.forEach(c => document.body.classList.remove(c));
@@ -42,6 +149,40 @@ export function createTourRunner({ BEATS, ctx, ui }) {
       document.body.classList.add(beat.pulse);
       _activePulseClass = beat.pulse;
     }
+    startArrowFor(beat);
+  }
+
+  function startArrowFor(beat) {
+    stopArrow();
+    if (beat?.arrow === false) return;       // beats can opt out
+    const sel = (typeof beat.arrowTarget === 'string' && beat.arrowTarget)
+      ? beat.arrowTarget
+      : (typeof beat.pulse === 'string' ? PULSE_TARGETS[beat.pulse] : null);
+    if (!sel) return;
+    const arrow = ensureArrowEl();
+    const tick = () => {
+      const t = document.querySelector(sel);
+      if (t && !document.body.classList.contains('tour-step-done')) {
+        positionArrow(arrow, t);
+      } else {
+        arrow.classList.add('hidden');
+      }
+    };
+    tick();
+    _arrowPollId = setInterval(tick, 200);
+    _arrowResizeHandler = () => tick();
+    window.addEventListener('resize', _arrowResizeHandler);
+    window.addEventListener('scroll', _arrowResizeHandler, { passive: true });
+  }
+
+  function stopArrow() {
+    if (_arrowPollId) { clearInterval(_arrowPollId); _arrowPollId = null; }
+    if (_arrowResizeHandler) {
+      window.removeEventListener('resize', _arrowResizeHandler);
+      window.removeEventListener('scroll', _arrowResizeHandler);
+      _arrowResizeHandler = null;
+    }
+    clearArrow();
   }
 
   function teardown() {
@@ -50,6 +191,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
       _cleanup = null;
     }
     clearStepChromeClasses();
+    stopArrow();
     document.body.classList.remove('tour-step-mode');
     document.body.classList.remove('tour-step-done');
   }
