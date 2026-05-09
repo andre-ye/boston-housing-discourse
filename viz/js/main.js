@@ -1,6 +1,6 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=234';
+import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, CLUSTER_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=234';
 import { NavController } from './nav.js?v=255';
 import { GlobeView } from './globe.js?v=272';
 import { dom } from './core/dom.js';
@@ -116,6 +116,107 @@ async function boot() {
       m.set(sr, (m.get(sr) || 0) + 1);
     }
     App._posSubTable = table;
+  })();
+
+  // ─── Palette reorder for max perceptual distinctness (#50) ────────
+  // The 25-color sphere palette in data.js is hand-tuned but cluster IDs
+  // are assigned in arbitrary frequency-rank order, so adjacent topics in
+  // the sidebar can end up with near-identical hues (two muted blues,
+  // two greens, etc.). Reorder the palette in place so the LARGEST
+  // clusters get the most perceptually-distinct colors first.
+  //
+  // Algorithm: rank clusters by post count, then greedily assign each
+  // rank the unused palette color whose HSL hue is farthest from the
+  // colors already assigned to the prior K=8 ranks. This concentrates
+  // visual difference where the sidebar is busiest (the top of the L1
+  // stack) while leaving rarer clusters anywhere in the leftovers.
+  // Mutates SPHERE_PALETTE in-place — clusterColor() reads through this
+  // same array so all downstream callers (globe, nav, sparklines) see
+  // the reordered palette without further wiring.
+  (() => {
+    const meta = App.state.clusterMeta || {};
+    const ranks = Object.keys(meta)
+      .map(k => ({ cl: +k, count: meta[k]?.count || 0 }))
+      .filter(r => Number.isInteger(r.cl))
+      .sort((a, b) => b.count - a.count)
+      .map(r => r.cl);
+    if (!ranks.length) return;
+    // Hue extraction for perceptual distance — we mostly care about hue
+    // separation between large clusters, so HSL h is a fine proxy and
+    // way faster than full LAB conversion. Ties broken by lightness so
+    // a near-duplicate hue at very different lightness still scores
+    // well.
+    const rgbToHsl = (hex) => {
+      const v = parseInt(hex.slice(1), 16);
+      const r = ((v >> 16) & 255) / 255;
+      const g = ((v >> 8) & 255) / 255;
+      const b = (v & 255) / 255;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const l = (mx + mn) / 2;
+      let h = 0, s = 0;
+      if (mx !== mn) {
+        const d = mx - mn;
+        s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+        if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (mx === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+      }
+      return [h, s, l];
+    };
+    const palette = SPHERE_PALETTE.slice();
+    const paletteHsl = palette.map(rgbToHsl);
+    const N = palette.length;
+    const distHsl = (a, b) => {
+      let dh = Math.abs(a[0] - b[0]);
+      if (dh > 180) dh = 360 - dh;
+      const dl = Math.abs(a[2] - b[2]) * 90;   // 0..90 in same scale as hue degrees
+      return Math.hypot(dh, dl * 0.5);
+    };
+    // Greedy: for each cluster rank r, pick the unused palette index
+    // that maximizes the minimum distance to the last K used hues.
+    const K = 8;
+    const used = new Array(N).fill(false);
+    const assigned = []; // assigned[r] = palette index for ranks[r]
+    // First rank: keep palette[0].
+    assigned.push(0); used[0] = true;
+    for (let r = 1; r < ranks.length && r < N; r++) {
+      const recent = assigned.slice(Math.max(0, r - K)).map(i => paletteHsl[i]);
+      let bestIdx = -1, bestScore = -Infinity;
+      for (let i = 0; i < N; i++) {
+        if (used[i]) continue;
+        let minD = Infinity;
+        for (const h of recent) {
+          const d = distHsl(paletteHsl[i], h);
+          if (d < minD) minD = d;
+        }
+        if (minD > bestScore) { bestScore = minD; bestIdx = i; }
+      }
+      if (bestIdx < 0) break;
+      assigned.push(bestIdx);
+      used[bestIdx] = true;
+    }
+    // Build the new palette ordering: position c in palette ← whichever
+    // palette index was assigned to the cluster whose ID = c. (Cluster
+    // IDs may not be 0..N-1 contiguous, so we fall back to identity for
+    // any cluster ID we don't see in clusterMeta or that exceeds palette
+    // length.)
+    const newPalette = palette.slice();
+    for (let r = 0; r < ranks.length && r < N; r++) {
+      const cl = ranks[r];
+      if (cl < 0 || cl >= N) continue;
+      newPalette[cl % N] = palette[assigned[r]];
+    }
+    // Mutate SPHERE_PALETTE + CLUSTER_PALETTE in place. Both exported
+    // const bindings point at distinct arrays (data.js does
+    // CLUSTER_PALETTE = SPHERE_PALETTE.slice()) so we must update each.
+    // Downstream callers — globe.js (raw SPHERE_PALETTE + clusterColor),
+    // nav.js (clusterColor → CLUSTER_PALETTE), main.js sphereColor —
+    // all read live from these arrays.
+    for (let i = 0; i < N; i++) {
+      SPHERE_PALETTE[i] = newPalette[i];
+      if (CLUSTER_PALETTE && i < CLUSTER_PALETTE.length) CLUSTER_PALETTE[i] = newPalette[i];
+    }
   })();
 
   updateMsg(`Building globe from ${App.state.N.toLocaleString()} points…`);
