@@ -816,6 +816,26 @@ export class NavController extends EventTarget {
         subreddit: 'subreddits', cluster: 'topics', sub: 'subtopics', position: 'points of view',
         gridcell: 'Sentiment', ngram: 'phrases', text: 'post snippets',
       };
+      // Per-row chip labels — appear on every result so users immediately
+      // see WHAT each row is (a phrase that paints, a snippet that pins a
+      // post, a topic that drills into the nav, etc.) without having to
+      // read the section header above. Different from kindLabel because
+      // these are singular and short.
+      const kindChip = {
+        subreddit: 'subreddit', cluster: 'topic', sub: 'subtopic', position: 'point of view',
+        gridcell: 'sentiment', ngram: 'phrase', text: 'snippet',
+      };
+      // One-line tooltip explaining what clicking each kind does — surfaced
+      // as the chip's title attribute so users discover it on hover.
+      const kindHint = {
+        subreddit: 'Click to filter posts to this subreddit',
+        cluster: 'Click to drill into this topic in the sidebar',
+        sub: 'Click to drill into this subtopic in the sidebar',
+        position: 'Click to focus this point of view',
+        gridcell: 'Click to focus this region',
+        ngram: 'Click to paint every post containing this phrase on the globe',
+        text: 'Click to pin the post containing this snippet',
+      };
       const parts = [];
       // Flattened display-order array — crucial because the suggestion
       // groups render in a fixed visual order (subreddit → cluster → ...)
@@ -856,15 +876,18 @@ export class NavController extends EventTarget {
           const dotColor = h.color || '#7cf0c9';
           const i = displayOrdered.length;
           displayOrdered.push(h);
+          const chipText = kindChip[k] || k;
+          const chipTitle = kindHint[k] || '';
+          const typeChip = `<span class="sugg-type-chip sugg-type-${k}" title="${this._escHtml(chipTitle)}">${this._escHtml(chipText)}</span>`;
           // Text snippets need more room (multi-line) + use a monospace-ish
           // display so quoted posts read like posts, not labels.
           if (k === 'text') {
             const snippet = this._highlightSnippet(h.label, parsed);
-            const badge = `<span class="sugg-text-badge" style="background:${dotColor}20; color:${dotColor}; border:1px solid ${dotColor}60">${this._escHtml(h.context || h.clusterName || '')}</span>`;
+            const ctxBadge = `<span class="sugg-text-badge" style="background:${dotColor}20; color:${dotColor}; border:1px solid ${dotColor}60">${this._escHtml(h.context || h.clusterName || '')}</span>`;
             parts.push(`
               <div class="sugg-item sugg-item-text" data-idx="${i}">
                 <div class="sugg-text-snippet">${snippet}</div>
-                ${badge}
+                <div class="sugg-text-meta">${typeChip}${ctxBadge}</div>
               </div>`);
             continue;
           }
@@ -872,6 +895,7 @@ export class NavController extends EventTarget {
             <div class="sugg-item" data-idx="${i}">
               <span class="sugg-dot" style="background:${dotColor}; color:${dotColor}"></span>
               <span class="sugg-text">${this._highlight(h.label, parsed)}</span>
+              ${typeChip}
               <span class="sugg-kind">${this._escHtml(h.context || '')}</span>
             </div>`);
         }
@@ -1967,7 +1991,12 @@ export class NavController extends EventTarget {
       } else {
         seg.classList.remove('leaving');
       }
-      seg.className = 'bar-seg' + (info.active ? ' active' : '');
+      // Mark short segments so CSS can hide the .pct + .bar-trend pieces
+      // that don't fit on a single ~14px-tall flex row alongside the
+      // label (#45). Threshold matches the two-line cutoff: any seg
+      // shorter than that has at most one label line of room.
+      const isShort = span < BAR_SEG_TWO_LINE_PX;
+      seg.className = 'bar-seg' + (info.active ? ' active' : '') + (isShort ? ' bar-seg--short' : '');
       if (seg.dataset.key !== key) seg.dataset.key = key;
       seg.style.top = `${y}px`;
       seg.style.height = `${span}px`;

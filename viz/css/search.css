@@ -225,3 +225,32 @@
     border-radius: 999px;
     letter-spacing: 0.2px;
   }
+  /* Per-row type chip (#43) — labels every result so users see at a glance
+     what kind of thing it is (phrase, snippet, topic, subreddit, …) and
+     the title attribute explains what clicking does. Different colors per
+     kind make it scannable in mixed-result lists. */
+  .sugg-type-chip {
+    display: inline-block;
+    flex-shrink: 0;
+    font: 600 8.5px 'Inter', system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.07);
+    color: rgba(244,237,225,0.78);
+    border: 1px solid rgba(255,255,255,0.10);
+    cursor: help;
+  }
+  .sugg-type-ngram      { background: rgba(124,240,201,0.14); color: rgba(124,240,201,0.95); border-color: rgba(124,240,201,0.32); }
+  .sugg-type-text       { background: rgba(196,160,255,0.14); color: rgba(220,200,255,0.95); border-color: rgba(196,160,255,0.32); }
+  .sugg-type-cluster    { background: rgba(91,156,255,0.14);  color: rgba(170,200,255,0.95); border-color: rgba(91,156,255,0.32); }
+  .sugg-type-sub        { background: rgba(91,156,255,0.10);  color: rgba(170,200,255,0.85); border-color: rgba(91,156,255,0.24); }
+  .sugg-type-position   { background: rgba(255,194,51,0.14);  color: rgba(255,210,120,0.95); border-color: rgba(255,194,51,0.32); }
+  .sugg-type-subreddit  { background: rgba(255,126,26,0.14);  color: rgba(255,180,120,0.95); border-color: rgba(255,126,26,0.32); }
+  .sugg-type-gridcell   { background: rgba(255,255,255,0.06); color: rgba(244,237,225,0.72); border-color: rgba(255,255,255,0.12); }
+  .sugg-text-meta {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 6px;
+    align-self: flex-start;
+  }

@@ -17,12 +17,14 @@ export const beat = {
     'The bike-lane cluster sits in its own region of the sphere. Search paints ' +
     'every post whose body or title contains your query, then rotates the globe ' +
     'to the densest pocket. Try typing the word "doored" into the search bar — ' +
-    'almost every match lives inside this cluster. The small "P" markers floating ' +
-    'around the sphere are interview pins, anchored near the topics each ' +
-    'interviewee actually talks about. After the tour you can try other queries ' +
-    'like "mass ave" or "protected lane" to see how different phrases pick out ' +
-    'different shapes of conversation.',
-  hint: 'Type "doored" into the search bar in the top left.',
+    'almost every match lives inside this cluster. The dropdown groups results ' +
+    'into types: "phrase" entries paint every matching post on the globe, ' +
+    '"snippet" entries pin a single post, and "topic" / "subtopic" entries drill ' +
+    'into the sidebar — each row shows its kind as a small chip on the right. ' +
+    'To filter posts containing "doored", click the phrase entry. After the tour ' +
+    'you can try other queries like "mass ave" or "protected lane" to see how ' +
+    'different phrases pick out different shapes of conversation.',
+  hint: 'Type "doored" into the search bar in the top left, then click the phrase result.',
   showChrome: ['nav'],
   pulse: 'tour-pulse-search',
   manualContinue: true,

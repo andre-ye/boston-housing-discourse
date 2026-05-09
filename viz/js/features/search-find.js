@@ -44,7 +44,21 @@ export function init(ctx) {
     const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
     const target = norm(snippetText);
     if (!target) return -1;
-    const targetKey = target.slice(0, 80).toLowerCase();
+    const lowTarget = target.toLowerCase();
+    // Multiple probe windows so we tolerate prefix mismatch between the
+    // snippet sample (which may start mid-sentence after the corpus
+    // builder's clipping) and the full chunk text (which starts at the
+    // post's actual title/body). The previous code only tried the FIRST
+    // 80 chars from each side, so any leading whitespace or quote-marker
+    // mismatch caused -1 and the click silently fell back to a synthetic
+    // card with no globe pin (#43).
+    const probes = [];
+    const win = 60;
+    for (let start = 0; start <= Math.min(lowTarget.length - win, 180); start += 40) {
+      probes.push(lowTarget.slice(start, start + win));
+    }
+    if (!probes.length && lowTarget.length >= 12) probes.push(lowTarget);
+    if (!probes.length) return -1;
     const chunks = await ensureAllChunksLoaded();
     for (const chunk of chunks) {
       const offset = chunk.offset;
@@ -53,7 +67,13 @@ export function init(ctx) {
       const panel = chunk.panel_body || [];
       for (let i = 0; i < chunk.n; i++) {
         const body = norm((titles[i] || '') + ' ' + (panel[i] || hover[i] || '')).toLowerCase();
-        if (body.includes(targetKey) || targetKey.includes(body.slice(0, 80))) {
+        if (!body) continue;
+        for (const p of probes) {
+          if (body.includes(p)) return offset + i;
+        }
+        // Fallback: target may BE the title (very short snippet); allow
+        // body to match a prefix of target.
+        if (body.length >= 24 && lowTarget.includes(body.slice(0, 60))) {
           return offset + i;
         }
       }
