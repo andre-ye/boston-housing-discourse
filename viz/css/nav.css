@@ -370,7 +370,18 @@
   .bar-seg.leaving { pointer-events: none; }
   .bar-seg:hover {
     filter: brightness(1.15);
-    transform: translateX(2px);
+  }
+  /* Short segments (#45): the bar-seg floor is 20px but the label (~14px)
+     plus the .pct number doesn't fit on a single flex row at that height —
+     the percent overflows the right edge mid-character and reads as a
+     cut-off "random number" on hover (which boosts brightness and makes
+     the artifact pop). Hide both .pct and .bar-trend whenever the
+     rendering layer marks a segment as short (.bar-seg--short, set by
+     nav.js when span < BAR_SEG_TWO_LINE_PX). Users can still read the
+     percent + count via the segment's title attribute. */
+  .bar-seg--short .pct,
+  .bar-seg--short .bar-trend {
+    display: none;
   }
   .bar-seg:focus-visible {
     outline: 2px solid rgba(255,255,255,0.85);

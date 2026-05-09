@@ -422,8 +422,13 @@
       outline-width: 3.5px;
     }
   }
+  /* Step beats with showChrome:['nav'] used to ring the entire #nav with a
+     24px outer glow as a "look here" cue — but the cluster-pulse chip sits
+     INSIDE the nav, so the outer ring read as a second, larger glow around
+     the whole topic list (#47). The chip-level pulse is enough; just keep
+     a faint inset hairline so the user knows the rail is in scope. */
   body.tour-step-show-nav #nav {
-    box-shadow: inset 0 0 0 1px rgba(124,240,201,0.55), 0 0 24px rgba(124,240,201,0.18);
+    box-shadow: inset 0 0 0 1px rgba(124,240,201,0.22);
     transition: box-shadow 0.25s ease;
   }
   /* Shared pulse rule — every per-step pulse target shares the same
