@@ -19,16 +19,12 @@ const STEP_CHROME_CLASSES = [
 // inside the tour card never pointed at the affordance, just confused
 // users (#44).
 //
-// Each pulse class maps to a CSS selector for the visible target. Order
-// matters for the time beat — we prefer the always-visible toggle button
-// over the scrubber that only renders after the user clicks it.
+// Bar-seg pulse classes (#stack-l1/l2/l3 .bar-seg[data-key="…"]) follow a
+// strict pattern, so we derive the selector from the class name itself —
+// no manual table maintenance when a new cluster target is added. Other
+// pulses (search, time, pins, spotlight) have specific one-off selectors
+// and stay in this small lookup. `null` means "no arrow for this pulse".
 const PULSE_TARGETS = {
-  'tour-pulse-l1-8':       '#stack-l1 .bar-seg[data-key="8"]',
-  'tour-pulse-l1-32':      '#stack-l1 .bar-seg[data-key="32"]',
-  'tour-pulse-l2-8_2':     '#stack-l2 .bar-seg[data-key="8_2"]',
-  'tour-pulse-l2-32_4':    '#stack-l2 .bar-seg[data-key="32_4"]',
-  'tour-pulse-l3-32_1':    '#stack-l3 .bar-seg[data-key="32_1"]',
-  'tour-pulse-l3-131_2':   '#stack-l3 .bar-seg[data-key="131_2"]',
   'tour-pulse-search':     '#search-input',
   'tour-pulse-time':       '#tl-toggle',
   'tour-pulse-random':     '#random-hint',
@@ -39,6 +35,23 @@ const PULSE_TARGETS = {
   // we skip the arrow rather than pointing it at empty space.
   'tour-pulse-spotlight':  null,
 };
+
+// Resolves a pulse class to a CSS selector. Bar-seg pulses are derived
+// from the class name; everything else falls back to the lookup.
+function resolvePulseSelector(pulseClass) {
+  if (!pulseClass || typeof pulseClass !== 'string') return null;
+  const m = pulseClass.match(/^tour-pulse-(l[123])-(.+)$/);
+  if (m) {
+    const lvl = m[1];     // "l1" | "l2" | "l3"
+    const key = m[2];     // e.g. "8", "8_2", "32_1"
+    return `#stack-${lvl} .bar-seg[data-key="${key}"]`;
+  }
+  // Use hasOwnProperty so an explicit `null` (e.g. spotlight) still
+  // disables the arrow rather than falling through to a default.
+  return Object.prototype.hasOwnProperty.call(PULSE_TARGETS, pulseClass)
+    ? PULSE_TARGETS[pulseClass]
+    : null;
+}
 
 function ensureArrowEl() {
   let el = document.getElementById('tour-arrow');
@@ -157,7 +170,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     if (beat?.arrow === false) return;       // beats can opt out
     const sel = (typeof beat.arrowTarget === 'string' && beat.arrowTarget)
       ? beat.arrowTarget
-      : (typeof beat.pulse === 'string' ? PULSE_TARGETS[beat.pulse] : null);
+      : resolvePulseSelector(beat.pulse);
     if (!sel) return;
     const arrow = ensureArrowEl();
     const tick = () => {
@@ -169,17 +182,19 @@ export function createTourRunner({ BEATS, ctx, ui }) {
       }
     };
     tick();
+    // The 200ms poll already catches movement from layout shifts /
+    // async-mounted targets. The tour overlay is fixed-position so
+    // window 'scroll' wouldn't move it — only resize warrants an
+    // immediate re-layout.
     _arrowPollId = setInterval(tick, 200);
     _arrowResizeHandler = () => tick();
     window.addEventListener('resize', _arrowResizeHandler);
-    window.addEventListener('scroll', _arrowResizeHandler, { passive: true });
   }
 
   function stopArrow() {
     if (_arrowPollId) { clearInterval(_arrowPollId); _arrowPollId = null; }
     if (_arrowResizeHandler) {
       window.removeEventListener('resize', _arrowResizeHandler);
-      window.removeEventListener('scroll', _arrowResizeHandler);
       _arrowResizeHandler = null;
     }
     clearArrow();

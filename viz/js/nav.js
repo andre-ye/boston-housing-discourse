@@ -2024,6 +2024,11 @@ export class NavController extends EventTarget {
         const countStr = info.count != null ? ` · ${info.count.toLocaleString()} posts` : '';
         const pctStr = info.pct != null && pctDisplay ? ` · ${pctDisplay}` : '';
         seg.title = `${info.label}${countStr}${pctStr}`;
+      } else if (isShort) {
+        // Short segs render the label but CSS hides the .pct + .bar-trend
+        // pieces — surface the percent on hover so it's still reachable (#45).
+        const pctStr = info.pct != null && pctDisplay ? ` — ${pctDisplay}` : '';
+        seg.title = `${info.label}${pctStr}`;
       } else {
         seg.removeAttribute('title');
       }
