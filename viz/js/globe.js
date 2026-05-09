@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=233';
+import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=234';
 import { raf } from './core/raf.js';
 import { keys } from './core/keys.js?v=1';
 import { store } from './core/store.js';
