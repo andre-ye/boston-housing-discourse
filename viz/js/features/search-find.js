@@ -13,10 +13,23 @@ export function init(ctx) {
     for (let ci = 0; ci < total; ci++) {
       let p = st.chunkCache.get(ci);
       if (!p) {
-        p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
-        st.chunkCache.set(ci, p);
+        // Evict rejected promises from the cache so a transient network
+        // blip on first fetch doesn't permanently poison search (#48):
+        // without this, every later `findPointsContaining` reuses the same
+        // rejected promise and silently fails via the caller's `.catch`,
+        // which is exactly the "search intermittently breaks" symptom.
+        const idx = ci;
+        p = fetch('tsne_chunks/' + st.manifest.files[idx])
+          .then(r => {
+            if (!r.ok) throw new Error('chunk ' + idx + ' http ' + r.status);
+            return r.json();
+          });
+        p.catch(() => {
+          if (st.chunkCache.get(idx) === p) st.chunkCache.delete(idx);
+        });
+        st.chunkCache.set(idx, p);
       }
-      p.then(() => { done++; onProgress?.(done, total); });
+      p.then(() => { done++; onProgress?.(done, total); }, () => {});
       promises.push(p);
     }
     return Promise.all(promises);
