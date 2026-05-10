@@ -828,8 +828,36 @@ export class NavController extends EventTarget {
       updateActive();
     };
 
-    input.addEventListener('input', () => render(input.value));
+    // Debounced render: each keystroke previously rebuilt the suggestion DOM
+    // synchronously (parsing the query, scoring the index of ~1k–5k entries,
+    // emitting innerHTML for up to ~50 rows). Fast typing thrashed layout and
+    // made the input feel laggy on the deployed site. Coalesce keystrokes
+    // arriving within ~90ms; the trailing edge fires render() with the latest
+    // value. Empty input still routes through renderAll synchronously so the
+    // browse dropdown opens instantly on focus.
+    let _renderDebounceTimer = null;
+    const _scheduleRender = (val) => {
+      if (_renderDebounceTimer != null) clearTimeout(_renderDebounceTimer);
+      _renderDebounceTimer = setTimeout(() => {
+        _renderDebounceTimer = null;
+        render(val);
+      }, 90);
+    };
+    input.addEventListener('input', () => {
+      const v = input.value;
+      // Empty input: clear immediately (no debounce) so the dropdown vanishes
+      // / browse-all reappears the instant the user wipes the box.
+      if (!v.trim()) {
+        if (_renderDebounceTimer != null) { clearTimeout(_renderDebounceTimer); _renderDebounceTimer = null; }
+        render(v);
+        return;
+      }
+      _scheduleRender(v);
+    });
     const showDropdown = () => {
+      // Drop any pending debounced render: focus/click should always paint
+      // immediately, never get out-raced by a stale 90ms-old keystroke.
+      if (_renderDebounceTimer != null) { clearTimeout(_renderDebounceTimer); _renderDebounceTimer = null; }
       if (input.value) { render(input.value); return; }
       // Empty focus / click: show a browsable directory of all clusters/
       // subtopics/positions so the search box doubles as a table of contents.
@@ -866,6 +894,14 @@ export class NavController extends EventTarget {
       }
       if (e.key !== 'Enter') return;
 
+      // Flush any pending debounced render before reading currentMatches —
+      // otherwise pressing Enter immediately after typing reads a stale
+      // suggestion list (the debounce timer fires after the Enter handler).
+      if (_renderDebounceTimer != null) {
+        clearTimeout(_renderDebounceTimer);
+        _renderDebounceTimer = null;
+        render(input.value);
+      }
       const qTrim = (input.value || '').trim();
       if (!qTrim) return;
       const sel = activeIdx >= 0 ? currentMatches[activeIdx] : null;

@@ -1,0 +1,38 @@
+# Render static-site cache headers.
+# Format: one URL pattern per block, indented header lines beneath it.
+# Render and Netlify both honor this `_headers` syntax for static sites.
+#
+# Strategy:
+#   * HTML / JS / CSS  → no-cache, must-revalidate. We have no
+#     content-addressed assets (no hashed filenames, no `?v=` busters), so
+#     long max-age would pin stale code on the user's machine after every
+#     deploy. `no-cache` still allows ETag/Last-Modified revalidation —
+#     the browser sends If-None-Match and the server returns 304 with no
+#     body. This is the common static-site pattern when filenames don't
+#     change.
+#   * Chunk JSON / binary payloads under /tsne_chunks/  → 1 day public
+#     cache. These are content snapshots of the corpus; they only change
+#     when the data pipeline re-runs (rare), and at ~20 MB per chunk
+#     × 51 chunks the cumulative cost of revalidating on every page load
+#     is the worst hit on the deployed app. A 24h max-age with
+#     `stale-while-revalidate` lets the browser serve from cache instantly
+#     while quietly checking for updates in the background.
+#   * Interview payloads + tsne_payload.json → same 1-day rule.
+
+/*.html
+  Cache-Control: no-cache, must-revalidate
+
+/*.js
+  Cache-Control: no-cache, must-revalidate
+
+/*.css
+  Cache-Control: no-cache, must-revalidate
+
+/tsne_chunks/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/interviews/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/tsne_payload.json
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
