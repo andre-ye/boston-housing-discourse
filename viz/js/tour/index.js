@@ -51,6 +51,10 @@ export function createTour({ globe, App, nav }) {
 
   function renderHero(beat) {
     showOnly('hero');
+    // Opener beats set `display:flex` on `.tour-card--opener`; if that class
+    // stays while `.hidden` is toggled on, it can out-spec `.tour-card.hidden`
+    // and leave the narration card painted over the hero on Back.
+    cardEl?.classList.remove('tour-card--opener');
     const h = heroEl?.querySelector('.tour-headline');
     const l = heroEl?.querySelector('.tour-lede');
     const m = heroEl?.querySelector('.tour-meta');
@@ -60,12 +64,19 @@ export function createTour({ globe, App, nav }) {
         ? raw.split('\n').map(line => escHtml(line.trim())).join('<br>')
         : '';
     }
-    if (l) l.textContent = beat.lede || '';
+    if (l) {
+      if (typeof beat.ledeHtml === 'string' && beat.ledeHtml) {
+        l.innerHTML = beat.ledeHtml;
+      } else {
+        l.textContent = beat.lede || '';
+      }
+    }
     if (m) m.innerHTML = beat.metaHtml || '';
   }
 
   function renderOutro(beat) {
     showOnly('outro');
+    cardEl?.classList.remove('tour-card--opener');
     const t = outroEl?.querySelector('.tour-title');
     const p = outroEl?.querySelector('.tour-prose');
     if (t) t.textContent = beat.title || '';

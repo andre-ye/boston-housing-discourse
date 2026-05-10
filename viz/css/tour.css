@@ -69,8 +69,10 @@
   }
 
   .tour-hero-inner {
+    width: 100%;
     max-width: 540px;
     color: var(--paper);
+    box-sizing: border-box;
   }
   .tour-hero .tour-eyebrow {
     display: none;
@@ -87,6 +89,21 @@
     font: 400 var(--fs-lg)/1.65 'Inter', system-ui, sans-serif;
     color: color-mix(in srgb, var(--paper) 75%, transparent);
     margin: 0 0 22px;
+  }
+  .tour-hero .tour-lede-br {
+    display: inline;
+  }
+  /* Hero lede: line break after "interviews" only when the left pane is wide
+     enough (~half of 1120px minus padding) to carry the first clause cleanly. */
+  @media (min-width: 1120px) {
+    .tour-hero .tour-lede-br {
+      display: block;
+      height: 0;
+      overflow: hidden;
+    }
+    .tour-hero .tour-meta-mapc-br {
+      display: inline;
+    }
   }
   .tour-hero .tour-hero-team {
     font: 400 var(--fs-sm)/1.5 'Inter', system-ui, sans-serif;
@@ -108,8 +125,18 @@
     color: color-mix(in srgb, var(--paper) 85%, transparent);
     text-decoration-color: color-mix(in srgb, var(--paper) 60%, transparent);
   }
+  /* Keep the project URL on one line; if it does not fit after the byline,
+     the whole link wraps to the next line instead of hyphenating as "vis-". */
+  .tour-hero .tour-meta-site-link {
+    white-space: nowrap;
+  }
   .tour-hero .tour-meta-line { display: block; }
-  .tour-hero .tour-meta-line + .tour-meta-line { margin-top: 4px; }
+  .tour-hero .tour-meta-line + .tour-meta-line { margin-top: 18px; }
+  .tour-hero .tour-meta-mapc-br {
+    display: block;
+    height: 0;
+    overflow: hidden;
+  }
   .tour-hero .tour-hero-actions {
     display: flex;
     gap: 16px;
@@ -181,6 +208,11 @@
     max-width: calc(100vw - 48px);
   }
   .tour-card.hidden { display: none; }
+  /* Opener uses display:flex on `.tour-card--opener` (same specificity as
+     `.tour-card.hidden` but later in the sheet). Force hidden to win. */
+  .tour-card.tour-card--opener.hidden {
+    display: none !important;
+  }
   .tour-card.tour-in { animation: tour-card-in var(--t-slow) ease; }
   @keyframes tour-card-in {
     from { opacity: 0; transform: translateY(14px); }

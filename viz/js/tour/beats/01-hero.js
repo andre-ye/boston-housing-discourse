@@ -9,14 +9,19 @@ export const beat = {
   headline: 'A Sphere of Boston\nHousing Discourse',
   lede:
     '420k Reddit posts and comments and 18 street interviews about housing, ' +
-    'transit, and city life in Boston — projected onto a sphere.',
+    'transit, and city life in Boston.',
+  ledeHtml:
+    '420k Reddit posts and comments and 18 street interviews' +
+    '<span class="tour-lede-br" aria-hidden="true"></span> about housing, ' +
+    'transit, and city life in Boston.',
   metaHtml:
     '<span class="tour-meta-line">By Andre Ye, Kendall Nakai, Gabrielle Cohn, ' +
     'and Carmel Schare · ' +
-    '<a href="https://vis-society.github.io/" target="_blank" rel="noopener">' +
-    'vis-society.github.io</a></span>' +
+    '<a class="tour-meta-site-link" href="https://vis-society.github.io/" ' +
+    'target="_blank" rel="noopener">vis-society.github.io</a></span>' +
     '<span class="tour-meta-line">This project was developed with guidance ' +
-    'and feedback from the <a href="https://www.mapc.org/" target="_blank" ' +
+    'and feedback <span class="tour-meta-mapc-br" aria-hidden="true"></span>' +
+    'from the <a href="https://www.mapc.org/" target="_blank" ' +
     'rel="noopener">Metropolitan Area Planning Council (MAPC)</a>.</span>',
   enter(ctx) {
     const { globe } = ctx;

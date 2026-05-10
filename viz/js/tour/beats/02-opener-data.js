@@ -24,8 +24,7 @@ export const beat = {
     '2025 (pulled from the public ' +
     '<a href="https://academictorrents.com/details/3e3f64dee22dc304cdd2546254ca1f8e8ae542b4" ' +
     'target="_blank" rel="noopener">Academic Torrents Reddit dump</a>), ' +
-    'and eighteen people we sat down with around the city — neighbors, ' +
-    'renters, landlords, commuters.</p>',
+    'and 18 people we spoke with via street interviews around the city.</p>',
   enter(ctx) {
     const { globe, direction } = ctx;
     // Forward entry preserves the spinning hero camera so the globe doesn't
