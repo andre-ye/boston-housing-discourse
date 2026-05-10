@@ -2,18 +2,20 @@
 // - Points geometry with per-point color (cluster palette).
 // - Underlying sphere mesh with a baked KDE-style surface texture.
 // - Orbit controls via mouse drag, scroll zoom, arrow keys.
-// - Thread arcs (post → comment) drawn as great-circle cubic bezier tubes.
 
 import * as THREE from 'three';
-import { mergeGeometries as mergeBufferGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js?v=234';
+import { latLonToXYZ, clusterColor, hexToRgb, SPHERE_PALETTE } from './data.js';
 import { raf } from './core/raf.js';
-import { keys } from './core/keys.js?v=1';
+import { keys } from './core/keys.js';
 import { store } from './core/store.js';
 import {
   GLOBE_RADIUS, POINT_RADIUS, POINT_SIZE_BASE,
   MIN_ZOOM, MAX_ZOOM, DEFAULT_DISTANCE,
   SUB_LUMA_DIM_FACTOR, SUB_LUMA_BRIGHT_FACTOR,
+  SLERP_RATE_APP, ZOOM_RATE_APP, SLERP_RATE_TOUR, ZOOM_RATE_TOUR,
+  MAX_ROT_PER_FRAME, MAX_ZOOM_PER_FRAME, VIS_FADE_RATE,
+  ZOOM_LIFT_PER_RAD, ZOOM_LIFT_MAX,
+  VIS_TIER,
 } from './core/constants.js';
 
 function sphereColor(c) {
@@ -27,12 +29,6 @@ export class GlobeView extends EventTarget {
     this.canvas = canvas;
     this.state = state;
     this.hoverIdx = -1;
-    this.threadArcs = null;
-    this.threadArcsEnabled = false;   // off by default — per-hover arcs still draw on demand
-    this._threadArcPairs = null;
-    this._threadArcOpts = null;
-    this._threadArcZoomBucket = null;
-    this._lastThreadArcRebuildMs = 0;
     this.surfaceEnabled = true;
     this.highlightCl = null;
     this.highlightGid = null;
@@ -269,8 +265,12 @@ export class GlobeView extends EventTarget {
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geom.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-    // dim attribute: per-point fade when highlight filter active
-    const dim = new Float32Array(N); dim.fill(1.0);
+    // dim attribute: per-point fade when highlight filter active (VIS_TIER).
+    // We keep two arrays: `dim` is what the GPU reads each frame, `dimTarget`
+    // is what _recomputeDim() writes to. _tick eases dim toward dimTarget at
+    // VIS_FADE_RATE so points lose/regain color gradually instead of snapping.
+    const dim = new Float32Array(N); dim.fill(VIS_TIER.BRIGHT);
+    this._dimTarget = new Float32Array(N); this._dimTarget.fill(VIS_TIER.BRIGHT);
     geom.setAttribute('dim', new THREE.BufferAttribute(dim, 1));
     geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1.1);
 
@@ -447,6 +447,9 @@ export class GlobeView extends EventTarget {
       ],
       priority: 10,
       label: 'globe-arrows-zoom',
+      helpLabel: 'Pan the globe; + / − (or w / s) zoom in / out',
+      helpGroup: 'view',
+      helpKeys: ['←', '→', '↑', '↓', '+', '−'],
       allowRepeat: true,
       handler: (e) => {
         let dx = 0, dy = 0;
@@ -594,6 +597,27 @@ export class GlobeView extends EventTarget {
     }
   }
 
+  // Snap variant of rotateTo: lands the camera at (lat, lon, distance)
+  // instantly rather than slerping in. Used by the tour runner when
+  // restoring a snapshot on Back / Forward-into-completed so the user
+  // doesn't watch a swoop they didn't initiate.
+  snapTo(lat, lon, distance = null) {
+    const cl = Math.cos(lat);
+    const target = new THREE.Vector3(cl * Math.cos(lon), Math.sin(lat), cl * Math.sin(lon));
+    const desired = new THREE.Vector3(0, 0, 1);
+    const q = new THREE.Quaternion().setFromUnitVectors(target, desired);
+    this.worldQuatTarget.copy(q);
+    this.worldQuat.copy(q);
+    if (distance != null) {
+      const d = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, distance));
+      this.distanceTarget = d;
+      this.distance = d;
+      this._canonicalDistance = d;
+    }
+    try { this.worldGroup.quaternion.copy(this.worldQuat); } catch {}
+    try { this.camera.position.set(0, 0, this.distance); } catch {}
+  }
+
   /** User scroll moved zoom away from the last app-set distance (rotateTo). */
   isZoomedAwayFromCanonical() {
     const c = this._canonicalDistance != null ? this._canonicalDistance : DEFAULT_DISTANCE;
@@ -627,11 +651,14 @@ export class GlobeView extends EventTarget {
     multiClusters: null, multiSubs: null, multiPositions: null, subredditIds: null,
     monthRange: null,
     spotlight: null,   // Set<number> of point indices to show (per-post text filter)
+    dimLayer: null,    // Set<number> rendered at VIS_TIER.DIM when otherwise HIDDEN (#34)
   };
   _recomputeDim() {
     const st = this.state;
     const f = this._filter;
-    const dim = this.pointGeom.attributes.dim.array;
+    // Write the target alpha tier per point; _tick eases the live `dim`
+    // attribute toward this target each frame.
+    const dim = this._dimTarget;
     const hasMultiC = f.multiClusters && f.multiClusters.size > 0;
     const hasMultiS = f.multiSubs && f.multiSubs.size > 0;
     const hasMultiP = f.multiPositions && f.multiPositions.size > 0;
@@ -639,41 +666,89 @@ export class GlobeView extends EventTarget {
     const assign = st.subredditAssignments;
     const hasMonth = !!f.monthRange;
     const monthAssign = st.monthAssignments;
+    const monthLabels = st.monthLabels;
     const byLocal = window.App?.subGidMap?.byLocal;
     const hasSpot = f.spotlight && f.spotlight.size > 0;
-    const noFilter = f.focusCl == null && f.focusSubLocal == null && f.focusPosIdx == null &&
-      !hasMultiC && !hasMultiS && !hasMultiP && !hasSR && !hasMonth && !hasSpot;
+    const hasDimLayer = f.dimLayer && f.dimLayer.size > 0;
+    const hasNonMonth = f.focusCl != null || f.focusSubLocal != null || f.focusPosIdx != null ||
+      hasMultiC || hasMultiS || hasMultiP || hasSR || hasSpot;
+    const noFilter = !hasNonMonth && !hasMonth;
+    // Per-month bucket of points passing every non-month predicate. Used
+    // by the timeline's "X posts" label so the count narrows when the user
+    // drills into a topic, paints a regex, or spotlights a search match.
+    // Null sentinel means "no non-month filters are active" — readers can
+    // fall back to the pre-baked total[] histogram.
+    let monthCounts = null;
+    if (hasNonMonth && monthAssign && monthLabels) {
+      monthCounts = this._filteredMonthCounts;
+      if (!monthCounts || monthCounts.length !== monthLabels.length) {
+        monthCounts = new Int32Array(monthLabels.length);
+      } else {
+        monthCounts.fill(0);
+      }
+    }
     if (noFilter) {
-      dim.fill(1.0);
+      dim.fill(VIS_TIER.BRIGHT);
     } else {
       for (let i = 0; i < st.N; i++) {
-        let ok = true;
-        if (f.focusCl != null && st.cluster[i] !== f.focusCl) ok = false;
-        if (ok && f.focusSubLocal &&
-            (st.cluster[i] !== f.focusSubLocal.cl || st.subLocal[i] !== f.focusSubLocal.sub)) ok = false;
-        if (ok && f.focusPosIdx != null && st.positionAssignments &&
-            st.positionAssignments[i] !== f.focusPosIdx) ok = false;
-        if (ok && hasMultiC && !hasMultiS && !f.multiClusters.has(st.cluster[i])) ok = false;
-        if (ok && hasMultiS && !f.multiSubs.has(`${st.cluster[i]}_${st.subLocal[i]}`)) ok = false;
-        if (ok && hasMultiP && st.positionAssignments && byLocal) {
+        let okNonMonth = true;
+        if (f.focusCl != null && st.cluster[i] !== f.focusCl) okNonMonth = false;
+        if (okNonMonth && f.focusSubLocal &&
+            (st.cluster[i] !== f.focusSubLocal.cl || st.subLocal[i] !== f.focusSubLocal.sub)) okNonMonth = false;
+        if (okNonMonth && f.focusPosIdx != null && st.positionAssignments &&
+            st.positionAssignments[i] !== f.focusPosIdx) okNonMonth = false;
+        if (okNonMonth && hasMultiC && !hasMultiS && !f.multiClusters.has(st.cluster[i])) okNonMonth = false;
+        if (okNonMonth && hasMultiS && !f.multiSubs.has(`${st.cluster[i]}_${st.subLocal[i]}`)) okNonMonth = false;
+        if (okNonMonth && hasMultiP && st.positionAssignments && byLocal) {
           const cl = st.cluster[i], sl = st.subLocal[i];
           const gid = byLocal[cl]?.[sl];
           const pa = st.positionAssignments[i];
-          if (gid == null || pa == null || pa === 255 || !f.multiPositions.has(`${gid}_${pa}`)) ok = false;
+          if (gid == null || pa == null || pa === 255 || !f.multiPositions.has(`${gid}_${pa}`)) okNonMonth = false;
         }
-        if (ok && hasSR && assign && !f.subredditIds.has(assign[i])) ok = false;
+        if (okNonMonth && hasSR && assign && !f.subredditIds.has(assign[i])) okNonMonth = false;
+        if (okNonMonth && hasSpot && !f.spotlight.has(i)) okNonMonth = false;
+        // Bucket the non-month-passing points by month so the timeline
+        // label can intersect (drill ∩ spotlight ∩ ...) with [lo, hi]
+        // in O(rangeLen) instead of O(N) per drag tick.
+        if (okNonMonth && monthCounts && monthAssign) {
+          const m = monthAssign[i];
+          if (m < monthCounts.length) monthCounts[m]++;
+        }
+        let ok = okNonMonth;
         if (ok && hasMonth && monthAssign) {
           const m = monthAssign[i];
           if (m < f.monthRange.lo || m > f.monthRange.hi) ok = false;
         }
-        if (ok && hasSpot && !f.spotlight.has(i)) ok = false;
-        dim[i] = ok ? 1.0 : 0.12;
+        // Three-tier (#34): otherwise-HIDDEN points listed in dimLayer get
+        // promoted to DIM so parent context stays legible.
+        dim[i] = ok ? VIS_TIER.BRIGHT : (hasDimLayer && f.dimLayer.has(i) ? VIS_TIER.DIM : VIS_TIER.HIDDEN);
       }
     }
-    this.pointGeom.attributes.dim.needsUpdate = true;
+    this._filteredMonthCounts = monthCounts;
+    // Live `dim` attribute is animated toward _dimTarget inside _tick — no
+    // direct needsUpdate flag here (the tween marks it each frame).
+    this._dimDirty = true;
     this._multiHighlightActive = hasMultiC || hasMultiS || hasMultiP;
     this._subredditHighlightActive = hasSR;
     this._spotlightActive = hasSpot;
+    // Notify listeners so the timeline label can re-sum the bucket without
+    // polling. monthRange changes also fire this, but the timeline ignores
+    // them since it already drives that change.
+    try { this.dispatchEvent(new CustomEvent('filterschanged')); } catch {}
+  }
+
+  // Sum of the per-month "passes-all-non-month-filters" bucket over the
+  // inclusive [lo, hi] range. Returns null when no non-month filter is
+  // active — caller should fall back to the pre-baked total[] histogram
+  // (so the count exactly matches the existing whole-corpus path).
+  getFilteredMonthCount(lo, hi) {
+    const buf = this._filteredMonthCounts;
+    if (!buf) return null;
+    const a = Math.max(0, lo | 0);
+    const b = Math.min(buf.length - 1, hi | 0);
+    let s = 0;
+    for (let i = a; i <= b; i++) s += buf[i];
+    return s;
   }
 
   setHighlight({ cl = null, gid = null, posIdx = null } = {}) {
@@ -688,6 +763,9 @@ export class GlobeView extends EventTarget {
       const g = window.App?.subGidMap?.byGid?.[gid];
       if (g) f.focusSubLocal = { cl: g.cl, sub: g.sub };
     }
+    // Focus changes (click, nav.focus) reset the parent-context dim layer
+    // (#34): the new focus's hover-tier caller repopulates it as needed.
+    f.dimLayer = null;
     // Changing a cluster-level focus invalidates sibling multi-selects
     // and subreddit filters would no longer make sense on a different
     // cluster; keep them and let _recomputeDim intersect.
@@ -733,6 +811,14 @@ export class GlobeView extends EventTarget {
     f.spotlight = idxSet && idxSet.size > 0 ? idxSet : null;
     this._recomputeDim();
     try { store.set({ filters: { spotlight: f.spotlight } }); } catch {}
+  }
+
+  // Mid-tier dim layer (#34): points in this set render at VIS_TIER.DIM
+  // when they would otherwise be at VIS_TIER.HIDDEN. Pass null to clear.
+  setDimLayer(idxSet) {
+    const f = this._filter;
+    f.dimLayer = idxSet && idxSet.size > 0 ? idxSet : null;
+    this._recomputeDim();
   }
 
   // ── Subtopic luminance shading on globe points (#32 #40) ──────────────
@@ -792,122 +878,6 @@ export class GlobeView extends EventTarget {
     this.pointGeom.attributes.color.needsUpdate = true;
   }
 
-  setThreadsEnabled(v) {
-    this.threadArcsEnabled = v;
-    if (this.threadArcs) this.threadArcs.visible = v;
-  }
-
-  async loadThreadArcs(pairs, opts = {}) {
-    // Render each post→comment pair as a lifted great-circle tube. `opts`:
-    //   thin    → half the default tube radius (used for shift-preview)
-    //   opacity → override material opacity (default 0.92)
-    this._threadArcPairs = pairs && pairs.length ? pairs : null;
-    this._threadArcOpts = pairs && pairs.length ? { ...opts } : null;
-    this._threadArcZoomBucket = null;
-    this._disposeThreadArcs();
-    if (!this._threadArcPairs) return;
-    this._rebuildThreadArcs();
-  }
-
-  _disposeThreadArcs() {
-    if (this.threadArcs) {
-      this.worldGroup.remove(this.threadArcs);
-      this.threadArcs.geometry.dispose();
-      this.threadArcs.material.dispose();
-      this.threadArcs = null;
-    }
-  }
-
-  _threadArcRadiusScale() {
-    const t = Math.max(0, Math.min(1,
-      (this.distanceTarget - MIN_ZOOM) / (DEFAULT_DISTANCE - MIN_ZOOM)));
-    // Near the surface the same world-space tube projects much wider, so the
-    // geometry radius needs to shrink aggressively. Keep far/default zoom at
-    // the established thickness.
-    return 0.04 + 0.96 * Math.pow(t, 1.8);
-  }
-
-  _threadArcRadiusBucket() {
-    return Math.round(this._threadArcRadiusScale() / 0.03) * 0.03;
-  }
-
-  _maybeRescaleThreadArcs() {
-    if (!this._threadArcPairs || !this.threadArcs) return;
-    const bucket = this._threadArcRadiusBucket();
-    if (bucket === this._threadArcZoomBucket) return;
-    const now = performance.now();
-    if (now - this._lastThreadArcRebuildMs < 120) return;
-    this._rebuildThreadArcs();
-  }
-
-  _rebuildThreadArcs() {
-    const pairs = this._threadArcPairs;
-    const opts = this._threadArcOpts || {};
-    if (!pairs || pairs.length === 0) return;
-    this._disposeThreadArcs();
-
-    const st = this.state;
-    const SEG = 28;
-    const radiusBucket = this._threadArcRadiusBucket();
-    const TUBE_RAD = (opts.thin ? 0.0022 : 0.0048) * radiusBucket;
-    const TUBE_FACETS = 5;  // 5-sided "tube" (cheaper than full circle, looks fine)
-    const geometries = [];
-
-    for (let p = 0; p < pairs.length; p++) {
-      const [iA, iB] = pairs[p];
-      const latA = st.coords[2*iA], lonA = st.coords[2*iA+1];
-      const latB = st.coords[2*iB], lonB = st.coords[2*iB+1];
-      const [ax,ay,az] = latLonToXYZ(latA, lonA, POINT_RADIUS * 1.005);
-      const [bx,by,bz] = latLonToXYZ(latB, lonB, POINT_RADIUS * 1.005);
-      const v1 = new THREE.Vector3(ax,ay,az);
-      const v2 = new THREE.Vector3(bx,by,bz);
-      const angle = v1.angleTo(v2);
-      const col = sphereColor(st.cluster[iA]);
-      const [r,g,b] = hexToRgb(col);
-
-      // Build a sequence of points along the great-circle, lifted by a sine bump
-      // proportional to the arc length so longer arcs reach higher.
-      const pts = [];
-      const sinA = Math.sin(angle) || 1e-6;
-      const peakLift = 0.10 + 0.22 * Math.min(1, angle / Math.PI);  // 10-32% of radius
-      for (let s = 0; s < SEG; s++) {
-        const t = s / (SEG - 1);
-        const w1 = Math.sin((1-t) * angle) / sinA;
-        const w2 = Math.sin(t * angle) / sinA;
-        const px = v1.x * w1 + v2.x * w2;
-        const py = v1.y * w1 + v2.y * w2;
-        const pz = v1.z * w1 + v2.z * w2;
-        const lift = 1 + peakLift * Math.sin(Math.PI * t);
-        pts.push(new THREE.Vector3(px * lift, py * lift, pz * lift));
-      }
-      const curve = new THREE.CatmullRomCurve3(pts);
-      const tube = new THREE.TubeGeometry(curve, SEG - 1, TUBE_RAD, TUBE_FACETS, false);
-      // Per-vertex color
-      const colArr = new Float32Array(tube.attributes.position.count * 3);
-      for (let i = 0; i < colArr.length; i += 3) {
-        colArr[i] = r/255; colArr[i+1] = g/255; colArr[i+2] = b/255;
-      }
-      tube.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-      geometries.push(tube);
-    }
-
-    // Merge into a single BufferGeometry to keep one draw call.
-    const merged = mergeBufferGeometries(geometries);
-    geometries.forEach(g => g.dispose());
-    const mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: opts.opacity != null ? opts.opacity : 0.92,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-    });
-    this.threadArcs = new THREE.Mesh(merged, mat);
-    this.threadArcs.visible = this.threadArcsEnabled;
-    this.worldGroup.add(this.threadArcs);
-    this._threadArcZoomBucket = radiusBucket;
-    this._lastThreadArcRebuildMs = performance.now();
-  }
-
   setHoverPoint(idx) {
     const pos = this.pointGeom.attributes.position.array;
     if (idx >= 0) {
@@ -929,23 +899,61 @@ export class GlobeView extends EventTarget {
   }
 
   _tick() {
-    // When the guided tour is active, ease more slowly so rotations read
-    // as deliberate camera moves rather than snap-to. 0.18/0.14 → 0.05/0.04
-    // stretches the settle time from ~1.5s to ~6s.
-    //
-    // Beats that need a snappier long-distance move (#27 — beat 5 zooming
-    // into the three spotlit voices) flip body.tour-cam-snappy on enter()
-    // and clear it on cleanup; while that flag is set we revert to the
-    // non-tour rates so the tween settles in ~1s instead of 6s.
     const tourOn = typeof window !== 'undefined' && window.App?.tour?.isActive?.();
     const camSnappy = tourOn && typeof document !== 'undefined'
       && document.body?.classList?.contains('tour-cam-snappy');
-    const slerpRate = tourOn ? (camSnappy ? 0.18 : 0.05) : 0.18;
-    const zoomRate  = tourOn ? (camSnappy ? 0.14 : 0.04) : 0.14;
-    this.worldQuat.slerp(this.worldQuatTarget, slerpRate);
-    this.distance += (this.distanceTarget - this.distance) * zoomRate;
-    this._maybeRescaleThreadArcs();
+    const useTour = tourOn && !camSnappy;
+    const slerpRate = useTour ? SLERP_RATE_TOUR : SLERP_RATE_APP;
+    const zoomRate  = useTour ? ZOOM_RATE_TOUR : ZOOM_RATE_APP;
+
+    // Slerp the camera toward the target with a per-frame angular cap.
+    // The default slerp(t) covers `t × angle_remaining` per frame, so a long
+    // arc starts fast and decays exponentially — readable as a snap on big
+    // swings. Capping at MAX_ROT_PER_FRAME turns long arcs into steady
+    // glides; once the residual angle drops below the cap, the slerp
+    // fraction takes over and the move settles smoothly.
+    const angleRemaining = this.worldQuat.angleTo(this.worldQuatTarget);
+    let effSlerp = slerpRate;
+    if (angleRemaining > 1e-5) {
+      const capped = MAX_ROT_PER_FRAME / angleRemaining;
+      if (capped < slerpRate) effSlerp = capped;
+    }
+    this.worldQuat.slerp(this.worldQuatTarget, effSlerp);
+
+    // Pull-out arc: while the camera is mid-rotation, lift the effective
+    // distance target so the camera arcs OUT during the swing and back IN
+    // as it arrives. Lift is proportional to angular distance remaining
+    // (clamped at ZOOM_LIFT_MAX so we never drift past MAX_ZOOM). When
+    // angleRemaining drops to ~0 the lift naturally vanishes and the
+    // camera settles to the user-requested distanceTarget.
+    const lift = Math.min(angleRemaining * ZOOM_LIFT_PER_RAD, ZOOM_LIFT_MAX);
+    const effectiveDistTarget = Math.min(MAX_ZOOM, this.distanceTarget + lift);
+    const distDelta = effectiveDistTarget - this.distance;
+    const easedDist = distDelta * zoomRate;
+    const cappedDist = Math.sign(easedDist) * Math.min(Math.abs(easedDist), MAX_ZOOM_PER_FRAME);
+    this.distance += cappedDist;
+
     this.worldGroup.quaternion.copy(this.worldQuat);
+
+    // Per-point alpha fade. Lerp each entry of the live `dim` attribute
+    // toward _dimTarget; mark needsUpdate only on frames that actually
+    // moved a point, so a static globe stays at zero per-frame upload cost.
+    if (this.pointGeom && this._dimTarget) {
+      const live = this.pointGeom.attributes.dim.array;
+      const tgt = this._dimTarget;
+      const N = live.length;
+      let moved = false;
+      for (let i = 0; i < N; i++) {
+        const d = tgt[i] - live[i];
+        if (d === 0) continue;
+        if (Math.abs(d) < 0.002) { live[i] = tgt[i]; moved = true; }
+        else { live[i] += d * VIS_FADE_RATE; moved = true; }
+      }
+      if (moved || this._dimDirty) {
+        this.pointGeom.attributes.dim.needsUpdate = true;
+        this._dimDirty = false;
+      }
+    }
 
     // Globe is centred in its own panel now (the canvas itself sits between
     // the left nav and the right detail panel), so the camera looks at

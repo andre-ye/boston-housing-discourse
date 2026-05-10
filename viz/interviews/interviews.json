@@ -1,168 +1,161 @@
 {
   "schema_version": 2,
-  "note": "Public display only: no roles, employers, or residence details. Each entry has `quotes` — short paraphrased lines aligned with the topic/subtopic where that pin is placed on the globe. `themes` are optional search tags.",
+  "note": "Public display only: no roles, employers, or residence details. Each entry has `quotes` — short verbatim or near-verbatim lines drawn from the field notes/transcripts in source.txt. Where the original notes are summarized rather than transcribed, quotes are drawn from the directly-quoted phrases in those notes. `themes` are optional search tags.",
   "interviews": [
     {
       "id": "P1",
       "quotes": [
-        "People compare what subsidized or income-restricted options actually exist versus what gets built market-rate.",
-        "A lot of threads argue the math: rent versus owning, and whether moving farther out still saves money.",
-        "Bus connections come up as the fragile link between affordable pockets and everything else."
+        "Housing used to be cheaper outside of Boston central area.",
+        "Trying to relocate so the second house can be rented out."
       ],
-      "themes": ["housing affordability", "subsidized housing", "bus commute"]
+      "themes": ["housing affordability", "south of boston", "walk-and-bus commute"]
     },
     {
       "id": "P2",
       "quotes": [
-        "Mixing bus, train, and sometimes a water crossing is treated as normal — until one leg slips and the whole trip balloons.",
-        "Riders describe the multi-leg commute as worth it when one segment feels reliable and pleasant.",
-        "The conversation keeps returning to small delays stacking: one late transfer reshapes the whole evening."
+        "Half an hour of pure delight on the ferry into Downtown.",
+        "I'm surrounded by water, and I have a kayak in the backyard.",
+        "More reliable train service, and roads that don't delay buses."
       ],
-      "themes": ["multimodal commute", "ferry", "transfers", "reliability"]
+      "themes": ["ferry commute", "waterfront", "bus reliability"]
     },
     {
       "id": "P3",
       "quotes": [
-        "Posts argue who should pay for the system — riders, drivers through pricing, or broader tax bases.",
-        "Congestion and roadway pricing get framed as either equity fixes or regressive squeezes, depending who is posting.",
-        "A common thread: distrust that revenue will come back as service rather than filling other budget holes."
+        "It has changed a lot. It's not the same.",
+        "I would love to have a self-driving car and never need to parallel park."
       ],
-      "themes": ["MBTA funding", "congestion pricing", "state legislation"]
+      "themes": ["lifelong resident", "short car commute", "parking"]
     },
     {
       "id": "P4",
       "quotes": [
-        "Commuter rail and subway threads overlap when people compare which line is the least bad backup.",
-        "Service alerts and shuttle buses show up as the default vocabulary of a bad week.",
-        "Route-planning posts treat transfers as puzzles: minimize walking, minimize waiting, minimize surprise."
+        "I get assigned to a different station every day.",
+        "Lots of space, chill."
       ],
-      "themes": ["commuter rail", "Red Line", "disruptions", "route planning"]
+      "themes": ["transit work", "south shore", "station parking"]
     },
     {
       "id": "P5",
       "quotes": [
-        "Headways dominate: when trains are hourly, the whole region’s schedule bends around a single clock.",
-        "People swap tactics for making a long rail day tolerable — where to sit, when to bail to a bus.",
-        "Parking at the station is a recurring subplot: cost, availability, and whether driving the first mile is worth it."
+        "Every job is different.",
+        "Right now it's once an hour. Could cut two hours off the commute time if there were more.",
+        "I take the scooter so I don't have to pay for parking."
       ],
-      "themes": ["commuter rail frequency", "station parking", "long commute"]
+      "themes": ["commuter rail frequency", "two-hour commute", "trades work"]
     },
     {
       "id": "P6",
       "quotes": [
-        "Equity threads ask who gets skipped when service is thin evenings and Sundays.",
-        "Riders describe forced tradeoffs: extra fare to a ride-hail just to reach the first train.",
-        "The same gap gets narrated as a budgeting problem and as a workforce-access problem."
+        "No public transit runs from where I live to the station on Sunday, so I have to take an Uber.",
+        "Quiet."
       ],
-      "themes": ["service gaps", "Sunday service", "equity", "ride-hail"]
+      "themes": ["sunday service gap", "ride-hail", "south shore"]
     },
     {
       "id": "P7",
       "quotes": [
-        "Late-night and very early trains are treated like oxygen for shift work — when they vanish, plans collapse.",
-        "Schedules written for nine-to-five riders leave everyone else doing improvised choreography.",
-        "People ask for headways they can memorize instead of apps they have to babysit."
+        "I want to live closer to work.",
+        "More accessible, more frequent schedule, available past 3 a.m."
       ],
-      "themes": ["late-night service", "schedules", "shift work"]
+      "themes": ["late-night service", "shift work", "frequency"]
     },
     {
       "id": "P8",
       "quotes": [
-        "Fare-free and reduced-fare ideas show up next to skepticism about who would pay instead.",
-        "Free-transit advocates argue ridership and fairness; critics argue cost and crowding.",
-        "Student passes and bulk discounts get compared to what peer cities try."
+        "Make transit free.",
+        "Make it more consistent during weather.",
+        "High parking fees."
       ],
-      "themes": ["fares", "free transit", "students", "MBTA funding"]
+      "themes": ["fare-free transit", "weather reliability", "students"]
     },
     {
       "id": "P9",
       "quotes": [
-        "Transfer design is a personality in these threads: stairs, elevators, weather, and whether you miss the window.",
-        "People compare apps, paper schedules, and gut feeling — whichever failed them last.",
-        "Early trains and late trains are discussed as different systems entirely."
+        "I usually catch the 4:25 a.m. train from my stop, and I get here by 6:00 a.m.",
+        "I was looking at the prices — ridiculous. So I was able to find a cheaper apartment further out.",
+        "More consistent schedules."
       ],
-      "themes": ["transfers", "commuter rail", "accessibility", "route planning"]
+      "themes": ["early-morning service", "long commute", "housing prices"]
     },
     {
       "id": "P10",
       "quotes": [
-        "Red Line reliability is a meme and a trauma dump at the same time.",
-        "Commuter rail truncations send people hunting for bus bridges they did not plan on.",
-        "Dwell time and platform crowding get blamed in the same breath as signal problems."
+        "The last time we can go straight from my station is 9:20 a.m. After that, I have to stop at Quincy.",
+        "Especially for the Red Line, they usually take a long time before they depart from the station. I don't understand why.",
+        "Faster, more consistent times — so it can just go straight, instead of ending in the morning."
       ],
-      "themes": ["Red Line", "commuter rail", "delays", "buses"]
+      "themes": ["commuter rail truncation", "Red Line dwell", "transfers"]
     },
     {
       "id": "P11",
       "quotes": [
-        "Monthly passes and fare capping show up as mental accounting: when does a pass actually pay off?",
-        "People compare CharlieCard, phone wallets, and whatever the vending machine ate last week.",
-        "Small friction — a dead reader, a wrong fare gate — gets magnified on a tight connection."
+        "It feels like a central area — getting to work, more surrounding things I can get to faster.",
+        "Save money, save gas. Don't worry about no car accidents.",
+        "Under inclement weather, I'll probably get home later. Instability."
       ],
-      "themes": ["CharlieCard", "passes", "fare media", "commuter rail"]
+      "themes": ["central neighborhood", "rail commute", "weather delays"]
     },
     {
       "id": "P12",
       "quotes": [
-        "TOD threads ask whether new density actually produces more service or just more riders competing for the same seats.",
-        "Frequency upgrades are read as promises; missed targets are read as broken contracts.",
-        "Station access by foot and bus gets debated as part of the housing package, not an afterthought."
+        "I bought my house through the city program for first-time home buyers.",
+        "The stairs are not ideal.",
+        "The commuter rail skips over."
       ],
-      "themes": ["transit-oriented development", "commuter rail frequency", "density"]
+      "themes": ["first-time homebuyer program", "accessibility", "commuter rail gaps"]
     },
     {
       "id": "P13",
       "quotes": [
-        "Airport and Logan-adjacent routing is a magnet for “is the T ever sensible for a flight?” posts.",
-        "People compare Silver Line, Blue Line, and just eating the taxi cost.",
-        "Luggage, weather, and late arrivals turn into a secondary puzzle on top of fares."
+        "Peaceful, in the country, with good neighbors.",
+        "The app tells on itself — it says it's less than 75% on time."
       ],
-      "themes": ["Logan", "airport access", "commuter rail", "Silver Line"]
+      "themes": ["exurban living", "commuter rail reliability", "bus-and-rail"]
     },
     {
       "id": "P14",
       "quotes": [
-        "Community calendars and “what’s on this weekend” energy collides with practical questions about venues.",
-        "Cheap or free public events get sorted by transit reachability as much as by interest.",
-        "Students and newcomers ask for low-stakes ways to learn the city without spending a fortune."
+        "I grew up there.",
+        "Happy with how transit is."
       ],
-      "themes": ["community events", "local tips", "students"]
+      "themes": ["hometown", "student commute"]
     },
     {
       "id": "P15",
       "quotes": [
-        "Tap-to-pay and phone-wallet bugs are a whole genre: it worked yesterday, it fails at the gate today.",
-        "People compare CharlieCard to systems in other cities they’ve visited.",
-        "Fare enforcement fairness gets argued alongside technology rollout speed."
+        "More frequent trains, better connectivity would be nice.",
+        "If I take the first bus, it's 15 minutes to switch two buses, and like 30 minutes — not too far away, but because I'm switching buses, walking for 10 minutes.",
+        "Best of everything. There are many different national parks within two hours, and skiing in the winter."
       ],
-      "themes": ["CharlieCard", "mobile fare", "fare enforcement", "MBTA"]
+      "themes": ["bus transfers", "frequency", "ideal city"]
     },
     {
       "id": "P16",
       "quotes": [
-        "Service cuts linger in memory longer than the press release: riders track which routes never returned.",
-        "Outrage posts mix politics, union news, and personal lateness into one emotional packet.",
-        "Skepticism defaults to “show me the rider impact,” not the agency press line."
+        "I would live in parts of Cambridge where I could get rid of one car. We have a two-car family. I would love to not need two cars.",
+        "I like that parts of Cambridge feel residential, but you still have everything. You could turn the corner, and there's what you need.",
+        "The express bus that was close to my house got taken away. Because of COVID, they paused it, and then they never brought it back."
       ],
-      "themes": ["MBTA outrage", "service cuts", "delays"]
+      "themes": ["walkability", "two-car household", "express bus cuts"]
     },
     {
       "id": "P17",
       "quotes": [
-        "State funding threads map who controls the purse strings versus who feels the crowding on platforms.",
-        "Regional rail ambitions bump into legislative pacing and bond politics.",
-        "Commenters argue whether new revenue should buy maintenance, expansion, or both at half quality."
+        "It tends to end up being a situation where I need to stay there nine, ten hours to get enough hours, really, to make the money I need. So I'm usually getting home by six or seven. Parking's a disaster.",
+        "I like being in a city — communal space, and when I'm not working, being able to access public transportation.",
+        "Funding in Pennsylvania is state-run. So the city actually really doesn't have much say on how much money they have for public transportation."
       ],
-      "themes": ["state funding", "MBTA politics", "legislation", "regional rail"]
+      "themes": ["overtime", "city living", "state funding politics"]
     },
     {
       "id": "P18",
       "quotes": [
-        "Blocked bike lanes are documented like crime scenes: photos, maps, and repeat offenders.",
-        "Cyclists and drivers talk past each other about enforcement versus design.",
-        "Separated lanes show up as the rare thing both sides sometimes agree could reduce conflict."
+        "I think Boston is insane for cycling. It's not for the faint of heart.",
+        "You take the bridge across, and you can immediately tell that you are in Boston. Your life is in danger. Fewer bike paths, and less separated. The drivers just don't really care at all.",
+        "I'm on a postdoc salary — about 70,000 — and I cannot live alone unless I lived beyond Alewife, or Newton, or Watertown. I have three housemates, and I don't like that. There's just no other way."
       ],
-      "themes": ["bike lanes", "blocked bike lanes", "cycling safety", "street design"]
+      "themes": ["cycling safety", "separated bike lanes", "postdoc housing"]
     }
   ]
 }

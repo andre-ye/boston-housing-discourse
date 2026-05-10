@@ -1,42 +1,32 @@
-// 03-opener-sphere — Tour opener page 2 of 3. Why a sphere, not a flat scatter.
+// 03-opener-sphere — Opener page 2 of 3. Why a sphere, in plain language.
 
 import { raf } from '../../core/raf.js';
-import { HERO_FRAMING, OPENER_NUDGE_LON, OPENER_NUDGE_LAT } from '../../core/constants.js';
+import { OPENER_NUDGE_LON, OPENER_NUDGE_LAT, HERO_FRAMING } from '../../core/constants.js';
 
 export const beat = {
   id: 'opener-sphere',
   kind: 'opener',
-  eyebrow: 'WHERE THIS CAME FROM · 2 / 3',
-  title: 'Why a sphere',
-  bodyHtml: [
-    '<p>The natural alternative is a flat 2D plot made with something like ',
-    't-SNE, UMAP, or PCA. We chose a sphere instead, for three reasons.</p>',
-    '<h3>No edges</h3>',
-    '<p>A flat layout has corners and a frame, and the eye treats those as ',
-    'meaningful when they are not. A sphere has no boundary and no ',
-    'privileged direction.</p>',
-    '<h3>No map</h3>',
-    '<p>A 2D scatter looks like a map, and people read east, west, up, and ',
-    'down as if they meant something. A globe sidesteps that problem because ',
-    'you have to rotate it to see different parts, which makes it obvious that ',
-    'no single view is the canonical one.</p>',
-    '<p class="opener-aside">This is <em>not</em> a map of Boston. The ',
-    'position of Boston Common does not appear here. Position on the sphere ',
-    'reflects similarity of language, not geography.</p>',
-    '<h3>Voids are real</h3>',
-    '<p>Empty regions on the sphere are not blank space waiting to be ',
-    'filled. A void is a region of the embedding space where this corpus ',
-    'has little to say, which means it represents a kind of conversation ',
-    'that did not show up in Boston Reddit between 2015 and 2025.</p>',
-  ].join(''),
+  title: 'Projecting discourse onto a sphere',
+  bodyHtml:
+    '<p>To be clear, this is not a globe of the Earth or of Boston, but a ' +
+    'spherical projection of data. We embedded each post into a ' +
+    '1024-dimensional vector, where similar content is mapped to similar ' +
+    'points in space, and projected it onto a sphere using ' +
+    '<a href="https://pymde.org/" target="_blank" rel="noopener">' +
+    'manifold-constrained optimization (PyMDE)</a>.</p>' +
+    '<p><strong>A spherical projection avoids placing artificial edges ' +
+    'and centers that a more traditional two-dimensional Cartesian plane ' +
+    'would impose, arbitrarily drawing attention toward some topics over ' +
+    'others.</strong> We think a sphere captures the complexity and ' +
+    'connectivity of public discourse better than any flat layout could.</p>',
   enter(ctx) {
-    const { globe } = ctx;
-    try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
+    const { globe, direction } = ctx;
+    if (direction === 'backward') {
+      try { globe.rotateTo(15, -25, HERO_FRAMING); } catch {}
+    }
     const dispose = raf.add('tour:opener-spin', () => {
       try { globe.nudge?.(OPENER_NUDGE_LON, OPENER_NUDGE_LAT); } catch {}
     });
-    return () => {
-      try { dispose(); } catch {}
-    };
+    return () => { try { dispose(); } catch {} };
   },
 };

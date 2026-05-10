@@ -1,9 +1,11 @@
 // Part 3 / Step 1 — search inside the bike-lane cluster.
 //
 // Rotate to cl=5 "Cycling & Bike Lanes" (centroid lat=0.918, lon=0.905), pulse
-// the search input, and wait for the user to type "doored". The query lands
-// on a tight pocket inside cl=5 sub=0/1: ~92% of its 179 corpus hits sit in
-// cycling clusters, so the spotlight reads as a clean, surgical paint.
+// the search input, and wait for the user to type "mass ave" AND commit it
+// (Enter key on the input, or click on the literal "search for …" row in the
+// suggestions dropdown). Typing alone never advances the beat — the commit is
+// what tells us the user understood the search affordance. The query returns
+// 2,039 corpus matches, with the plurality (336) inside cl=5.
 
 import { rotateToPointSet } from '../helpers.js';
 import { CLOSE_FRAMING, CLUSTER3_CENTROID_LAT, CLUSTER3_CENTROID_LON, CLUSTER3_FRAMING } from '../../core/constants.js';
@@ -11,29 +13,27 @@ import { CLOSE_FRAMING, CLUSTER3_CENTROID_LAT, CLUSTER3_CENTROID_LON, CLUSTER3_F
 export const beat = {
   id: 'cluster3-search',
   kind: 'step',
-  eyebrow: 'PART 3 — SEARCH & TIME',
-  title: 'Search the corpus',
-  prose:
-    'The bike-lane cluster sits in its own region of the sphere. Search paints ' +
-    'every post whose body or title contains your query, then rotates the globe ' +
-    'to the densest pocket. Try typing the word "doored" into the search bar — ' +
-    'almost every match lives inside this cluster. The dropdown groups results ' +
-    'into types: "phrase" entries paint every matching post on the globe, ' +
-    '"snippet" entries pin a single post, and "topic" / "subtopic" entries drill ' +
-    'into the sidebar — each row shows its kind as a small chip on the right. ' +
-    'To filter posts containing "doored", click the phrase entry. After the tour ' +
-    'you can try other queries like "mass ave" or "protected lane" to see how ' +
-    'different phrases pick out different shapes of conversation.',
-  hint: 'Type "doored" into the search bar in the top left, then click the phrase result.',
+  section: { topic: 'cycling & bike lanes', tool: 'search & time', cl: 5 },
+  bodyHtml:
+    '<p>Search lets you ask the sphere a specific question. <strong>Type ' +
+    '“mass ave” in the search box at the top of the left panel ' +
+    'and press Enter.</strong> Posts that mention Mass Ave inside this ' +
+    'cluster will light up; matches elsewhere on the sphere fade. Once it ' +
+    'paints, hover around the bright points and use the bottom-up techniques ' +
+    'from earlier — sample a few, pin one or two — to get a feel ' +
+    'for what people are actually arguing about when bike lanes meet Mass ' +
+    'Ave.</p>',
   showChrome: ['nav'],
   pulse: 'tour-pulse-search',
   manualContinue: true,
   enter(ctx) {
     const { App, globe, nav, markStepDone } = ctx;
 
-    try { App?.clearConnectionsMode?.(); } catch {}
     try { App?.clearPinnedPoint?.(); } catch {}
-    try { nav.focus({}); } catch {}
+    // Preserve the cl=5 drill the user committed in beat 12 (#cluster3-pick-
+    // cluster). Calling nav.focus({}) here would unselect the bike-lane
+    // cluster on entry, undoing the previous beat's payoff.
+    try { nav.focus({ cl: 5 }); } catch {}
 
     // Rotate to the cl=5 centroid so the user can see the cluster the
     // forthcoming search will paint inside.
@@ -57,32 +57,74 @@ export const beat = {
     });
 
     const input = document.getElementById('search-input');
+    const suggestions = document.getElementById('search-suggestions');
     let ran = false;
-    const onInput = async () => {
-      if (!input) return;
-      const q = (input.value || '').trim();
-      if (ran || !q.toLowerCase().includes('doored')) return;
+
+    // Two-tier paint: bright spotlight for matches inside cl=5 (the "lit
+    // posts" the prose names), soft DIM layer for the out-of-cluster matches
+    // so the corpus-wide spread stays visible. Only fires after the user
+    // commits the query (Enter or literal-row click) — typing alone is not
+    // enough to advance the beat or paint the globe.
+    const commitAndPaint = async () => {
+      if (ran) return;
+      const q = (input?.value || '').trim();
+      if (!q.toLowerCase().includes('mass ave')) return;
       ran = true;
       try {
         const set = await App?.findPointsContaining?.(q);
         if (set && set.size > 0) {
-          try { globe.setSpotlight(set); } catch {}
-          rotateToPointSet(globe, App.state, set, CLOSE_FRAMING);
+          const cluster = App?.state?.cluster;
+          const inCluster = new Set();
+          const outOfCluster = new Set();
+          if (cluster) {
+            for (const i of set) {
+              if (cluster[i] === 5) inCluster.add(i);
+              else outOfCluster.add(i);
+            }
+          }
+          try { globe.setSpotlight(inCluster.size > 0 ? inCluster : set); } catch {}
+          try { globe.setDimLayer?.(outOfCluster.size > 0 ? outOfCluster : null); } catch {}
+          rotateToPointSet(globe, App.state, inCluster.size > 0 ? inCluster : set, CLOSE_FRAMING);
         }
       } catch {}
       markStepDone?.();
     };
-    input?.addEventListener('input', onInput);
+
+    // Enter on the search input commits the query. We pre-empt nav.js's own
+    // Enter handler in spirit by listening on keydown (capture: false) — both
+    // handlers run, but ours only fires our commit-paint branch. nav.js will
+    // also run _runSpotlightSearch which paints its own globe spotlight; our
+    // two-tier paint then overwrites it (setSpotlight is idempotent).
+    const onKeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      // Defer to next tick so nav.js's Enter handler (which may pick a
+      // suggestion other than literal — e.g. a sub/cluster hit) runs first.
+      // Only commit-paint when the typed query actually contains "mass ave".
+      setTimeout(() => { commitAndPaint(); }, 0);
+    };
+    input?.addEventListener('keydown', onKeydown);
+
+    // Click on the literal "Search for …" row in the suggestions dropdown.
+    // We listen on the suggestions container (event delegation) so the
+    // listener survives even when the dropdown re-renders mid-typing.
+    const onSuggClick = (e) => {
+      const literalRow = e.target.closest?.('.sugg-item-literal');
+      if (!literalRow) return;
+      setTimeout(() => { commitAndPaint(); }, 0);
+    };
+    suggestions?.addEventListener('click', onSuggClick);
 
     return () => {
       cancelAnimationFrame(focusRaf);
-      input?.removeEventListener('input', onInput);
+      input?.removeEventListener('keydown', onKeydown);
+      suggestions?.removeEventListener('click', onSuggClick);
       // Tear down the search-paint state so Back into earlier beats doesn't
       // see a polluted globe / search input. Drop the spotlight, clear the
       // input AND fire its `input` event so search-find clears its paint
       // (mere `value=""` doesn't trip the listener), and remove the
       // `q=` URL hash param if one was set.
       try { globe.setSpotlight(null); } catch {}
+      try { globe.setDimLayer?.(null); } catch {}
       try { App?.clearPinnedBackStack?.(); } catch {}
       if (input) {
         try {

@@ -4,7 +4,7 @@
 //   drill      — { cl, gid, posIdx } — owned by NavController
 //   filters    — { subredditId, monthRange, paint, spotlight } — owned by GlobeView
 //   selection  — { pinnedIdx, hoveredIdx, pinnedInterviewId } — owned by main.js boot()
-//   modes      — { connections, sproutsActive } — owned by main.js boot()
+//   modes      — { sproutsActive } — owned by main.js boot()
 //   tour       — { active, beat } — owned by tour/runner.js
 
 const _state = {
@@ -21,7 +21,6 @@ const _state = {
     pinnedInterviewId: null,
   },
   modes: {
-    connections: false,
     sproutsActive: false,
   },
   tour: {
@@ -87,7 +86,7 @@ export const store = {
     _state.drill = { cl: null, gid: null, posIdx: null };
     _state.filters = { subredditId: null, monthRange: null, paint: null, spotlight: null };
     _state.selection = { pinnedIdx: -1, hoveredIdx: -1, pinnedInterviewId: null };
-    _state.modes = { connections: false, sproutsActive: false };
+    _state.modes = { sproutsActive: false };
     _state.tour = { active: false, beat: 0 };
     notify();
   },

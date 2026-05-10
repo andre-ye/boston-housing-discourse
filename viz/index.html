@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Boston Reddit — Globe</title>
+<title>A Sphere of Boston Housing Discourse</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <link rel="stylesheet" href="./css/base.css">
 <link rel="stylesheet" href="./css/nav.css">
@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="./css/cards.css">
 <link rel="stylesheet" href="./css/loading.css">
 <link rel="stylesheet" href="./css/tour.css">
-<link rel="stylesheet" href="./css/help.css">
 <link rel="stylesheet" href="./css/inspector.css">
 <link rel="stylesheet" href="./css/cards-overrides.css">
 <link rel="stylesheet" href="./css/pinned.css">
@@ -31,6 +30,10 @@
     --nav-w: 340px;
     --detail-w: 400px;
   }
+  /* Hide the launcher chip on first visit — the tour is auto-running, so
+     a "Take the tour" button is redundant. JS removes the class once the
+     user reaches the outro or skips. */
+  #tour-launcher.hidden-until-completed { display: none; }
 </style>
 <script type="importmap">
 {
@@ -44,113 +47,107 @@
 <body class="app-loading">
 <div id="app">
   <aside id="nav">
-    <div id="nav-header">
-      <h1>The Boston Social Sphere<br />Discourse of Reddit</h1>
-      <div class="sub">Over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015&ndash;2025, grouped by topics and points of view</div>
-      <div class="sub-stats">422 k voices &middot; 49 topics &middot; 194 subtopics</div>
-      <div id="search-wrap">
-        <input id="search-input" type="text" inputmode="search" autocomplete="off" spellcheck="false"
-               placeholder="Search" aria-label="Search" />
-        <div id="search-suggestions" class="hidden"></div>
+    <div id="nav-top">
+      <div id="nav-header">
+        <h1>A Sphere of Boston Housing Discourse</h1>
+        <div id="search-wrap">
+          <input id="search-input" type="text" inputmode="search" autocomplete="off" spellcheck="false"
+                 placeholder="Search" aria-label="Search" />
+          <div id="search-suggestions" class="hidden"></div>
+        </div>
       </div>
-      <div id="breadcrumbs"></div>
+      <div id="nav-bars">
+        <div class="bar-column" id="col-l1">
+          <div class="pane-header pane-header--bar">
+            <div class="bar-col-title pane-header-label" id="title-l1" data-default="Topics">Topics</div>
+            <button class="pane-header-info" type="button"
+                    aria-label="About the topics column"
+                    data-tooltip="Click any topic, subtopic, or stance on the left to drill down. Colors here match the colors on the globe.">i</button>
+          </div>
+          <div class="bar-stack" id="stack-l1"></div>
+        </div>
+        <div class="bar-column collapsed" id="col-l2">
+          <div class="pane-header pane-header--bar pane-header--drilled">
+            <button class="bar-col-back" id="back-l2" type="button"
+                    aria-label="Back to topics" title="Back to topics">←</button>
+            <div class="bar-col-title pane-header-label" id="title-l2" data-default="Subtopics">Subtopics</div>
+          </div>
+          <div class="bar-stack" id="stack-l2"></div>
+        </div>
+        <div class="bar-column collapsed" id="col-l3">
+          <div class="pane-header pane-header--bar pane-header--drilled">
+            <button class="bar-col-back" id="back-l3" type="button"
+                    aria-label="Back to subtopics" title="Back to subtopics">←</button>
+            <div class="bar-col-title pane-header-label" id="title-l3" data-default="Points of view">Points of view</div>
+          </div>
+          <div class="bar-stack" id="stack-l3"></div>
+        </div>
+        <svg id="ribbons-overlay"></svg>
+      </div>
     </div>
-    <div id="nav-bars">
-      <div class="bar-column" id="col-l1">
-        <div class="bar-col-title" id="title-l1" data-default="Topics">Topics</div>
-        <div class="bar-stack" id="stack-l1"></div>
-      </div>
-      <div class="bar-column collapsed" id="col-l2">
-        <div class="bar-col-title" id="title-l2" data-default="Subtopics">Subtopics</div>
-        <div class="bar-stack" id="stack-l2"></div>
-      </div>
-      <div class="bar-column collapsed" id="col-l3">
-        <div class="bar-col-title" id="title-l3" data-default="Points of view">Points of view</div>
-        <div class="bar-stack" id="stack-l3"></div>
-      </div>
-      <svg id="ribbons-overlay"></svg>
-    </div>
+    <div id="nav-vsplit-handle" role="separator"
+         aria-orientation="horizontal" aria-label="Resize topics / details split"
+         tabindex="-1"></div>
     <section id="insp-body" class="insp-section insp-section--body">
+      <div class="pane-header pane-header--insp">
+        <span class="pane-header-label">DETAILS VIEWER</span>
+        <button class="pane-header-info" type="button"
+                aria-label="About the details viewer"
+                data-tooltip="Click any point on the globe (or a P-pin for a real-person interview) to see its full content here.">i</button>
+        <span class="pane-header-spacer"></span>
+        <button class="pane-header-btn pane-header-btn--icon" id="pv-back" type="button"
+                aria-label="Back to previous pin" title="Back" disabled>←</button>
+        <button class="pane-header-btn pane-header-btn--icon" id="pv-forward" type="button"
+                aria-label="Forward to next pin" title="Forward" disabled>→</button>
+        <button class="pane-header-btn" id="pv-clear" type="button"
+                aria-label="Clear details viewer" title="Clear details viewer" disabled>Clear</button>
+      </div>
       <div class="insp-empty insp-empty--main" id="insp-empty-main">
+        <p class="insp-empty-hint"><em>Click on something to see its content.</em></p>
         <div class="insp-intro-full">
           <p class="insp-intro-lead">
             Each dot is a post or comment. Color encodes <b>topic</b>; the left nav moves from <b>topics → subtopics → points of view</b> so you can compare how different groups talk about the same issue.
           </p>
           <p class="insp-intro-analyze">
-            <b>How to analyze this corpus:</b> use the <b>search bar</b> (<kbd>/</kbd> focuses it) to jump to a name or try <code>text:heat</code>-style filters. Click a <b>topic bar</b>, then a <b>subtopic</b>, then a <b>points of view</b> ribbon to narrow stances. On the globe, use <kbd>R</kbd> for <b>five random posts or comments</b> from what is visible—<kbd>Esc</kbd> dismisses the floating cards—and press <kbd>?</kbd> for the full shortcut list.
+            <b>Try this:</b> click any topic on the left, then any subtopic, then any post on the globe. The full conversation appears below.
           </p>
           <div class="insp-intro-cluster-wrap">
-            <div class="insp-intro-cluster-h">Three angles people argue about</div>
+            <div class="insp-intro-cluster-h">Three things people argue about</div>
             <button type="button" class="intro-cluster-chip" data-cl="37" aria-label="Open Rent Control Debate topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Rent control debate</span>
-                <span class="icc-desc">Does rent control help tenants, or chill new supply? Follow threads where people weigh tradeoffs and evidence.</span>
               </span>
             </button>
             <button type="button" class="intro-cluster-chip" data-cl="8" aria-label="Open Tenant Rights &amp; Landlords topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Tenant rights &amp; landlords</span>
-                <span class="icc-desc">Practical problems Boston renters run into—heat, lead paint, emergencies—and what people say worked (or did not).</span>
               </span>
             </button>
             <button type="button" class="intro-cluster-chip" data-cl="43" aria-label="Open Cost of Living &amp; Leaving Boston topic">
               <span class="icc-sw" aria-hidden="true"></span>
               <span class="icc-body">
                 <span class="icc-name">Cost of living &amp; leaving Boston</span>
-                <span class="icc-desc">Can you live on a given salary? Who is priced out? Which careers or budgets come up when people compare notes.</span>
               </span>
             </button>
           </div>
+          <p class="insp-bias-caveat"><em>Reddit ≠ Boston.</em> This corpus skews under-40, English-speaking, recent-renter. It under-represents long-tenured homeowners, non-English speakers, and residents of Roxbury, Mattapan, Dorchester, and Hyde Park.</p>
         </div>
       </div>
-      <div id="focus-card" class="fc-slot hidden">
-        <button class="fc-copy-md" id="fc-copy-md" aria-label="Copy as markdown" title="Copy summary as markdown (for notes / writeups)">📋</button>
-        <nav class="fc-breadcrumbs" id="fc-breadcrumbs"></nav>
-        <div class="kind" id="focus-kind">topic</div>
-        <div class="title" id="focus-title">—</div>
-        <div class="meta" id="focus-meta"></div>
-        <div id="focus-subs"></div>
-        <div id="focus-spark"></div>
-        <div id="focus-stances"></div>
-        <div id="focus-voices"></div>
-      </div>
-      <div id="pinned-view" class="pinned-view hidden" role="region" aria-label="Pinned post">
-        <header class="pv-head">
-          <button class="pv-back" id="pv-back" type="button" aria-label="Back to previous pin" title="Back" disabled>←</button>
-          <div class="pv-meta" id="pv-meta"></div>
-          <button class="pv-bookmark" id="pv-bookmark" type="button"
-                  aria-label="Bookmark this point"
-                  aria-pressed="false"
-                  title="Bookmark this point (saved locally)">☆</button>
-          <button class="pv-close" id="pv-close" type="button" aria-label="Close pinned view" title="Close">×</button>
-        </header>
-        <article class="pv-post">
-          <h3 class="pv-post-title" id="pv-post-title"></h3>
-          <div class="pv-post-body" id="pv-post-body"></div>
-          <a class="pv-post-link" id="pv-post-link" href="#" target="_blank" rel="noopener">View on Reddit ↗</a>
-        </article>
-        <section id="pv-thread" class="pv-thread hidden">
-          <h4 class="pv-thread-h">Thread context</h4>
-          <ol id="pv-thread-list" class="pv-thread-list"></ol>
-        </section>
+      <div id="pinned-view" class="pinned-view hidden" role="region" aria-label="Pinned thread">
+        <ol id="pv-thread" class="pv-thread"></ol>
       </div>
       <div id="interview-card" class="interview-card hidden"></div>
       <div id="voices-list-inline" class="voices-list-inline hidden"></div>
-      <div id="bookmarks-card" class="bookmarks-card hidden" role="region" aria-label="Saved points">
-        <button class="bm-close" id="bm-close" aria-label="Close bookmarks">×</button>
-        <div class="bm-head">
-          <h3 class="bm-title">★ Saved points</h3>
-          <button class="bm-clear" id="bm-clear" type="button" title="Remove all saved points">Clear all</button>
-        </div>
-        <div class="bm-empty" id="bm-empty">
-          No saved points yet. Pin a node and tap the ☆ in the pinned panel to save it for later.
-        </div>
-        <div class="bm-list" id="bm-list"></div>
-      </div>
     </section>
+    <!-- Drag handle on the right edge of the rail (#22). Visible/active only
+         when a pinned post is open; persists chosen width to storage. -->
+    <div id="nav-resize-handle" class="nav-resize-handle" role="separator"
+         aria-orientation="vertical" aria-label="Resize sidebar" tabindex="-1"></div>
   </aside>
+
+  <div id="info-tooltip" role="tooltip" aria-hidden="true"></div>
 
   <section id="globe-root" style="position:absolute; top:0; bottom:0; left:var(--nav-w); right:0; z-index:1;">
     <canvas id="globe-canvas"></canvas>
@@ -162,30 +159,13 @@
       <div id="globe-controls-dock" class="globe-controls-dock" role="toolbar"
            aria-label="Globe quick actions">
       <button type="button" id="random-hint" aria-keyshortcuts="R"
-              title="Sample 5 excerpts from dots you can currently see on the sphere. Press Esc to dismiss—or click Reset."
-              aria-label="Sample 5 random posts or comments from visible dots on the sphere. Press Escape to dismiss the floating cards">
+              title="Scattershot — sample 5 excerpts from dots you can currently see. Press R again to dismiss."
+              aria-label="Scattershot: sample 5 random posts or comments from visible dots. Press R again or Escape to dismiss.">
         <kbd class="sh-key">R</kbd>
-        <span class="sh-text">5 random · Esc clears</span>
+        <span class="sh-text">scattershot</span>
       </button>
-      <button type="button" id="shift-hint" aria-keyshortcuts="C" aria-label="Toggle connections view">
-        <kbd class="sh-key">C</kbd>
-        <span class="sh-text">connections</span>
-      </button>
-      <button type="button" id="reset-view-hint" aria-keyshortcuts="Escape"
-              title="Clears pinned cards, floating random excerpts, drill &amp; filters, timeline, zoom"
-              aria-label="Reset clears selection, random cards, drill and search filters, timeline, zoom">
-        <span class="rv-label">Reset</span>
-        <kbd class="sh-key">esc</kbd>
-      </button>
+      <button type="button" id="tl-toggle" class="timeline" aria-label="Time filter" title="Time range (keyboard t)"><span class="tl-glyph" aria-hidden="true">⏱</span></button>
       </div>
-      <button type="button" id="bookmarks-toggle" class="bookmarks-toggle hidden"
-              aria-pressed="false"
-              title="Show saved points"
-              aria-label="Show saved points">
-        <span class="bm-toggle-icon" aria-hidden="true">★</span>
-        <span class="bm-toggle-count" id="bookmarks-toggle-count">0</span>
-        <span class="bm-toggle-label">saved</span>
-      </button>
     </div>
     <!-- Month-range filter (globe dims outside range). Toggle: ⏱ or key <kbd>t</kbd>. -->
     <div id="timeline-scrubber" class="timeline hidden" role="region" aria-label="Filter by time">
@@ -202,7 +182,6 @@
       </div>
       <p id="tl-hint" class="tl-hint">Drag on the chart to pick a month range</p>
     </div>
-    <button type="button" id="tl-toggle" class="timeline" aria-label="Time filter" title="Time range (keyboard t)">⏱</button>
     <div id="loading">
       <div class="spinner"></div>
       <div class="msg" id="loading-msg">Loading sphere coordinates…</div>
@@ -214,22 +193,12 @@
     <div class="tour-hero">
       <div class="tour-hero-left">
         <div class="tour-hero-inner">
-          <h1 class="tour-headline">The Boston Social Sphere<br />Discourse of Reddit</h1>
-          <p class="tour-lede">This visualization holds over 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015 to 2025, grouped by what they discuss and what point of view they take.</p>
-          <div class="tour-hero-audience">
-            <div class="tour-hero-audience-row">
-              <p class="tour-hero-audience-label">Boston residents</p>
-              <p class="tour-hero-audience-desc">If you live in Boston, you can use this view to explore what people are discussing, follow how those discussions evolve over time, and see how your own perspective fits within the broader community.</p>
-            </div>
-            <div class="tour-hero-audience-row">
-              <p class="tour-hero-audience-label">Government officials</p>
-              <p class="tour-hero-audience-desc">If you work in city government, this view shows you the dominant topics in community discussion, their relative weight, and how opinions cluster, so you can quickly identify trends and inform policy decisions.</p>
-            </div>
-          </div>
-          <p class="tour-hero-mapc">Thanks to the Metropolitan Area Planning Council (MAPC) for the input that shaped this project.</p>
+          <h1 class="tour-headline">A Sphere of Boston Housing Discourse</h1>
+          <p class="tour-lede">This visualization holds about 400,000 Reddit posts and comments about housing, transit, and city life in Boston from 2015 to 2025, grouped by what they discuss and what point of view they take.</p>
+          <p class="tour-meta"></p>
           <div class="tour-hero-actions">
             <button id="tour-begin" class="tour-btn tour-btn-primary">Begin tour</button>
-            <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Skip &amp; explore</button>
+            <button id="tour-skip-hero" class="tour-btn tour-btn-ghost">Explore</button>
           </div>
         </div>
       </div>
@@ -245,7 +214,7 @@
       <p class="tour-prose"></p>
       <div class="tour-quotes"></div>
       <div class="tour-actions">
-        <button id="tour-skip" class="tour-card-skip">Skip tour</button>
+        <button id="tour-skip" class="tour-card-skip">Explore</button>
         <div style="display:flex; gap:8px;">
           <button id="tour-prev" class="tour-btn tour-btn-ghost hidden">&larr; Back</button>
           <button id="tour-next" class="tour-btn tour-btn-primary">Next &rarr;</button>
@@ -259,122 +228,10 @@
         <div class="tour-eyebrow"></div>
         <h2 class="tour-title"></h2>
         <p class="tour-prose"></p>
-        <button id="tour-explore" class="tour-btn tour-btn-primary" style="margin-top:8px;">Explore the sphere &rarr;</button>
+        <button id="tour-explore" class="tour-btn tour-btn-primary" style="margin-top:8px;">Explore &rarr;</button>
       </div>
     </div>
 
-  </div>
-  <div id="help-overlay" class="help-overlay hidden">
-    <div class="help-panel" role="dialog" aria-label="Keyboard shortcuts">
-      <button class="help-close" id="help-close" aria-label="Close">×</button>
-      <h2>How to explore</h2>
-      <div class="help-grid">
-        <section>
-          <h3>Serendipitous discovery</h3>
-          <dl>
-            <div><dt><kbd>✦</kbd> <kbd>s</kbd></dt><dd>Surprise Me — drops you at a random well-supported stance, weighted toward currently-trending subtopics (respects active time range). Globe rotates and the landing point pulses.</dd></div>
-            <div><dt>Next surprise</dt><dd>While a point-of-view card is open from Surprise, use the <strong>✦ next surprise</strong> control on the card. The <kbd>R</kbd> key sprouts five random posts from what is on screen.</dd></div>
-            <div><dt>Click <kbd>P#</kbd> pin</dt><dd>Show a street-interview voice with the nearest pinned Reddit thread.</dd></div>
-            <div><dt>Zoom in</dt><dd>Caption tags fade in on nearby posts.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Top-down navigation</h3>
-          <dl>
-            <div><dt>Click bars</dt><dd>Drill topic → subtopic → points of view. Ribbons show hierarchy.</dd></div>
-            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle points of view within the current subtopic.</dd></div>
-            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subtopics within the current topic.</dd></div>
-            <div><dt>Hover breadcrumb</dt><dd>Linked bar segment highlights.</dd></div>
-            <div><dt>URL</dt><dd>Drilling the nav does not change the address bar. If you open the page with a <code>#cl=…</code> link in the URL, that snapshot is applied once on load.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Search</h3>
-          <dl>
-            <div><dt><kbd>/</kbd></dt><dd>Focus the search box.</dd></div>
-            <div><dt>Plain text</dt><dd>Substring match across subreddits, topics, subtopics, points of view (inc. keywords + descriptions), and phrases.</dd></div>
-            <div><dt>Regex</dt><dd>Type a pattern directly, e.g. <code>rent|mortgage</code>, or use <code>/regex/</code> / <code>re:pat</code>. Input turns violet. Invalid patterns show an error.</dd></div>
-            <div><dt><code>sub:</code> <code>cl:</code> <code>r/</code> <code>pos:</code></dt><dd>Field scope — restrict a term to one kind, e.g. <code>sub:rent</code>, <code>cl:/housing|afford/</code>, <code>r/boston</code>, <code>pos:shortage</code> (points of view).</dd></div>
-            <div><dt><code>text:</code></dt><dd>Search actual post bodies — e.g. <code>text:landlord</code>, <code>text:/(rent|mortgage).*spike/</code>. Hits show snippets with topic context; click jumps to the nearest area.</dd></div>
-            <div><dt><code>-term</code></dt><dd>Exclude entries that match the term, e.g. <code>rent -afford</code>. Combines with any operator.</dd></div>
-            <div><dt>Multi-token AND</dt><dd>Space-separated tokens must all match, e.g. <code>cl:housing -tax</code>.</dd></div>
-            <div><dt>Focus empty input</dt><dd>Shows your last 8 searches; <kbd>Enter</kbd> reruns.</dd></div>
-            <div><dt><kbd>Shift</kbd>+<kbd>Enter</kbd> (regex)</dt><dd>Paint every matching topic/sub on the globe. Chip shows count; × or <kbd>Esc</kbd> clears.</dd></div>
-            <div><dt>Click <b>r/*</b> suggestion</dt><dd>Filter the globe to that subreddit (intersects with any drill state).</dd></div>
-            <div><dt><kbd>Enter</kbd></dt><dd>Search post bodies for the typed text and spotlight matching points. Highlights a count chip; × or <kbd>Esc</kbd> clears.</dd></div>
-            <div><dt><kbd>↑</kbd> <kbd>↓</kbd> + <kbd>Enter</kbd></dt><dd>Pick a specific suggestion (topic, subtopic, point of view, snippet) and jump to it instead of running a text search.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Focus card (bottom-right)</h3>
-          <dl>
-            <div><dt>Breadcrumb pills</dt><dd>Back to topic or "All topics" with one click.</dd></div>
-            <div><dt>Trend badge</dt><dd><b>▲ surging</b> / <b>▲ trending</b> / <b>▼ fading</b> — normalized by corpus growth so it's real signal, not a growing-dataset artifact.</dd></div>
-            <div><dt>Where it lives</dt><dd>Top-3 subreddits for this region; click any label to filter the globe.</dd></div>
-            <div><dt>Loudest points of view here</dt><dd>Topic level only — ranked by count × trend; re-ranks by in-range count when the timeline is active. ⇋ marks stances voiced by a different community.</dd></div>
-            <div><dt>Monthly sparkline</dt><dd>Hover to read exact month + post count. Click anywhere on the line (or the "Peak MMM YYYY" label in the footer) to zoom the timeline to a 12-month window centered on that month. Active time range paints a band behind the line.</dd></div>
-            <div><dt>Voices pinned here</dt><dd>Click a <kbd>P#</kbd> pill to open that street interview.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Button top-right copies a pasteable summary — title, voice mix, top points of view, shareable link — for notes or writeups.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Point of view card (left panel)</h3>
-          <dl>
-            <div><dt>Evidence posts</dt><dd>Three real Reddit posts attributed to this stance. Time filter respected.</dd></div>
-            <div><dt>Who voiced this stance</dt><dd>Subreddit breakdown for this point of view; click a label to filter the globe to that community.</dd></div>
-            <div><dt>Other stances in this sub</dt><dd>Sibling points of view; ⇋ marks ones dominated by a different subreddit than the current stance.</dd></div>
-            <div><dt>Resonates in other subtopics</dt><dd>Cross-sub points of view sharing keywords (Jaccard-like), with the same ⇋ cross-community marker.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Pasteable point-of-view summary including description, voice mix, signal phrases, volume, three evidence quotes, and a deep-link.</dd></div>
-            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Cycle points of view within current sub.</dd></div>
-            <div><dt><kbd>{</kbd> <kbd>}</kbd></dt><dd>Cycle subs within current topic.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Timeline</h3>
-          <dl>
-            <div><dt><kbd>t</kbd></dt><dd>Toggle the timeline scrubber.</dd></div>
-            <div><dt>Drag</dt><dd>Click + drag a range; inside an active range, grab the nearer edge.</dd></div>
-            <div><dt><kbd>▶</kbd> play</dt><dd>12-month rolling window sweeps through the corpus; any interaction pauses.</dd></div>
-            <div><dt>Hover</dt><dd>Exact month + post count under cursor.</dd></div>
-            <div><dt>Filter echoes</dt><dd>Active range paints a band on every sparkline; evidence + Surprise use only in-range posts; agenda and loudest-stances re-rank for the period.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Filters &amp; state</h3>
-          <dl>
-            <div><dt>Filter chips</dt><dd>Active subreddit (green) + timeline range (amber) + regex paint (violet) chips appear in the nav header. Each has a × to clear.</dd></div>
-            <div><dt><span class="tico">⟲</span> Reset <kbd>x</kbd></dt><dd>Clears drill focus, sub filter, timeline range, regex/text paint, search input, and URL hash — one click (or <kbd>x</kbd>) back to fresh.</dd></div>
-            <div><dt><span class="tico">↗</span> Share</dt><dd>Copies the current page URL (navigation state is not encoded in the address bar). Use <strong>Copy as markdown</strong> on the focus card for a link that includes drill and filters.</dd></div>
-            <div><dt>Browser back / forward</dt><dd>Steps through your drill path (topic ▸ sub ▸ stance) one level at a time. Filter changes replace state in place, so scrubbing the timeline or toggling a sub filter doesn't flood history.</dd></div>
-            <div><dt>📋 Copy as markdown</dt><dd>Small button on focus + point-of-view cards copies a pasteable summary (title, trend, voice mix, top points of view / evidence samples, deep-link with current drill + filters + query). For notes or writeups.</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>Globe</h3>
-          <dl>
-            <div><dt>Drag</dt><dd>Rotate the globe.</dd></div>
-            <div><dt>Scroll</dt><dd>Zoom in / out.</dd></div>
-            <div><dt><kbd>R</kbd></dt><dd>Sample five snippets from posts that are on-screen and match active filters. <kbd>Esc</kbd> dismisses the floating cards (or use <strong>Reset</strong>).</dd></div>
-            <div><dt><kbd>C</kbd> (toggle)</dt><dd>Show connections. Uses the pinned point first, then hovered point, otherwise a visible-thread overview. Press <kbd>C</kbd> again or click the connections chip to dismiss.</dd></div>
-            <div><dt><kbd>Esc</kbd></dt><dd>Clears random cards, connections, pinned node, then bookmarks, search / topic filters / paint, and zoom—one layer at a time. <strong>Reset</strong> clears everything in one click.</dd></div>
-            <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Push the globe in the indicated direction. Speed scales with zoom.</dd></div>
-            <div><dt><span class="help-icon">★</span> Bookmark</dt><dd>Pin a node, then tap the <strong>☆</strong> in the pinned panel (left side) to save it for later. The <strong>★ saved</strong> chip on the right opens your saved list (stored locally in this browser); click any row to jump back.</dd></div>
-          </dl>
-        </section>
-      </div>
-      <section class="help-clusters">
-        <div class="help-clusters-head">
-          <h3>All topics</h3>
-          <div class="help-filter" role="group" aria-label="Filter topics">
-            <button class="help-filter-btn active" id="help-filter-all" title="Show all topics">all</button>
-            <button class="help-filter-btn" id="help-filter-hot" title="Show only trending + surging topics"><span class="hf-icon">▲</span> trending</button>
-          </div>
-        </div>
-        <div class="help-cluster-note">Click a chip to drill into it. Colors match the globe + nav bars.</div>
-        <div id="help-cluster-grid" class="help-cluster-grid"></div>
-      </section>
-      <div class="help-foot">Press <kbd>?</kbd> or click <span class="help-icon">?</span> to toggle this panel.</div>
-    </div>
   </div>
   <div id="point-tooltip" class="point-tooltip hidden"></div>
 </div>
@@ -383,9 +240,11 @@
   // Cold-load boot: poll for App.tour to land, then call start(). The tour
   // module (via overlayManager) owns the body classes + overlay visibility;
   // we no longer manipulate them inline here.
-  // Deep-links (#cl=…) skip the auto-tour entirely.
+  // Deep-links (#cl=…) and returning visitors (tour-completed flag) skip
+  // the auto-tour entirely.
   (function () {
     if (location.hash) return;
+    try { if (localStorage.getItem('tour-completed') === '1') return; } catch (e) {}
     function tryStart() {
       var t = window.App && window.App.tour;
       if (t && typeof t.start === 'function') { t.start(); return true; }
@@ -399,6 +258,6 @@
     }
   })();
 </script>
-<script type="module" src="./js/main.js?v=400"></script>
+<script type="module" src="./js/main.js"></script>
 </body>
 </html>

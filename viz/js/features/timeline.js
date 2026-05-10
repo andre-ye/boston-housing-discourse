@@ -54,6 +54,12 @@ export function init(ctx) {
     });
   }
   function rangeCount() {
+    // Prefer the globe's per-month bucket of points that pass every active
+    // non-month filter (drill, spotlight, regex paint, subreddit). Falls
+    // back to the pre-baked total[] histogram when no such filter is on,
+    // so the whole-corpus path is unchanged.
+    const filtered = globe?.getFilteredMonthCount?.(lo, hi);
+    if (filtered != null) return filtered;
     let s = 0;
     for (let i = lo; i <= hi; i++) s += total[i] || 0;
     return s;
@@ -83,8 +89,11 @@ export function init(ctx) {
       const mName = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1] || m;
       return `${mName} ${y}`;
     };
-    let n = 0;
-    for (let i = lo; i <= hi; i++) n += total[i] || 0;
+    let n = globe?.getFilteredMonthCount?.(lo, hi);
+    if (n == null) {
+      n = 0;
+      for (let i = lo; i <= hi; i++) n += total[i] || 0;
+    }
     const [y1, m1] = labels[lo].split('-').map(Number);
     const [y2, m2] = labels[hi].split('-').map(Number);
     const calMonths = (y2 - y1) * 12 + (m2 - m1) + 1;
@@ -104,6 +113,16 @@ export function init(ctx) {
     if (typeof writeHash === 'function') writeHash();
   }
   window._tlApplyBands = () => updateSparklineBands(lo, hi, N - 1);
+
+  // When the globe's non-month filters change (drill, spotlight, regex
+  // paint, subreddit), the per-month bucket the label sums over also
+  // changes — refresh the title without waiting for a scrub.
+  if (globe && typeof globe.addEventListener === 'function') {
+    globe.addEventListener('filterschanged', () => {
+      updateLabel();
+      _updateTimelineChip();
+    });
+  }
 
   // Play button — time-lapse sweep with a 12-month rolling window.
   const playBtn = document.getElementById('tl-play');
@@ -146,23 +165,41 @@ export function init(ctx) {
       applyFilter();
     }
   };
+  const EDGE_PX = 7;
   let dragMode = null, dragPinned = null;
+  let dragBodyAnchor = null, dragBodyWidth = 0, dragPreLo = 0, dragPreHi = 0;
   function idxFromEvent(e) {
     const rect = svg.getBoundingClientRect();
     const frac = (e.clientX - rect.left) / rect.width;
     return Math.max(0, Math.min(N - 1, Math.round(frac * (N - 1))));
   }
+  function pxPerIdx() {
+    const rect = svg.getBoundingClientRect();
+    return rect.width / Math.max(1, N - 1);
+  }
   function isRangeActive() { return !(lo === 0 && hi === N - 1); }
+  function nearEdge(i, edge) {
+    return Math.abs(i - edge) * pxPerIdx() <= EDGE_PX;
+  }
   svg.addEventListener('pointerdown', (e) => {
     svg.setPointerCapture(e.pointerId);
     const i = idxFromEvent(e);
-    if (isRangeActive() && i > lo && i < hi) {
-      if (i - lo < hi - i) { dragMode = 'edge-lo'; dragPinned = hi; }
+    dragPreLo = lo; dragPreHi = hi;
+    const onLo = isRangeActive() && nearEdge(i, lo);
+    const onHi = isRangeActive() && nearEdge(i, hi);
+    if (onLo && onHi) {
+      // Tie-break by closer edge when the interval is narrow enough that both pad-zones overlap.
+      if (Math.abs(i - lo) <= Math.abs(i - hi)) { dragMode = 'edge-lo'; dragPinned = hi; }
       else { dragMode = 'edge-hi'; dragPinned = lo; }
-    } else if (isRangeActive() && Math.abs(i - lo) <= 2) {
+    } else if (onLo) {
       dragMode = 'edge-lo'; dragPinned = hi;
-    } else if (isRangeActive() && Math.abs(i - hi) <= 2) {
+    } else if (onHi) {
       dragMode = 'edge-hi'; dragPinned = lo;
+    } else if (isRangeActive() && i > lo && i < hi) {
+      dragMode = 'body';
+      dragBodyAnchor = i;
+      dragBodyWidth = hi - lo;
+      svg.style.cursor = 'grabbing';
     } else {
       dragMode = 'new'; dragPinned = i;
       lo = hi = i;
@@ -175,14 +212,38 @@ export function init(ctx) {
     if (dragMode === 'edge-lo' || dragMode === 'edge-hi') {
       lo = Math.min(i, dragPinned);
       hi = Math.max(i, dragPinned);
+    } else if (dragMode === 'body') {
+      // Translate the window by (i - anchor), clamping to endpoints without compressing width.
+      const delta = i - dragBodyAnchor;
+      let newLo = dragPreLo + delta;
+      let newHi = dragPreHi + delta;
+      if (newLo < 0) { newHi -= newLo; newLo = 0; }
+      if (newHi > N - 1) { newLo -= (newHi - (N - 1)); newHi = N - 1; }
+      newLo = Math.max(0, newLo);
+      newHi = Math.min(N - 1, newLo + dragBodyWidth);
+      lo = newLo; hi = newHi;
     } else {
       lo = Math.min(dragPinned, i);
       hi = Math.max(dragPinned, i);
     }
     applyFilter();
   });
-  svg.addEventListener('pointerup', () => { dragMode = null; });
-  svg.addEventListener('pointercancel', () => { dragMode = null; });
+  svg.addEventListener('pointerup', (e) => {
+    const wasBody = dragMode === 'body';
+    dragMode = null;
+    if (wasBody) {
+      const i = idxFromEvent(e);
+      svg.style.cursor = (isRangeActive() && (nearEdge(i, lo) || nearEdge(i, hi))) ? 'ew-resize' : 'grab';
+    }
+  });
+  svg.addEventListener('pointercancel', () => {
+    if (dragMode) {
+      lo = dragPreLo; hi = dragPreHi;
+      applyFilter();
+    }
+    dragMode = null;
+    svg.style.cursor = '';
+  });
   const tlTooltip = document.getElementById('tl-tooltip');
   svg.addEventListener('pointermove', (e) => {
     if (tlTooltip) {
@@ -197,7 +258,7 @@ export function init(ctx) {
     if (dragMode) return;
     if (!isRangeActive()) { svg.style.cursor = 'crosshair'; return; }
     const i = idxFromEvent(e);
-    if (Math.abs(i - lo) <= 2 || Math.abs(i - hi) <= 2) svg.style.cursor = 'col-resize';
+    if (nearEdge(i, lo) || nearEdge(i, hi)) svg.style.cursor = 'ew-resize';
     else if (i > lo && i < hi) svg.style.cursor = 'grab';
     else svg.style.cursor = 'crosshair';
   });
@@ -230,8 +291,23 @@ export function init(ctx) {
       storage.setJSON('pref', p);
     }
   };
+  // Publish the scrubber's live rendered height to a CSS variable so any
+  // surface that needs to sit above it (today: the tour modal) can use a
+  // calc() against the actual height rather than a hand-tuned constant
+  // that drifts whenever the scrubber's bar count or padding changes.
+  // Variable is 0px while hidden so non-tour states get no lift.
+  const updateTimelineHVar = () => {
+    const open = !tl.classList.contains('hidden');
+    const h = open ? Math.ceil(tl.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--timeline-h', `${h}px`);
+  };
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(() => updateTimelineHVar());
+    ro.observe(tl);
+  }
   const syncTimelineBodyClass = () => {
     document.body.classList.toggle('has-timeline-open', !tl.classList.contains('hidden'));
+    updateTimelineHVar();
   };
   toggle.onclick = () => {
     const wasHidden = tl.classList.contains('hidden');

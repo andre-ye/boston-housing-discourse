@@ -108,18 +108,46 @@ async function buildSphereFallback() {
   return { coords, source: 'fallback-lambert' };
 }
 
-async function loadSphereCoords() {
-  // Try UMAP haversine binary first; fall back to Lambert projection of 2D.
+function pickLayoutTag() {
+  // The default sphere binaries (sphere_coords.bin) are always present.
+  // PyMDE outputs are opt-in via #layout=pymde — only fetched when explicitly
+  // requested, so a missing pymde build doesn't cost a console 404 on boot.
   try {
-    const manifest = await fetchJSON('tsne_chunks/sphere_manifest.json');
-    const buf = await fetchBinary('tsne_chunks/sphere_coords.bin');
-    const coords = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-    return { coords, source: 'umap-haversine', N: manifest.n };
-  } catch (e) {
-    App.loadingMsg('UMAP sphere not yet built — using Lambert projection of 2D…');
-    const out = await buildSphereFallback();
-    return { ...out, N: out.coords.length / 2 };
+    const m = (location.hash || '').match(/[#&]layout=([a-z0-9_-]+)/i);
+    if (m) return m[1];
+  } catch {}
+  return 'default';
+}
+
+async function loadSphereCoords() {
+  const tag = pickLayoutTag();
+  const tries = [];
+  if (tag !== 'default') {
+    tries.push({
+      manifest: 'tsne_chunks/sphere_manifest_pymde.json',
+      bin: 'tsne_chunks/sphere_coords_pymde.bin',
+      label: 'manifold-S2 (PyMDE-style)',
+    });
   }
+  // Fallback (or explicit #layout=default).
+  tries.push({
+    manifest: 'tsne_chunks/sphere_manifest.json',
+    bin: 'tsne_chunks/sphere_coords.bin',
+    label: 't-SNE-3D + radial + Lloyd',
+  });
+
+  for (const t of tries) {
+    try {
+      const manifest = await fetchJSON(t.manifest);
+      const buf = await fetchBinary(t.bin);
+      const coords = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+      try { window.App && (window.App.layout = t.label); } catch {}
+      return { coords, source: t.label, N: manifest.n };
+    } catch (e) { /* try next */ }
+  }
+  App.loadingMsg('Sphere binaries not found — using Lambert projection of 2D…');
+  const out = await buildSphereFallback();
+  return { ...out, N: out.coords.length / 2 };
 }
 
 async function loadPointLabels(N) {
@@ -151,13 +179,25 @@ export async function loadData(onProgress) {
   const labels = await loadPointLabels(sphere.N);
 
   App.loadingMsg('Loading centroids…');
+  // If we loaded the alternate (pymde) sphere coords, prefer the matching
+  // centroids file so cluster-pan targets land on the right place. Either
+  // file falling back to the default is fine — anchors recompute on demand.
+  const tag = pickLayoutTag();
   let centroids = null;
-  try { centroids = await fetchJSON('tsne_chunks/sphere_centroids.json'); }
-  catch (e) { centroids = computeCentroids(sphere.coords, labels); }
+  if (tag !== 'default') {
+    try { centroids = await fetchJSON('tsne_chunks/sphere_centroids_pymde.json'); }
+    catch (e) { /* fall through */ }
+  }
+  if (!centroids) {
+    try { centroids = await fetchJSON('tsne_chunks/sphere_centroids.json'); }
+    catch (e) { centroids = computeCentroids(sphere.coords, labels); }
+  }
 
   // Density-peak anchors (see scripts/compute_label_anchors.py). Used for label
   // positioning since spherical centroids can drift into empty space when a
-  // cluster sprawls across the globe.
+  // cluster sprawls across the globe. If we're on the pymde layout these will
+  // be slightly stale until you regenerate them — clusters still land in the
+  // right neighborhood, the label may sit off-center for sprawling ones.
   let anchors = null;
   try { anchors = await fetchJSON('tsne_chunks/label_anchors.json'); }
   catch (e) { /* fall back to centroids */ }

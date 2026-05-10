@@ -3,8 +3,8 @@
     display: flex; align-items: center; justify-content: center;
     flex-direction: column; gap: 12px;
     background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.85);
-    z-index: 20;
-    transition: opacity 0.3s;
+    z-index: var(--z-loading);
+    transition: opacity var(--t-base);
   }
   #loading.gone { opacity: 0; pointer-events: none; }
 
@@ -27,9 +27,9 @@
     border: 2px solid var(--line);
     border-top-color: var(--accent);
     border-radius: 50%;
-    animation: spin 0.9s linear infinite;
+    animation: spin var(--t-slow) linear infinite;
   }
-  #loading .msg { color: var(--fg-dim); font-size: 12px; }
+  #loading .msg { color: var(--fg-dim); font-size: var(--fs-sm); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Accessibility: honor reduced-motion by muting pulses, flashes,
@@ -45,8 +45,7 @@
     .bar-seg, .bar-seg:hover, .bar-seg.link-hover,
     #focus-compass, #focus-compass .fc-arrow,
     .help-cluster-chip,
-    #breadcrumbs .crumb,
-    #focus-card, #search-input, #help-overlay {
+    #search-input, #help-overlay {
       transition: none !important;
     }
     /* Keep .bar-column transitions intact — the .narrow collapse/expand
@@ -54,7 +53,7 @@
        flex-basis transition stuck at currentTime=0 when this is "none". */
   }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-thumb { background: #222b3e; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: #222b3e; border-radius: var(--r-sm); }
   ::-webkit-scrollbar-track { background: transparent; }
 
   /* ─── Toolbar (inside nav header) ─────────────────────────── */
@@ -70,27 +69,27 @@
     background: transparent;
     border: 1px solid rgba(255,255,255,0.05);
     color: var(--fg-dim);
-    font: 500 9px 'Inter', system-ui, sans-serif;
+    font: 500 var(--fs-3xs) 'Inter', system-ui, sans-serif;
     letter-spacing: 0.4px;
     text-transform: uppercase;
-    border-radius: 5px;
+    border-radius: var(--r-sm);
     cursor: pointer;
-    transition: all 0.12s;
+    transition: all var(--t-fast);
   }
   #insp-toolbar .tool .tkbd {
     position: absolute;
     top: 3px; right: 4px;
-    font: 600 8.5px 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font: 600 var(--fs-3xs) 'JetBrains Mono', ui-monospace, Menlo, monospace;
     letter-spacing: 0;
     text-transform: none;
     color: rgba(255,255,255,0.35);
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 3px;
+    border-radius: var(--r-sm);
     padding: 1px 4px;
     line-height: 1;
     pointer-events: none;
-    transition: all 0.12s;
+    transition: all var(--t-fast);
   }
   #insp-toolbar .tool:hover .tkbd {
     color: rgba(255,255,255,0.8);
@@ -99,7 +98,7 @@
   }
   #insp-toolbar .tool .tico {
     display: block;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     line-height: 1;
     color: var(--fg-mute);
   }
@@ -109,28 +108,27 @@
     border-color: rgba(255,255,255,0.1);
   }
   #insp-toolbar .tool:focus-visible {
-    outline: 2px solid rgba(124,240,201,0.55);
+    outline: 2px solid var(--fg-dim);
     outline-offset: 1px;
     color: var(--fg);
   }
   #insp-toolbar .tool.on {
-    color: var(--accent);
-    background: rgba(124,240,201,0.08);
-    border-color: rgba(124,240,201,0.25);
+    color: var(--fg);
+    background: rgba(255,255,255,0.06);
+    border-color: var(--fg-dim);
   }
-  #insp-toolbar .tool.on .tico { color: var(--accent); }
+  #insp-toolbar .tool.on .tico { color: var(--fg); }
   #insp-toolbar #btn-surprise .tico {
-    color: rgba(255,210,120,0.95);
-    text-shadow: 0 0 6px rgba(255,200,100,0.45);
+    color: var(--warm);
   }
   #insp-toolbar #btn-surprise.flashing {
-    animation: surprise-flash 0.6s ease;
+    animation: surprise-flash var(--t-slow) ease;
   }
   #insp-toolbar .tool.tool-mini {
     flex: 0 0 auto;
     width: 30px;
     padding: 4px 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   #insp-toolbar .tool.tool-mini .tico { margin: 0; }
   /* Hidden-by-default buttons (pins, voices, reset, share). They remain
@@ -148,24 +146,24 @@
     left: 50%; top: -26px;
     transform: translateX(-50%);
     background: rgba(14,17,26,0.96);
-    border: 1px solid rgba(124,240,201,0.35);
-    color: var(--accent);
-    font: 600 10px 'Inter', system-ui, sans-serif;
+    border: 1px solid var(--line);
+    color: var(--fg);
+    font: 600 var(--fs-2xs) 'Inter', system-ui, sans-serif;
     letter-spacing: 0.3px;
     padding: 3px 7px;
-    border-radius: 5px;
+    border-radius: var(--r-sm);
     white-space: nowrap;
     pointer-events: none;
-    animation: share-pop 0.18s ease;
+    animation: share-pop var(--t-base) ease;
   }
   #insp-toolbar #btn-share.share-err::after {
     border-color: rgba(255,120,120,0.45);
     color: #ff9a9a;
   }
   #insp-toolbar #btn-share.copied {
-    color: var(--accent);
-    background: rgba(124,240,201,0.08);
-    border-color: rgba(124,240,201,0.35);
+    color: var(--fg);
+    background: rgba(255,255,255,0.06);
+    border-color: var(--fg-dim);
   }
   @keyframes share-pop {
     from { transform: translateX(-50%) translateY(4px); opacity: 0; }

@@ -20,7 +20,12 @@ port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
-        self.send_header('Cache-Control', 'no-store')
+        # This header is what makes the no-`?v=` policy in viz/ safe — every
+        # response is uncacheable, so import URLs don't need cache-buster
+        # query strings (which would create duplicate ES module instances if
+        # any importer drifted out of sync). Don't loosen this without
+        # restoring per-import cache busting.
+        self.send_header('Cache-Control', 'no-store, must-revalidate')
         super().end_headers()
     def log_message(self, fmt, *args):
         pass  # silence per-request noise

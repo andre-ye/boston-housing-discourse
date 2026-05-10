@@ -1,28 +1,93 @@
+  /* #nav is flush against the screen edge — no drop shadow, just the
+     1px right-edge rule. (Beauty-pass: drop-shadow inflation cleanup.) */
   #nav {
     position: absolute;
     top: 0; left: 0; bottom: 0;
     width: var(--nav-w);
     max-width: 34%;
-    z-index: 5;
+    z-index: var(--z-nav);
     padding: 0;
     overflow: hidden;
     display: flex; flex-direction: column;
     background: linear-gradient(180deg,
       rgba(10,12,19,0.98) 0%,
       rgba(8,10,16,0.98) 100%);
-    border-right: 1px solid rgba(255,255,255,0.06);
-    box-shadow: 6px 0 24px rgba(0,0,0,0.35);
-    transition: width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
-                max-width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    border-right: 1px solid var(--divider);
+    transition: width var(--t-slow) cubic-bezier(0.22, 0.61, 0.36, 1),
+                max-width var(--t-slow) cubic-bezier(0.22, 0.61, 0.36, 1);
   }
   /* Header block keeps its own inner padding so only it has margins —
      the bar columns below reach the panel edges. */
-  #nav > #nav-header { padding: 14px 14px 6px; flex: 0 0 auto; }
-  #nav > #nav-bars {
+  #nav #nav-header {
+    padding: 14px 14px 12px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--divider);
+  }
+  /* Title gets its own divider above the search input. Negative horizontal
+     margins cancel the parent's 14px padding so the divider extends edge-
+     to-edge across the full nav width — not just the text width. */
+  #nav #nav-header h1 {
+    margin: 0 -14px 12px;
+    padding: 0 14px 12px;
+    border-bottom: 1px solid var(--divider);
+  }
+  #nav #nav-bars {
     padding: 0;
     margin: 0;
     flex: 1 1 0;
     min-height: 0;
+  }
+  /* Vertically split nav: top pane (header + topic bars) + bottom pane
+     (#insp-body, the permanent details viewer). The split is dragable via
+     #nav-vsplit-handle (between the two panes). flex-basis defaults to
+     50/50 and is overridden inline by the resize JS. */
+  #nav #nav-top {
+    flex: 1 1 50%;
+    min-height: 80px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #nav #insp-body {
+    flex: 1 1 50%;
+    min-height: 80px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  /* Horizontal drag handle between Topics and Details Viewer. The handle
+     itself is a 7px tall hit-zone; the visible line is a 1px ::after bar
+     centred inside it (matches every other divider in the chrome). The
+     bar brightens + thickens on hover/drag. */
+  #nav #nav-vsplit-handle {
+    flex: 0 0 7px;
+    height: 7px;
+    cursor: ns-resize;
+    position: relative;
+    z-index: 3;
+    background: transparent;
+  }
+  #nav #nav-vsplit-handle::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 1px;
+    margin-top: -0.5px;
+    background: var(--divider);
+    transition: background var(--t-fast), height var(--t-fast), margin-top var(--t-fast);
+  }
+  #nav #nav-vsplit-handle:hover::after,
+  #nav.vsplit-dragging #nav-vsplit-handle::after {
+    background: rgba(255,255,255,0.55);
+    height: 2px;
+    margin-top: -1px;
+  }
+  /* While dragging, kill text selection across the whole document so the
+     pointer feel stays clean. */
+  body.nav-vsplit-dragging,
+  body.nav-vsplit-dragging * {
+    user-select: none !important;
+    cursor: ns-resize !important;
   }
   /* Right-side detail panel — shows what the current focus (cluster /
      subtopic / point of view) is about and lists the linked posts + comments. */
@@ -38,39 +103,38 @@
     background: linear-gradient(180deg,
       rgba(10,12,19,0.98) 0%,
       rgba(8,10,16,0.98) 100%);
-    border-left: 1px solid rgba(255,255,255,0.06);
-    box-shadow: -6px 0 24px rgba(0,0,0,0.35);
+    border-left: 1px solid var(--divider);
   }
   #detail-header {
     flex: 0 0 auto;
     margin-bottom: 10px;
   }
   #detail-kind {
-    font: 700 10px 'Inter', system-ui, sans-serif;
+    font: 700 var(--fs-2xs) 'Inter', system-ui, sans-serif;
     letter-spacing: 0.6px;
     text-transform: uppercase;
     color: var(--fg-mute);
     margin-bottom: 4px;
   }
   #detail-title {
-    font: 700 16px/1.25 'Inter', system-ui, sans-serif;
+    font: 700 var(--fs-lg)/1.25 'Inter', system-ui, sans-serif;
     color: var(--fg);
     margin: 0 0 6px;
     word-wrap: break-word;
   }
   #detail-desc {
-    font-size: 12.5px;
+    font-size: var(--fs-base);
     line-height: 1.45;
     color: var(--fg);
     margin-bottom: 6px;
   }
   #detail-meta {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--fg-mute);
   }
   #detail-list-label {
     flex: 0 0 auto;
-    font: 700 10px 'Inter', system-ui, sans-serif;
+    font: 700 var(--fs-2xs) 'Inter', system-ui, sans-serif;
     letter-spacing: 0.6px;
     text-transform: uppercase;
     color: var(--fg);
@@ -88,29 +152,29 @@
     background: rgba(255,255,255,0.02);
     border: 1px solid rgba(255,255,255,0.04);
     border-left: 3px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--r-sm);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
   }
   .dl-row:hover {
     background: rgba(255,255,255,0.05);
     transform: translateX(2px);
   }
   .dl-row .dl-meta {
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     color: var(--fg-mute);
     margin-bottom: 3px;
     letter-spacing: 0.2px;
   }
   .dl-row .dl-title {
-    font: 600 12px 'Inter', system-ui, sans-serif;
+    font: 600 var(--fs-sm) 'Inter', system-ui, sans-serif;
     color: var(--fg);
     line-height: 1.3;
     margin-bottom: 4px;
     word-wrap: break-word;
   }
   .dl-row .dl-body {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--fg-dim);
     line-height: 1.4;
     white-space: pre-wrap;
@@ -133,12 +197,12 @@
   }
   #detail-empty {
     color: var(--fg-mute);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     line-height: 1.5;
     margin-top: 10px;
     padding: 12px 10px;
     border: 1px dashed rgba(255,255,255,0.06);
-    border-radius: 6px;
+    border-radius: var(--r-sm);
   }
   #detail:not(.empty) #detail-empty { display: none; }
   /* When the cursor enters a collapsed L1/L2 strip, expand the whole sidebar
@@ -155,7 +219,6 @@
   #nav-bars { flex: 1 1 0; min-height: 140px; }
   @media (max-height: 760px) {
     #nav-bars { min-height: 110px; }
-    .insp-section--body { max-height: 38vh; }
   }
   .insp-section--hover { flex: 0 0 auto; }
   #nav-header {
@@ -163,69 +226,8 @@
   }
   #nav-header h1 {
     margin: 0 0 6px 0;
-    font-size: 16px; font-weight: 600; letter-spacing: 0.2px;
+    font-size: var(--fs-lg); font-weight: 600; letter-spacing: 0.2px;
   }
-  #nav-header .sub {
-    font-size: 12px; color: var(--fg);
-    line-height: 1.42;
-    margin-bottom: 6px;
-  }
-  #nav-header .sub-stats {
-    font-size: 11px; color: var(--fg-mute);
-    letter-spacing: 0.2px;
-  }
-  /* "You are exploring …" header that sits above the bar columns. The
-     focused topic and subtopic names appear here horizontally so the
-     user doesn't have to read the sideways title in the narrow column.
-     Hidden until the user has actually drilled into something. */
-  #breadcrumbs {
-    display: flex; align-items: center; gap: 6px;
-    flex-wrap: wrap;
-    margin: 10px 0 6px;
-    font-size: 12px; color: var(--fg-dim);
-    line-height: 1.3;
-    max-height: 200px;
-    transition: opacity 0.18s ease, max-height 0.22s ease, margin 0.22s ease;
-  }
-  #breadcrumbs.is-empty {
-    opacity: 0;
-    max-height: 0;
-    margin: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  #breadcrumbs .crumb-label {
-    font: 600 9.5px 'Source Sans Pro', sans-serif;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: rgba(244,237,225,0.45);
-    margin-right: 2px;
-  }
-  #breadcrumbs .crumb {
-    cursor: pointer;
-    padding: 4px 10px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: rgba(255,255,255,0.025);
-    transition: all 0.15s;
-    font-weight: 500;
-    /* Border-left accent matches the cluster color via inline style. */
-    border-left-width: 3px;
-  }
-  #breadcrumbs .crumb:hover { color: var(--fg); border-color: #2c3850; background: rgba(255,255,255,0.05); }
-  #breadcrumbs .crumb.active {
-    color: var(--fg);
-    background: rgba(40,52,76,0.55);
-    border-color: #2c3850;
-    font-weight: 600;
-  }
-  #breadcrumbs .crumb.crumb-root {
-    border-left-width: 1px;
-    font-weight: 400;
-    color: rgba(244,237,225,0.55);
-  }
-  #breadcrumbs .sep { opacity: 0.5; font-size: 13px; }
-
   #nav-bars {
     position: relative;
     display: flex;
@@ -239,8 +241,8 @@
     min-width: 0;
     flex: 1 1 0;
     transition:
-      min-width 0.38s cubic-bezier(0.22, 0.61, 0.36, 1),
-      opacity 0.28s ease;
+      min-width var(--t-slow) cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity var(--t-base) ease;
   }
   .bar-column.collapsed {
     flex: 0 0 0px;
@@ -267,7 +269,7 @@
     transform-origin: center center;
     width: max-content;
     max-width: 70vh;
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 700;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -292,42 +294,64 @@
   .bar-column.narrow .bar-seg .label,
   .bar-column.narrow .bar-seg .pct {
     opacity: 0;
-    transition: opacity 0.12s;
+    transition: opacity var(--t-fast);
     pointer-events: none;
   }
   .bar-column.narrow .bar-seg .bg { opacity: 1; }
-  /* Narrow strip no longer re-expands on hover — keep it a consistent
-     sliver so the sidebar layout stays stable. User sees full names via
-     native tooltip or by clicking back up one level. */
+  /* Narrow strip stays a 22px sliver on hover — never re-expands, never
+     un-rotates the title. The prior behavior un-rotated the title and
+     showed labels at 22px width which clipped + collided with the active
+     column's title. Now hover only adds a soft glow to the whole strip
+     so the user sees it's interactive (#48). */
   .bar-column.narrow.open {
     flex: 0 0 22px;
     min-width: 22px;
   }
-  .bar-column.narrow.open .bar-col-title {
-    /* Restore the horizontal title layout when expanded. Overrides the
-       rotated narrow-mode positioning above. */
-    position: static;
-    transform: none;
-    font-size: 10.5px;
-    letter-spacing: 0.4px;
-    opacity: 1;
-    color: var(--fg-mute);
+  .bar-column.narrow.open,
+  .bar-column.narrow:hover {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 0 12px 0 color-mix(in srgb, var(--accent) 28%, transparent);
+    transition: box-shadow var(--t-fast) ease;
   }
-  .bar-column.narrow.open .bar-seg { padding: 3px 8px 3px 10px; }
-  .bar-column.narrow.open .bar-seg .label,
-  .bar-column.narrow.open .bar-seg .pct {
-    opacity: 1;
-    pointer-events: auto;
-  }
+  /* Title + chip styling stays exactly as in narrow mode — no rotation
+     reset, no label reveal. */
   .bar-col-title {
-    font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px;
+    font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.6px;
     text-transform: uppercase; color: var(--fg);
     margin-bottom: 8px; white-space: nowrap;
+  }
+  /* Current selection appended to the rotated section title (#30).
+     Quieter weight + click-back affordance. The chevron sits in the
+     same rotated orientation as the parent title. */
+  .bar-col-title .bct-sep {
+    margin: 0 6px;
+    color: rgba(255,255,255,0.45);
+    font-weight: 500;
+  }
+  .bar-col-title .bct-current {
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0.2px;
+    color: rgba(255,255,255,0.78);
+    cursor: pointer;
+    pointer-events: auto;
+    display: inline-block;
+    max-width: 60vh;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+  }
+  .bar-col-title .bct-current:hover {
+    color: #fff;
+    text-decoration: underline;
+    text-decoration-color: rgba(255,255,255,0.4);
+    text-underline-offset: 2px;
   }
   .bar-stack {
     flex: 1;
     position: relative;
-    border-radius: 6px;
+    border-radius: var(--r-sm);
     overflow-y: auto;
     overflow-x: hidden;
     /* Transparent so any space inside the stack that isn't covered by a
@@ -359,11 +383,11 @@
     cursor: pointer;
     overflow: hidden;
     transition:
-      top 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
-      height 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
-      transform 0.2s ease,
-      filter 0.2s ease,
-      opacity 0.26s ease;
+      top var(--t-slow) cubic-bezier(0.22, 0.61, 0.36, 1),
+      height var(--t-slow) cubic-bezier(0.22, 0.61, 0.36, 1),
+      transform var(--t-base) ease,
+      filter var(--t-base) ease,
+      opacity var(--t-base) ease;
     border-left: 3px solid transparent;
     will-change: top, height, opacity;
   }
@@ -371,17 +395,21 @@
   .bar-seg:hover {
     filter: brightness(1.15);
   }
-  /* Short segments (#45): the bar-seg floor is 20px but the label (~14px)
-     plus the .pct number doesn't fit on a single flex row at that height —
-     the percent overflows the right edge mid-character and reads as a
-     cut-off "random number" on hover (which boosts brightness and makes
-     the artifact pop). Hide both .pct and .bar-trend whenever the
-     rendering layer marks a segment as short (.bar-seg--short, set by
-     nav.js when span < BAR_SEG_TWO_LINE_PX). Users can still read the
-     percent + count via the segment's title attribute. */
-  .bar-seg--short .pct,
+  /* Short segments (#29): keep the percent visible at a smaller size
+     beside the topic name. The trend badge still drops because it has
+     its own fixed top-right slot that collides with a single-row label. */
   .bar-seg--short .bar-trend {
     display: none;
+  }
+  .bar-seg--short .label {
+    font-size: var(--fs-xs);
+    -webkit-line-clamp: 1;
+    line-height: 1.15;
+  }
+  .bar-seg--short .pct {
+    font-size: var(--fs-2xs);
+    margin-left: 4px;
+    flex: 0 0 auto;
   }
   .bar-seg:focus-visible {
     outline: 2px solid rgba(255,255,255,0.85);
@@ -407,21 +435,24 @@
   }
   .bar-seg .label {
     position: relative; z-index: 2;
-    font-size: 11.5px;
-    color: #0a0d14;
-    font-weight: 700;
+    font-size: var(--fs-sm);
+    /* White on saturated bar-seg backgrounds. The dark text-shadow gives
+       enough contrast on bright yellow / orange / lime fills that the
+       label stays readable across the entire palette without per-segment
+       luminance branching. */
+    color: rgba(255, 255, 255, 0.96);
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.55),
+      0 0 1px rgba(0, 0, 0, 0.35);
+    font-weight: 600;
     flex: 1;
     min-width: 0;
     line-height: 1.22;
-    letter-spacing: -0.05px;
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
     overflow-wrap: anywhere;
-    /* Subtle light backing so the label stays readable against ANY hue in
-       the saturated palette — even the deeper blues/purples. */
-    text-shadow: 0 0 2px rgba(255,255,255,0.25);
   }
   .bar-seg .label.two-line {
     -webkit-line-clamp: 2;
@@ -437,31 +468,33 @@
   .bar-seg { padding: 3px 8px 3px 10px; align-items: center; }
   .bar-seg .pct {
     position: relative; z-index: 2;
-    font-size: 10px;
-    color: rgba(20,24,35,0.72);
+    font-size: var(--fs-2xs);
+    color: rgba(255,255,255,0.86);
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.55),
+      0 0 1px rgba(0, 0, 0, 0.35);
     font-variant-numeric: tabular-nums;
     margin-left: 5px;
     font-weight: 600;
     opacity: 1;
-    transition: opacity 0.18s;
+    transition: opacity var(--t-base);
   }
   .bar-seg:hover .pct,
-  .bar-seg.active .pct { opacity: 1; color: rgba(20,24,35,0.95); }
+  .bar-seg.active .pct { opacity: 1; color: #fff; }
   .bar-seg.faded { opacity: 0.28; }
   /* Trend glyph on bar segments — especially useful on L3 so surging
      points of view surface at the navigation level, before any card is open. */
   .bar-seg .bar-trend {
     position: absolute; right: 4px; top: 3px;
     z-index: 2;
-    font-size: 8.5px;
+    font-size: var(--fs-3xs);
     line-height: 1;
     padding: 1px 3px;
-    border-radius: 3px;
+    border-radius: var(--r-sm);
     pointer-events: none;
   }
   .bar-seg .bar-trend-up {
-    color: rgba(255,198,125,0.98);
-    text-shadow: 0 0 4px rgba(255,160,95,0.7);
+    color: var(--warm);
     background: rgba(40,24,12,0.25);
   }
   .bar-seg .bar-trend-down {
@@ -474,4 +507,188 @@
     z-index: 1;
   }
   .ribbons svg { width: 100%; height: 100%; }
+  /* Persistent corpus-bias caveat — quiet line under the intro panel so any
+     screenshot of the post-tour view carries the disclaimer. */
+  .insp-bias-caveat {
+    margin: 14px 0 0;
+    font: italic var(--fs-xs)/1.45 'Inter', system-ui, sans-serif;
+    color: var(--fg-mute);
+  }
+
+  /* ─── Pane headers (TOPICS / DETAILS VIEWER eyebrows) ───────────────
+     Both panes of the 50/50 nav split carry a small uppercase eyebrow
+     with a hover-tooltip "i" affordance. The label uses the same
+     typography as the original .bar-col-title. */
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pane-header--insp {
+    padding: 10px 14px 6px;
+  }
+  .pane-header--bar {
+    /* Sits where the original .bar-col-title used to: in-flow inside
+       #col-l1, sized by the column's own padding. Padding lives on the
+       row (not the label) so the "i" icon and the label sit on the same
+       visual baseline — putting padding on just the label pushes its box
+       down and breaks vertical alignment. */
+    padding: 8px 12px 0;
+    margin-bottom: 8px;
+  }
+  /* The label inside the topics column IS the .bar-col-title element so
+     it inherits all the existing rotated/narrow behavior. We just zero
+     its margin since the wrapper now owns spacing. */
+  .pane-header--bar .bar-col-title { margin-bottom: 0; }
+  .pane-header-label {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .pane-header-info {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--fg-mute) 60%, transparent);
+    background: transparent;
+    color: var(--fg-mute);
+    font: 700 10px/1 'Inter', system-ui, sans-serif;
+    text-align: center;
+    cursor: help;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: color var(--t-fast), border-color var(--t-fast),
+                background var(--t-fast);
+  }
+  .pane-header-info:hover,
+  .pane-header-info:focus-visible {
+    color: var(--fg);
+    border-color: var(--fg);
+    background: rgba(255,255,255,0.04);
+    outline: none;
+  }
+  /* The info tooltip is a single page-level element (#info-tooltip) reused
+     by every .pane-header-info button. Positioning is computed in JS so
+     the tooltip can render position: fixed at popup tier and escape the
+     nav's own overflow: hidden. The ::after fallback is removed. */
+  #info-tooltip {
+    position: fixed;
+    z-index: var(--z-popup);
+    max-width: 280px;
+    padding: 8px 10px;
+    background: rgba(14,15,20,0.97);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: var(--r-sm);
+    color: var(--paper, #f4f0e6);
+    font: 400 12px/1.4 'Inter', system-ui, sans-serif;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity var(--t-fast), transform var(--t-fast);
+  }
+  #info-tooltip.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  /* When the topics column collapses to a narrow rotated strip, the
+     info icon would land on top of the rotated label — hide it there
+     and rely on the label's tooltip-via-title for context. */
+  .bar-column.narrow .pane-header-info,
+  .bar-column.narrow.open .pane-header-info { display: none; }
+  /* Same logic for the back chip on L2/L3 — only meaningful when the
+     column is the active wide one. In narrow mode collapse the whole
+     pane-header to zero height so the rotated title can sit centered
+     on the strip without the empty header's padding pushing it down. */
+  .bar-column.narrow .bar-col-back,
+  .bar-column.narrow.open .bar-col-back { display: none; }
+  .bar-column.narrow .pane-header--bar,
+  .bar-column.narrow.open .pane-header--bar {
+    padding: 0;
+    margin: 0;
+  }
+  /* Back chip — small ← affordance next to the L2/L3 title, takes the
+     user up one drill level. Only L2 and L3 have one (#col-l1 has the
+     info icon instead). Wired in nav.js. */
+  .bar-col-back {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--fg-mute) 60%, transparent);
+    background: transparent;
+    color: var(--fg-mute);
+    font: 700 12px/1 'Inter', system-ui, sans-serif;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color var(--t-fast), border-color var(--t-fast),
+                background var(--t-fast);
+  }
+  .bar-col-back:hover,
+  .bar-col-back:focus-visible {
+    color: var(--fg);
+    border-color: var(--fg);
+    background: rgba(255,255,255,0.06);
+    outline: none;
+  }
+  /* Italic helper line at the very top of the empty details viewer.
+     Lives as a sibling of .insp-intro-full so the compact-mode rule
+     (which hides .insp-intro-full) does not hide this hint. */
+  .insp-empty-hint {
+    margin: 0 0 10px;
+    color: var(--fg-mute);
+    font-style: italic;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+  }
+
+  /* ─── Pane-header utility controls (Back / Clear in DETAILS VIEWER) ───
+     Sit to the right of the label + info icon, after a flex spacer. */
+  .pane-header-spacer { flex: 1 1 auto; }
+  .pane-header-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    font: 600 var(--fs-2xs)/1 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid color-mix(in srgb, var(--fg-mute) 50%, transparent);
+    cursor: pointer;
+    transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+  }
+  .pane-header-btn:hover:not(:disabled) {
+    color: var(--fg);
+    border-color: var(--fg);
+    background: rgba(255,255,255,0.04);
+  }
+  .pane-header-btn:disabled {
+    opacity: 0.32;
+    cursor: default;
+  }
+  .pane-header-btn--icon {
+    padding: 2px 8px;
+    font-size: var(--fs-sm);
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
+  }
 

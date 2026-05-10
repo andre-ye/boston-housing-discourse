@@ -7,7 +7,6 @@ const LEGACY_KEYS = {
   vizPref:         'pref',
   vizFsHintSeen:   'fs-hint-seen',
   layout:          'layout',
-  'bhd-bookmarks-v1': 'bookmarks-v1',
 };
 
 let _migrated = false;

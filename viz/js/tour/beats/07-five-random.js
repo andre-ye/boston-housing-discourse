@@ -12,28 +12,31 @@
 // keybind, clear collapse timer, retract any sprouts left on screen.
 
 // Hand-picked indices from tutorial-content.md. One per cl=32 subcluster
-// (sub=0/1/2/4/5), chosen for substance + a quote that reads aloud well.
+// (sub=0/1/2/3/4), chosen for substance + a quote that reads aloud well.
+// At the beat's camera (lat=0.467, lon=-2.375, dist=2.05) the previously
+// chosen sub=4 (282489) and sub=5 (58464) picks projected near/past the
+// canvas edge on common viewport sizes and got silently dropped by
+// _screenOf, leaving only three captions on screen. Replaced with two
+// picks higher on the disc (lat ≈ 0.72–0.75) that stay comfortably
+// inside the frustum across desktop and portrait aspects.
 const CURATED_INDICES = [
   421909,   // sub=0 Supply vs. Demand: "BPDA made it so difficult to build"
   241887,   // sub=1 Housing Market: "mega-investment firms hoover up housing stock"
   342511,   // sub=2 Displacement: "rewards existing residents at expense of future"
-  282489,   // sub=4 Rent Stabilization: "increases bargaining power of renters renewing"
-   58464,   // sub=5 Airbnb / market: "less likely to move if market rent outpaces"
+  351674,   // sub=3 Pro-housing Politics: "trending in the right direction… only become a majority viewpoint in some places"
+  139972,   // sub=4 Rent Stabilization: "modern rent stabilization… exempts new construction. It actually incentivizes new buildings"
 ];
 
 export const beat = {
   id: 'five-random',
   kind: 'step',
-  eyebrow: 'PART 1 — BOTTOM-UP',
-  title: 'Sample five voices at once',
-  prose:
-    'Press R to sample five posts from the area you are looking at. We picked these five ' +
-    'so they read across the cluster. One blames zoning, one blames investment firms, ' +
-    'one wants more tenant bargaining power, one warns that rent control rewards existing ' +
-    'renters at the expense of new ones, and one notes that a stagnant market locks people ' +
-    'in place. They sit near each other on the sphere because they are all arguing about ' +
-    'the same thing.',
-  hint: 'Press R or click below. Press Esc to dismiss cards.',
+  section: { topic: 'gentrification & rent control', tool: 'bottom-up tools', cl: 32 },
+  bodyHtml:
+    '<p>To help you quickly get acquainted with what people in this region ' +
+    'are saying, pressing <kbd>R</kbd> will surface five random comments ' +
+    'from your current view. Press <kbd>R</kbd> again to dismiss them. ' +
+    'Notice the five voices don’t all agree — even inside one cluster, ' +
+    'people argue.</p>',
   // #38 — when the user clicks one of the five sprouted captions, sprouts.js
   // calls App.showDetailCard which renders into #pinned-view. Without
   // 'cards' in showChrome the pinned-view stays opacity:0/visibility:hidden
@@ -61,21 +64,16 @@ export const beat = {
     // Aim the camera at the cl=32 centroid so the curated picks are on
     // screen when sproutSpawn projects them. (Off-screen indices are
     // dropped by the override path.)
-    try { globe.rotateTo(0.467, -2.375, 1.6); } catch {}
+    try { globe.rotateTo(0.467, -2.375, 2.05); } catch {}
 
     let fired = false;
-    let collapseTimer = null;
-    const startCollapseTimer = () => {
-      if (collapseTimer != null) return;
-      collapseTimer = setTimeout(() => {
-        try { App?.clearSprouts?.({ immediate: false }); } catch {}
-      }, 2500);
-    };
     const trigger = () => {
       if (fired) return;
       fired = true;
       markStepDone?.();
-      startCollapseTimer();
+      // Sprouts stay on screen until the user dismisses them (Esc / R again)
+      // or moves to the next beat. The previous auto-collapse timer made the
+      // captions vanish ~2.5s after R, before users had time to read them.
     };
 
     const chip = document.getElementById('random-hint');
@@ -98,16 +96,13 @@ export const beat = {
       keys: ['r'],
       priority: 200,
       label: 'tour-step:r-advance',
+      helpHidden: true,
       handler: () => { trigger(); return false; },
     });
 
     return () => {
       chip?.removeEventListener('click', onChipClick);
       unbindKey();
-      if (collapseTimer != null) {
-        clearTimeout(collapseTimer);
-        collapseTimer = null;
-      }
       // Drop the curated-indices hook so the next R press outside this
       // beat goes back to the normal random sampling.
       if (App?.tour) {

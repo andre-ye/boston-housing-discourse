@@ -25,6 +25,7 @@ export function init(ctx) {
     keys: STOP_KEYS,
     priority: 5,
     label: 'idle-rotate-stop',
+    helpHidden: true,
     allowRepeat: true,
     allowModifiers: true,
     handler: () => { stop(); return false; },

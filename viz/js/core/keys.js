@@ -3,7 +3,7 @@
 // Conventions used by callers (priority):
 //   200 — tour-active gates
 //   100 — overlay closers (help, etc.)
-//    50 — pinned-card / focus-card Esc dismissal
+//    50 — pinned-card Esc dismissal
 //    25 — feature toggles in tour-aware contexts
 //    20 — nav top-level shortcuts
 //    10 — globe arrows / zoom (default-ish)
@@ -68,6 +68,12 @@ export const keys = {
       allowModifiers: !!spec.allowModifiers,
       allowRepeat: !!spec.allowRepeat,
       label: spec.label || '',
+      // Help-overlay metadata. Single source of truth for what the
+      // ? panel renders; absent helpLabel means "not user-facing".
+      helpLabel: spec.helpLabel || '',
+      helpGroup: spec.helpGroup || '',
+      helpKeys: Array.isArray(spec.helpKeys) ? spec.helpKeys.slice() : null,
+      helpHidden: !!spec.helpHidden,
     };
     _intents.push(intent);
     _intents.sort((a, b) => b.priority - a.priority);
@@ -79,6 +85,21 @@ export const keys = {
   },
   // Test/debug
   list() {
-    return _intents.map(i => ({ id: i.id, keys: i.keys, priority: i.priority, label: i.label }));
+    return _intents.map(i => ({
+      id: i.id, keys: i.keys, priority: i.priority, label: i.label,
+      helpLabel: i.helpLabel, helpGroup: i.helpGroup, helpKeys: i.helpKeys,
+      helpHidden: i.helpHidden,
+    }));
+  },
+  // Returns true iff some live intent has `key` in its keys[] (case-insensitive
+  // for letters). Used by the boot-time coverage check.
+  hasHandlerFor(key) {
+    if (!key) return false;
+    const lk = String(key).toLowerCase();
+    for (const i of _intents) {
+      if (i.keys.includes(key)) return true;
+      if (i.keys.some(k => String(k).toLowerCase() === lk)) return true;
+    }
+    return false;
   },
 };

@@ -2,15 +2,22 @@
   "placements": [
     {
       "id": "P1",
-      "idx": 260609,
-      "lat": -0.3250649571418762,
-      "lon": -2.686474084854126,
-      "cluster": 26,
-      "sub": 1,
-      "target_cluster": 26,
-      "target_sub": 1,
-      "score": 21.84,
+      "idx": 5639,
+      "lat": 0.4824824035167694,
+      "lon": -2.2663331031799316,
+      "cluster": 32,
+      "sub": 2,
+      "target_cluster": 32,
+      "target_sub": 2,
+      "score": 19.0,
+      "note": "Reassigned from idx 260609 (cl 26) to land inside cl 32 (gentrification & rent control) for the cluster-1 interview tour beat. Original highest-affinity match in cl 26 preserved in alternates as 260609.",
       "alternates": [
+        {
+          "idx": 5639,
+          "score": 19.0,
+          "title": "",
+          "subreddit": "boston"
+        },
         {
           "idx": 260609,
           "score": 21.84,

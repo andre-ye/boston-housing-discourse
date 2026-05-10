@@ -1,16 +1,22 @@
 // tour — public entry; wires the runner to #tour-overlay + exposes createTour.
 
-import { keys } from '../core/keys.js?v=1';
+import { keys } from '../core/keys.js';
 import { overlayManager } from '../core/overlays.js';
 import { dom } from '../core/dom.js';
 import { HERO_FRAMING, TOUR_NEXT_FADE_MS } from '../core/constants.js';
 import { BEATS } from './beats/index.js';
 import { createTourRunner } from './runner.js';
 import { escHtml } from './helpers.js';
+import { assertBeatAnchors } from './anchors.js';
+import { clusterColor } from '../data.js';
 
 export function createTour({ globe, App, nav }) {
   const overlay = dom.el('tourOverlay') || document.getElementById('tour-overlay');
   if (!overlay) return { start() {}, close() {}, isActive: () => false };
+
+  // Boot-time sanity check: catches stale beat anchors before users hit a
+  // broken click target. Logs (does not throw) on drift; tour keeps running.
+  try { assertBeatAnchors({ data: App?.state }); } catch (_) {}
 
   // ── overlay registration ─────────────────────────────────────────────
   overlayManager.register({
@@ -47,6 +53,7 @@ export function createTour({ globe, App, nav }) {
     showOnly('hero');
     const h = heroEl?.querySelector('.tour-headline');
     const l = heroEl?.querySelector('.tour-lede');
+    const m = heroEl?.querySelector('.tour-meta');
     if (h) {
       const raw = beat.headline || '';
       h.innerHTML = raw
@@ -54,6 +61,7 @@ export function createTour({ globe, App, nav }) {
         : '';
     }
     if (l) l.textContent = beat.lede || '';
+    if (m) m.innerHTML = beat.metaHtml || '';
   }
 
   function renderOutro(beat) {
@@ -82,18 +90,27 @@ export function createTour({ globe, App, nav }) {
 
     if (eyebrowEl) eyebrowEl.textContent = beat.eyebrow || '';
     if (stepEl) {
-      // Step counter: shows "Step N of M" so the user knows how far along
-      // the sequence they are. Skipped on hero / outro (handled by their
-      // own renderers) and on the opener pages (which carry their own
-      // "1 / 3" count in the eyebrow). The runner gives us `stepIdx` /
-      // `stepTotal` indexed against step beats only, so an opener page
-      // doesn't bump the count. Beats can override with stepLabel.
+      // Step counter: "Step N of M" with optional section context appended,
+      // e.g. "Step 2 of 7 · gentrification & rent control · bottom-up tools".
+      // Section info comes from beat.section { topic, tool, cl } and is
+      // rendered as innerHTML so the topic name can carry its cluster colour.
       const showCounter = beat.kind === 'step';
-      if (beat.stepLabel) {
-        stepEl.textContent = beat.stepLabel;
-      } else if (showCounter && Number.isInteger(meta?.stepIdx) && meta.stepIdx >= 0
-                  && Number.isInteger(meta?.stepTotal) && meta.stepTotal > 0) {
-        stepEl.textContent = `Step ${meta.stepIdx + 1} of ${meta.stepTotal}`;
+      const counter = beat.stepLabel
+        ? beat.stepLabel
+        : (showCounter && Number.isInteger(meta?.stepIdx) && meta.stepIdx >= 0
+            && Number.isInteger(meta?.stepTotal) && meta.stepTotal > 0)
+          ? `Step ${meta.stepIdx + 1} of ${meta.stepTotal}`
+          : '';
+      const section = beat.section;
+      if (counter || section) {
+        const parts = [];
+        if (counter) parts.push(escHtml(counter));
+        if (section?.topic) {
+          const cl = Number.isInteger(section.cl) ? ` data-cl="${section.cl}"` : '';
+          parts.push(`<span class="topic-tag"${cl}>${escHtml(section.topic)}</span>`);
+        }
+        if (section?.tool) parts.push(escHtml(section.tool));
+        stepEl.innerHTML = parts.join(' · ');
       } else {
         stepEl.textContent = '';
       }
@@ -129,7 +146,7 @@ export function createTour({ globe, App, nav }) {
         // Step beats: Next is gated until the user completes the action.
         // We render it disabled (visually + aria) — the click handler and
         // Enter keybind no-op while disabled. markStepDone() lifts the gate
-        // and fades in the promoted "Nicely done — Continue →" copy.
+        // and fades in the active "Continue →" copy.
         btnNext.textContent = beat.nextLabel || 'Continue →';
         btnNext.classList.add('tour-btn-disabled');
         btnNext.setAttribute('aria-disabled', 'true');
@@ -139,6 +156,14 @@ export function createTour({ globe, App, nav }) {
         btnNext.textContent = beat.nextLabel || 'Next →';
       }
     }
+
+    // Tint every .topic-tag inside the card with its live cluster colour.
+    // Centralised here so beats only need to write the markup; no per-beat
+    // enter() loop required.
+    cardEl.querySelectorAll('.topic-tag[data-cl]').forEach((el) => {
+      const cl = parseInt(el.dataset.cl, 10);
+      if (Number.isInteger(cl)) el.style.color = clusterColor(cl);
+    });
 
     cardEl.classList.remove('tour-in');
     void cardEl.offsetWidth;
@@ -158,16 +183,11 @@ export function createTour({ globe, App, nav }) {
   }
 
   // ── markStepDone: a beat calls this when the user has completed the
-  // affordance and we're in manualContinue mode. We paint a "Nicely done"
-  // hint, lift the disabled gate on Next, and fade in the promoted
-  // "Nicely done — Continue →" copy over TOUR_NEXT_FADE_MS so the user has
+  // affordance and we're in manualContinue mode. We lift the disabled gate
+  // on Next and fade the label in over TOUR_NEXT_FADE_MS so the user has
   // time to register the affordance change before clicking forward.
   function markStepDone() {
     document.body.classList.add('tour-step-done');
-    const quotesEl = cardEl?.querySelector('.tour-quotes');
-    if (quotesEl) {
-      quotesEl.innerHTML = '<div class="tour-step-hint tour-step-hint-done">Nicely done.</div>';
-    }
     if (btnNext) {
       // Fade out → swap copy → fade in. The gap between fades lets the
       // copy change land on the eye instead of the user catching it
@@ -176,7 +196,7 @@ export function createTour({ globe, App, nav }) {
       btnNext.style.transition = `opacity ${fade}ms ease`;
       btnNext.style.opacity = '0';
       setTimeout(() => {
-        btnNext.textContent = 'Nicely done — Continue →';
+        btnNext.textContent = 'Continue →';
         btnNext.classList.remove('tour-btn-disabled');
         btnNext.classList.add('tour-btn-continue');
         btnNext.removeAttribute('aria-disabled');
@@ -203,13 +223,12 @@ export function createTour({ globe, App, nav }) {
       overlayManager.open('tour');
       // Reset state so we always start clean — covers both first-load and
       // restart-after-close.
-      try { App?.clearConnectionsMode?.(); } catch {}
       try { App?.clearSprouts?.({ immediate: true }); } catch {}
       try { App?.clearPinnedPoint?.(); } catch {}
       try { App?.clearPinnedBackStack?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
-      ['pinned-view', 'interview-card', 'focus-card']
+      ['pinned-view', 'interview-card']
         .forEach(id => document.getElementById(id)?.classList.add('hidden'));
       try {
         const input = document.getElementById('search-input');
@@ -227,13 +246,12 @@ export function createTour({ globe, App, nav }) {
     onTourClose: () => {
       overlayManager.close('tour');
       // Leave the user in a clean sandbox.
-      try { App?.clearConnectionsMode?.(); } catch {}
       try { App?.clearSprouts?.({ immediate: true }); } catch {}
       try { App?.clearPinnedPoint?.(); } catch {}
       try { App?.clearPinnedBackStack?.(); } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
-      ['pinned-view', 'interview-card', 'focus-card']
+      ['pinned-view', 'interview-card']
         .forEach(id => document.getElementById(id)?.classList.add('hidden'));
       try { document.getElementById('spotlight-chip')?.remove(); } catch {}
       try { App?._timelineResetAndClose?.(); } catch {}
@@ -268,6 +286,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['Escape'],
     priority: 200,
     label: 'tour:esc-cards',
+    helpHidden: true,
     allowInInput: true,
     when: tourActiveOrVisible,
     handler: (e) => {
@@ -288,6 +307,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['Escape'],
     priority: 200,
     label: 'tour:esc-sprouts',
+    helpHidden: true,
     allowInInput: true,
     when: tourActiveOrVisible,
     handler: (e) => {
@@ -307,6 +327,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['Escape'],
     priority: 200,
     label: 'tour:esc-noop',
+    helpHidden: true,
     allowInInput: true,
     when: tourActiveOrVisible,
     handler: (e) => {
@@ -320,6 +341,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['ArrowRight'],
     priority: 200,
     label: 'tour:next',
+    helpHidden: true,
     allowInInput: true,
     when: () => runner.active,
     handler: (e) => {
@@ -331,6 +353,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['ArrowLeft'],
     priority: 200,
     label: 'tour:prev',
+    helpHidden: true,
     allowInInput: true,
     when: () => runner.active,
     handler: (e) => { runner.prev(); e.preventDefault(); return true; },
@@ -339,6 +362,7 @@ export function createTour({ globe, App, nav }) {
     keys: ['Enter'],
     priority: 200,
     label: 'tour:enter-advance',
+    helpHidden: true,
     when: () => runner.active,
     handler: (e) => {
       const ae = document.activeElement;

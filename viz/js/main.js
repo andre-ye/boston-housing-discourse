@@ -1,39 +1,37 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, CLUSTER_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js?v=234';
-import { NavController } from './nav.js?v=255';
-import { GlobeView } from './globe.js?v=272';
+import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, CLUSTER_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js';
+import { NavController } from './nav.js';
+import { GlobeView } from './globe.js';
 import { dom } from './core/dom.js';
 import { storage } from './core/storage.js';
 import { raf } from './core/raf.js';
-import { keys } from './core/keys.js?v=1';
+import { keys } from './core/keys.js';
 import { store } from './core/store.js';
 import {
   POINT_RADIUS, DEFAULT_DISTANCE,
   TOPIC_FRAMING, SUB_FRAMING, STANCE_FRAMING, CLOSE_FRAMING, ZOOM_TO_POINT_FRAMING,
   SPROUT_EDGE_TRIM_FRAC, SPROUT_MAX_WIDTH_PX, SPROUT_BODY_MAX_CHARS,
-  SPROUT_REPEL_ITERATIONS, SPROUT_REPEL_STEP_PX, SPROUT_ANCHOR_AVOID_PX,
-  SPROUT_CARD_GAP_PX, SPROUT_VIEWPORT_MARGIN_PX, SPROUT_INITIAL_OFFSET_PX,
+  SPROUT_CARD_GAP_PX, SPROUT_VIEWPORT_MARGIN_PX,
+  SPROUT_DISC_FRAC, SPROUT_DISC_RING_OFFSET_PX,
 } from './core/constants.js';
 import * as THREE from 'three';
 import { escapeHtml, redditScoreInlineHtml, formatRedditKindLabel, highlightSearchHits, getActiveSearchParsed } from './features/html-utils.js';
 import {
-  renderSparklineBySeries, renderSubSparkline, renderClusterSparkline,
+  renderSparklineBySeries,
   updateSparklineBands, initSparklineHover,
 } from './features/sparklines.js';
 import {
-  computeTrend, renderTrendBadge,
-  getSubSeries, getClusterSeries, getPositionSeries, getTrendInfo,
+  computeTrend,
+  getPositionSeries, getTrendInfo,
 } from './features/series.js';
 import {
-  getPositionSubredditCounts, getPositionDominantSub,
   getTopStancesForSubredditInRange, getTopStancesForSubreddit, positionCard,
 } from './features/position-stances.js';
 import { init as initIdleRotate } from './features/idle-rotate.js';
 import { init as initTimeline } from './features/timeline.js';
 import { init as initSearchFind } from './features/search-find.js';
 import { init as initSurprise } from './features/surprise.js';
-import { init as initBookmarks } from './features/bookmarks.js';
 import { init as initUrlState } from './features/url-state.js';
 
 function sphereColor(c) {
@@ -49,12 +47,227 @@ const loadingMsg = document.getElementById('loading-msg');
 
 function updateMsg(m) { loadingMsg.textContent = m; }
 
+// Drag-to-resize the left rail (#22). Default width is whatever index.html
+// sets (--nav-w: 340px); when the user drags, persist the new width to
+// storage under the existing 'pref' JSON key so it survives reloads. The
+// globe re-fits on its own via its ResizeObserver, so no callback wiring
+// is needed downstream.
+const NAV_W_MIN = 320;
+const NAV_W_MAX_FRAC = 0.55;   // never more than 55% of viewport
+const NAV_W_PINNED_DEFAULT = 540; // ~1.6× the 340 default when pinned (#22)
+function _setNavWidth(px) {
+  const max = Math.floor(window.innerWidth * NAV_W_MAX_FRAC);
+  const w = Math.max(NAV_W_MIN, Math.min(max, Math.round(px)));
+  document.documentElement.style.setProperty('--nav-w', w + 'px');
+  return w;
+}
+function _readNavPref() {
+  const p = storage.getJSON('pref', {}) || {};
+  return typeof p.navWidth === 'number' ? p.navWidth : null;
+}
+function _writeNavPref(w) {
+  const p = storage.getJSON('pref', {}) || {};
+  p.navWidth = w;
+  storage.setJSON('pref', p);
+}
+function initNavResizeHandle() {
+  const saved = _readNavPref();
+  if (saved != null) _setNavWidth(saved);
+  const handle = document.getElementById('nav-resize-handle');
+  const navEl = document.getElementById('nav');
+  const pinnedEl = document.getElementById('pinned-view');
+  if (!handle || !navEl) return;
+  // Lift the nav.css 34% cap so the user's chosen width applies up to our
+  // own 55% clamp; we intentionally don't touch nav.css here.
+  navEl.style.maxWidth = (NAV_W_MAX_FRAC * 100).toFixed(0) + 'vw';
+  // When a pin opens and the user has no saved width, bump to a comfortable
+  // reading width so the post + replies have room to breathe.
+  if (pinnedEl && saved == null) {
+    const mo = new MutationObserver(() => {
+      if (!pinnedEl.classList.contains('hidden') && _readNavPref() == null) {
+        _setNavWidth(NAV_W_PINNED_DEFAULT);
+      }
+    });
+    mo.observe(pinnedEl, { attributes: true, attributeFilter: ['class'] });
+  }
+  let dragging = false;
+  let pointerId = null;
+  const onMove = (e) => {
+    if (!dragging) return;
+    const navRect = navEl.getBoundingClientRect();
+    _setNavWidth(e.clientX - navRect.left);
+  };
+  const onUp = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    navEl.style.transition = '';
+    try { handle.releasePointerCapture(pointerId); } catch {}
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-w'));
+    if (!isNaN(cur)) _writeNavPref(cur);
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    pointerId = e.pointerId;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ew-resize';
+    // Kill the nav.css width transition so drag feels live, not laggy.
+    navEl.style.transition = 'none';
+    try { handle.setPointerCapture(pointerId); } catch {}
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    e.preventDefault();
+  });
+  // Double-click resets to the default width.
+  handle.addEventListener('dblclick', () => {
+    _setNavWidth(NAV_W_PINNED_DEFAULT);
+    _writeNavPref(NAV_W_PINNED_DEFAULT);
+  });
+}
+
+// Shared #info-tooltip wired to every .pane-header-info button. We use one
+// page-level fixed element instead of per-button ::after so the tooltip
+// renders at popup tier and escapes the nav's overflow:hidden — otherwise
+// it gets clipped inside the nav and never floats over the globe.
+function initInfoTooltip() {
+  const tip = document.getElementById('info-tooltip');
+  if (!tip) return;
+  let activeBtn = null;
+  function show(btn) {
+    const text = btn.getAttribute('data-tooltip');
+    if (!text) return;
+    activeBtn = btn;
+    tip.textContent = text;
+    // Position below + slightly right of the button. Clamp into the
+    // viewport so the tooltip never overflows off-screen at any nav width.
+    const r = btn.getBoundingClientRect();
+    // Render once invisibly to measure.
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+    tip.classList.add('show');
+    tip.setAttribute('aria-hidden', 'false');
+    const tipRect = tip.getBoundingClientRect();
+    const margin = 8;
+    let left = r.left;
+    let top = r.bottom + 6;
+    if (left + tipRect.width + margin > window.innerWidth) {
+      left = Math.max(margin, window.innerWidth - tipRect.width - margin);
+    }
+    if (top + tipRect.height + margin > window.innerHeight) {
+      top = Math.max(margin, r.top - tipRect.height - 6);
+    }
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+  function hide() {
+    activeBtn = null;
+    tip.classList.remove('show');
+    tip.setAttribute('aria-hidden', 'true');
+  }
+  document.addEventListener('pointerover', (e) => {
+    const btn = e.target?.closest?.('.pane-header-info');
+    if (btn && btn !== activeBtn) show(btn);
+  });
+  document.addEventListener('pointerout', (e) => {
+    const btn = e.target?.closest?.('.pane-header-info');
+    if (!btn) return;
+    // Hide when the pointer actually leaves the button (relatedTarget is
+    // outside it). Avoid hiding when moving across the icon's children.
+    if (e.relatedTarget && btn.contains(e.relatedTarget)) return;
+    hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const btn = e.target?.closest?.('.pane-header-info');
+    if (btn) show(btn);
+  });
+  document.addEventListener('focusout', (e) => {
+    const btn = e.target?.closest?.('.pane-header-info');
+    if (btn === activeBtn) hide();
+  });
+  // Reposition on scroll/resize so the tooltip tracks its anchor.
+  window.addEventListener('scroll', () => { if (activeBtn) show(activeBtn); }, true);
+  window.addEventListener('resize', () => { if (activeBtn) show(activeBtn); });
+}
+
+// Vertical split between #nav-top (Topics) and #insp-body (Details Viewer).
+// User drags #nav-vsplit-handle up/down to change how much of the nav each
+// pane occupies. Saved as a percent (0..1) of the nav's inner height.
+const VSPLIT_KEY = 'navVSplitFrac';
+const VSPLIT_MIN = 0.18;
+const VSPLIT_MAX = 0.82;
+function _readVSplitPref() {
+  try { const v = parseFloat(localStorage.getItem(VSPLIT_KEY)); return isNaN(v) ? null : v; }
+  catch { return null; }
+}
+function _writeVSplitPref(frac) {
+  try { localStorage.setItem(VSPLIT_KEY, String(frac)); } catch {}
+}
+function _applyVSplit(frac) {
+  const top = document.getElementById('nav-top');
+  const bot = document.getElementById('insp-body');
+  if (!top || !bot) return;
+  const f = Math.max(VSPLIT_MIN, Math.min(VSPLIT_MAX, frac));
+  // Use percent flex-basis so the two panes still total to 100% of the
+  // nav's inner height regardless of viewport / handle thickness.
+  top.style.flex = `0 0 ${(f * 100).toFixed(2)}%`;
+  bot.style.flex = `0 0 ${((1 - f) * 100).toFixed(2)}%`;
+}
+function initNavVSplit() {
+  const handle = document.getElementById('nav-vsplit-handle');
+  const navEl  = document.getElementById('nav');
+  const top    = document.getElementById('nav-top');
+  if (!handle || !navEl || !top) return;
+  const saved = _readVSplitPref();
+  if (saved != null) _applyVSplit(saved);
+  let dragging = false, pid = null;
+  const navInnerTop = () => navEl.getBoundingClientRect().top;
+  const navInnerHeight = () => navEl.getBoundingClientRect().height;
+  const onMove = (e) => {
+    if (!dragging) return;
+    const y = e.clientY - navInnerTop();
+    const h = navInnerHeight();
+    if (h <= 0) return;
+    _applyVSplit(y / h);
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    navEl.classList.remove('vsplit-dragging');
+    document.body.classList.remove('nav-vsplit-dragging');
+    try { handle.releasePointerCapture(pid); } catch {}
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    const tFlex = parseFloat((top.style.flex || '').match(/(\d+(?:\.\d+)?)%/)?.[1]);
+    if (!isNaN(tFlex)) _writeVSplitPref(tFlex / 100);
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true; pid = e.pointerId;
+    navEl.classList.add('vsplit-dragging');
+    document.body.classList.add('nav-vsplit-dragging');
+    try { handle.setPointerCapture(pid); } catch {}
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    e.preventDefault();
+  });
+  // Double-click resets to 50/50.
+  handle.addEventListener('dblclick', () => {
+    _applyVSplit(0.5);
+    _writeVSplitPref(0.5);
+  });
+}
+
 async function boot() {
   // Initialize core infrastructure first: storage migrates legacy keys
   // before any feature reads them; dom warms its element cache.
   storage.init();
   dom.init();
   keys.init();
+  initNavResizeHandle();
+  initNavVSplit();
+  initInfoTooltip();
   updateMsg('Loading sphere coordinates…');
   try {
     App.state = await loadData(updateMsg);
@@ -127,12 +340,17 @@ async function boot() {
   //
   // Algorithm: rank clusters by post count, then greedily assign each
   // rank the unused palette color whose HSL hue is farthest from the
-  // colors already assigned to the prior K=8 ranks. This concentrates
-  // visual difference where the sidebar is busiest (the top of the L1
-  // stack) while leaving rarer clusters anywhere in the leftovers.
-  // Mutates SPHERE_PALETTE in-place — clusterColor() reads through this
-  // same array so all downstream callers (globe, nav, sparklines) see
-  // the reordered palette without further wiring.
+  // colors already assigned to the prior K ranks. The greedy pass alone
+  // is myopic — rank 9 only checks ranks 1..8, so it can land on a near-
+  // duplicate of rank 0 (two blues at the top of the visible L1 stack).
+  // After the greedy seed we run a small swap-based local-search pass
+  // over the top T ranks: for every pair (i,j) in 1..T, try swapping and
+  // keep the swap if it raises the minimum pairwise hue distance inside
+  // any sliding W-rank window across 0..T-1. Iterates to a local optimum
+  // (typically <5 passes; ~T² swaps each, each O(W) — cheap, runs once
+  // at boot). Mutates SPHERE_PALETTE in-place — clusterColor() reads
+  // through this same array so all downstream callers (globe, nav,
+  // sparklines) see the reordered palette without further wiring.
   (() => {
     const meta = App.state.clusterMeta || {};
     const ranks = Object.keys(meta)
@@ -174,11 +392,14 @@ async function boot() {
       return Math.hypot(dh, dl * 0.5);
     };
     // Greedy: for each cluster rank r, pick the unused palette index
-    // that maximizes the minimum distance to the last K used hues.
-    const K = 8;
+    // that maximizes the minimum distance to the last K used hues. K=10
+    // covers the full visible band of the L1 stack so rank 10 won't
+    // accidentally collide with rank 0.
+    const K = 10;
     const used = new Array(N).fill(false);
     const assigned = []; // assigned[r] = palette index for ranks[r]
-    // First rank: keep palette[0].
+    // First rank: keep palette[0]. Anchors the largest cluster's color
+    // across loads.
     assigned.push(0); used[0] = true;
     for (let r = 1; r < ranks.length && r < N; r++) {
       const recent = assigned.slice(Math.max(0, r - K)).map(i => paletteHsl[i]);
@@ -195,6 +416,39 @@ async function boot() {
       if (bestIdx < 0) break;
       assigned.push(bestIdx);
       used[bestIdx] = true;
+    }
+    // Swap-based local search over the top T ranks. Score = the smallest
+    // pairwise hue distance found inside any W-rank sliding window over
+    // 0..T-1. We keep a swap iff it strictly raises that score, so the
+    // worst within-window collision in the visible band keeps shrinking.
+    // The seed (rank 0) is pinned so the largest cluster's color is
+    // stable.
+    const T = Math.min(16, assigned.length);
+    const W = 10;
+    const score = (arr) => {
+      let worst = Infinity;
+      for (let i = 0; i < T; i++) {
+        const lim = Math.min(i + W, T);
+        for (let j = i + 1; j < lim; j++) {
+          const d = distHsl(paletteHsl[arr[i]], paletteHsl[arr[j]]);
+          if (d < worst) worst = d;
+        }
+      }
+      return worst;
+    };
+    let improved = true;
+    let guard = 0;
+    while (improved && guard++ < 50) {
+      improved = false;
+      let cur = score(assigned);
+      for (let i = 1; i < T; i++) {
+        for (let j = i + 1; j < T; j++) {
+          const tmp = assigned[i]; assigned[i] = assigned[j]; assigned[j] = tmp;
+          const next = score(assigned);
+          if (next > cur + 1e-9) { cur = next; improved = true; }
+          else { assigned[j] = assigned[i]; assigned[i] = tmp; }
+        }
+      }
     }
     // Build the new palette ordering: position c in palette ← whichever
     // palette index was assigned to the cluster whose ID = c. (Cluster
@@ -231,10 +485,6 @@ async function boot() {
     globe = new GlobeView(canvas, App.state);
     window.App.globe = globe;
     window.App.nav = nav;
-    document.getElementById('reset-view-hint')?.addEventListener('click', () => {
-      if (window.App?.resetAll) window.App.resetAll();
-      else globe?.resetCanonicalZoom?.();
-    });
   } catch (e) { console.error('GlobeView failed:', e); updateMsg('Globe error: ' + e.message); throw e; }
 
   // Build interview P-pins eagerly — they're needed by tour beat 2
@@ -245,15 +495,20 @@ async function boot() {
     globe.setInterviewPins(App.state.interviewPins?.placements || [], App.state.interviews);
   } catch (e) { console.warn('setInterviewPins (early) failed:', e); }
 
-  // Guided tour — Atlantic-style opener + three cluster beats. Launcher
-  // button is always visible; auto-open on every visit unless the URL
-  // carries a non-empty hash (so deep-links still land where expected).
+  // Guided tour — Atlantic-style opener + three cluster beats. The hero with
+  // "Begin tour" / "Explore" auto-opens on every cold load (no #hash); deep
+  // links bypass it. The launcher pill is always available to re-open it.
   try {
-    const { createTour } = await import('./tour/index.js?v=400');
+    const { createTour } = await import('./tour/index.js');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
-    document.getElementById('tour-launcher')?.addEventListener('click', () => tour.start());
-    // Cold load auto-opens the tour; deep-links (#cl=…) skip it. The inline
+    const launcherEl = document.getElementById('tour-launcher');
+    if (launcherEl) {
+      launcherEl.classList.remove('hidden-until-completed');
+      launcherEl.style.display = '';
+      launcherEl.addEventListener('click', () => tour.start());
+    }
+    // Cold load auto-opens the tour. Deep-links (#cl=…) skip it. The inline
     // boot script in index.html may have already painted the hero overlay
     // before this module loaded — calling start() here is idempotent.
     //
@@ -270,13 +525,13 @@ async function boot() {
     document.body.classList.remove('app-loading');
   }
 
-  // Empty-state + intro live here (not inside #insp-body, which is display:none
-  // in the minimal layout).
-  const navMount = document.getElementById('nav');
-  const navBarsMount = document.getElementById('nav-bars');
+  // Empty-state + intro is the idle content of the bottom (details) pane.
+  // Make sure it's parented to #insp-body — older sessions may have moved it
+  // out under the previous "#insp-body is display:none" layout.
+  const inspBodyMount = document.getElementById('insp-body');
   const inspEmptyMount = document.getElementById('insp-empty-main');
-  if (inspEmptyMount && navBarsMount && navMount && inspEmptyMount.parentElement !== navMount) {
-    navBarsMount.insertAdjacentElement('afterend', inspEmptyMount);
+  if (inspEmptyMount && inspBodyMount && inspEmptyMount.parentElement !== inspBodyMount) {
+    inspBodyMount.insertBefore(inspEmptyMount, inspBodyMount.firstChild);
   }
 
   // Dismiss the loader after the globe has actually rendered its first
@@ -320,153 +575,13 @@ async function boot() {
     return s;
   }
 
-  // ─── Focus → globe rotate + highlight + focus card ───────────────
-  const focusCard = document.getElementById('focus-card');
-  const fkind = document.getElementById('focus-kind');
-  const ftitle = document.getElementById('focus-title');
-  const fmeta = document.getElementById('focus-meta');
-  const fspark = document.getElementById('focus-spark');
-  const fcrumbs = document.getElementById('fc-breadcrumbs');
-  const fvoices = document.getElementById('focus-voices');
-  const fsubs = document.getElementById('focus-subs');
+  // ─── Focus → globe rotate + highlight ────────────────────────────
+  // The focus-card mini-dashboard that used to render here has been
+  // removed. Topic / subtopic / stance clicks still drive the globe
+  // (rotate + spotlight via nav.addEventListener('focus', ...) below);
+  // the details viewer pane only fills in response to explicit point /
+  // P-pin clicks on the globe.
 
-  // Copy-as-markdown for the focus card, mirroring the position card's
-  // affordance. Reads current focus state at click-time so one handler
-  // covers both cluster and sub focus. Includes the subreddit mix, a
-  // "top stances" list at cluster level, trend, and a deep-link.
-  (() => {
-    const btn = document.getElementById('fc-copy-md');
-    if (!btn) return;
-    btn.onclick = async () => {
-      const cl = nav.focusCl;
-      const gid = nav.focusGid;
-      if (cl == null) return;
-      const clMeta = App.state.clusterMeta?.[String(cl)];
-      const clName = clMeta?.name || `Topic ${cl}`;
-      const range = store.get().filters.monthRange || null;
-      const rangeLabel = range
-        ? ` (${App.state.monthLabels[range.lo]} → ${App.state.monthLabels[range.hi]})`
-        : '';
-      const title = gid != null ? (App.subGidMap.byGid[gid]?.name || `sub ${gid}`) : clName;
-      const series = gid != null ? getSubSeries(gid) : getClusterSeries(cl);
-      const t = getTrendInfo(series);
-      const trendStr = t.dir === 'up' ? ' ▲ trending' : t.dir === 'down' ? ' ▼ fading' : '';
-      // Subreddit mix (top 3)
-      const bd = gid != null
-        ? (App.state.subredditBreakdown?.by_sub_gid?.[String(gid)] || [])
-        : (App.state.subredditBreakdown?.by_cluster?.[String(cl)] || []);
-      const subTotal = bd.reduce((s, e) => s + (e.n || 0), 0);
-      const mixLine = bd.slice(0, 3)
-        .map(e => `r/${e.r} ${Math.round(100 * e.n / subTotal)}%`)
-        .join(' · ');
-      const total = series ? series.reduce((s, v) => s + v, 0) : 0;
-      // Top stances — only at cluster level (sub has its own drill list).
-      let stancesBlock = '';
-      if (gid == null) {
-        const rows = [...document.querySelectorAll('#focus-stances .fc-stance')]
-          .slice(0, 5)
-          .map(row => {
-            const name = row.querySelector('.fc-st-name')?.textContent?.trim();
-            const sub = row.querySelector('.fc-st-sub')?.textContent?.trim();
-            const count = row.querySelector('.fc-st-count')?.textContent?.trim();
-            return name ? `- ${name} *(${sub})* — ${count}` : null;
-          })
-          .filter(Boolean);
-        if (rows.length) stancesBlock = '\n**Loudest points of view:**\n' + rows.join('\n');
-      }
-      // Shareable link — carry every active filter so the recipient lands
-      // on the exact view.
-      const parts = [`cl=${cl}`];
-      if (gid != null) parts.push(`gid=${gid}`);
-      if (range) { parts.push(`from=${range.lo}`); parts.push(`to=${range.hi}`); }
-      if (_activeSubredditFilter) parts.push(`sr=${_activeSubredditFilter.id}`);
-      const q = document.getElementById('search-input')?.value?.trim();
-      if (q) parts.push(`q=${encodeURIComponent(q)}`);
-      const link = `${location.origin}${location.pathname}#${parts.join('&')}`;
-      const md = [
-        `## ${title}${trendStr}${rangeLabel}`,
-        gid != null ? `*${clName} ▸ ${title}*` : '',
-        '',
-        `**Volume:** ${total.toLocaleString()} posts`,
-        mixLine ? `**Voiced by:** ${mixLine}` : '',
-        stancesBlock,
-        `\n[View on globe](${link})`,
-      ].filter(Boolean).join('\n').trim();
-      let ok = false;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(md);
-          ok = true;
-        }
-      } catch {}
-      if (!ok) {
-        const ta = document.createElement('textarea');
-        ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        try { ok = document.execCommand('copy'); } catch {}
-        ta.remove();
-      }
-      btn.classList.toggle('copied', ok);
-      btn.classList.toggle('copy-err', !ok);
-      btn.setAttribute('data-msg', ok ? 'Copied!' : 'Copy failed');
-      setTimeout(() => {
-        btn.classList.remove('copied', 'copy-err');
-        btn.removeAttribute('data-msg');
-      }, 1600);
-    };
-  })();
-
-  // Which subreddits dominate this cluster / sub? Renders a 3-segment
-  // horizontal bar + labels. Tiny file (~32 KB) pre-baked by
-  // scripts/compute_subreddit_breakdown.py.
-  function renderFocusSubreddits(cl, gid, color) {
-    if (!fsubs) return;
-    fsubs.innerHTML = '';
-    const data = App.state.subredditBreakdown;
-    if (!data) return;
-    const top = gid != null
-      ? (data.by_sub_gid?.[String(gid)] || [])
-      : (data.by_cluster?.[String(cl)] || []);
-    if (!top.length) return;
-    const picks = top.slice(0, 3);
-    const total = picks.reduce((s, e) => s + (e.n || 0), 0);
-    if (total === 0) return;
-    const segs = picks.map(e => {
-      const pct = (100 * e.n / total).toFixed(0);
-      return `<span class="fs-seg" style="flex:${e.n}; background:${color}" title="r/${escapeHtml(e.r)}: ${e.n.toLocaleString()} posts (${pct}% of top-3 shown)"></span>`;
-    }).join('<span class="fs-gap"></span>');
-    const names = App.state.subredditNames || [];
-    const labels = picks.map(e => {
-      const pct = Math.round(100 * e.n / total);
-      const match = names.find(n => n.name === e.r);
-      const srId = match?.id ?? -1;
-      const activeCls = (_activeSubredditFilter && _activeSubredditFilter.id === srId) ? ' active' : '';
-      return `
-        <button class="fs-lbl${activeCls}" data-sr-id="${srId}" data-sr-name="${escapeHtml(e.r)}"
-                title="${e.n.toLocaleString()} posts · click to filter globe to r/${escapeHtml(e.r)}">
-          <span class="fs-lbl-name">r/${escapeHtml(e.r)}</span>
-          <span class="fs-lbl-pct">${pct}%</span>
-        </button>
-      `;
-    }).join('');
-    // Hint shown only to first-time visitors; localStorage flag below marks
-    // seen after the user actually clicks one.
-    const hintSeen = storage.get('fs-hint-seen') === '1';
-    const hintHtml = hintSeen ? '' : ' <span class="fs-hint">· click to filter globe</span>';
-    fsubs.innerHTML = `
-      <div class="fs-head">where it lives${hintHtml}</div>
-      <div class="fs-bar">${segs}</div>
-      <div class="fs-legend">${labels}</div>
-    `;
-    fsubs.querySelectorAll('.fs-lbl').forEach(btn => {
-      btn.onclick = () => {
-        const id = +btn.dataset.srId;
-        if (id < 0) return;
-        storage.set('fs-hint-seen', '1');
-        toggleSubredditFilter(id, btn.dataset.srName, cl, gid);
-      };
-    });
-  }
   // Active subreddit filter state + chip UI in the nav header.
   let _activeSubredditFilter = null;   // { id, name }
   window.App.toggleSubredditFilter = (...args) => toggleSubredditFilter(...args);
@@ -477,8 +592,6 @@ async function boot() {
     _activeSubredditFilter = null;
     globe.setSubredditHighlight(null);
     _updateSubredditFilterChip();
-    renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
-    if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
     if (typeof writeHash === 'function') writeHash();
     return true;
   }
@@ -493,9 +606,6 @@ async function boot() {
     const subSet = g ? new Set([`${g.cl}_${g.sub}`]) : null;
     globe.setSubredditHighlight(new Set([id]), { extraClusters: clSet, extraSubs: subSet });
     _updateSubredditFilterChip();
-    renderFocusSubreddits(nav.focusCl, nav.focusGid, nav.focusCl != null ? sphereColor(nav.focusCl) : '#7cf0c9');
-    // Cluster-level stance list now gates by the active sub.
-    if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
     if (typeof writeHash === 'function') writeHash();
   }
   function _updateSubredditFilterChip() {
@@ -724,172 +834,6 @@ async function boot() {
   // Initial empty state render once subGidMap is ready.
   refreshDetailPanel(null, null, null);
 
-  // Find street-interview subjects whose pin is within this cluster (or
-  // sub, when gid given). Makes the anchor-to-real-voices connection
-  // much more visible than leaving users to notice matching colors.
-  function renderFocusVoices(cl, gid) {
-    if (!fvoices) return;
-    fvoices.innerHTML = '';
-    const pins = App.state.interviewPins?.placements || [];
-    const ivs = App.state.interviews?.interviews || [];
-    const ivById = new Map(ivs.map(i => [i.id, i]));
-    const g = gid != null ? App.subGidMap.byGid[gid] : null;
-    const matches = pins.filter(p => {
-      if (p.cluster !== cl) return false;
-      if (g && p.sub !== g.sub) return false;
-      return true;
-    });
-    if (matches.length === 0) return;
-    const chips = matches.map(p => {
-      const iv = ivById.get(p.id);
-      const qs = interviewQuotes(iv);
-      const preview = (qs[0] || '').slice(0, 96);
-      return `
-        <button class="fc-voice" data-id="${p.id}" title="${escapeHtml(preview)}">
-          <span class="fc-voice-id">${p.id}</span>
-          <span class="fc-voice-role">${escapeHtml(preview ? `${preview}${preview.length >= 96 ? '…' : ''}` : 'Street voice')}</span>
-        </button>
-      `;
-    }).join('');
-    fvoices.innerHTML = `
-      <div class="fc-voices-label">${matches.length === 1 ? 'Voice pinned here' : `Voices pinned here · ${matches.length}`}</div>
-      <div class="fc-voices-list">${chips}</div>
-    `;
-    fvoices.querySelectorAll('.fc-voice').forEach(btn => {
-      btn.onclick = () => {
-        const id = btn.dataset.id;
-        const pin = pins.find(p => p.id === id);
-        if (pin) {
-          // Enrich with interview data fields the card renderer expects
-          const iv = ivById.get(id);
-          const meta = App.state.clusterMeta?.[String(pin.cluster)];
-          const full = { ...pin, cluster_name: meta?.name };
-          showInterviewCard(full);
-        }
-      };
-    });
-  }
-
-  // At cluster level, drill the reader straight into the loudest voices
-  // across all subs within — a shortcut that lets them hit a specific
-  // stance without first picking a sub. Ranks by volume with a trend
-  // boost, so surging minority stances surface alongside the mainstays.
-  const fstances = document.getElementById('focus-stances');
-  function renderFocusStances(cl) {
-    if (!fstances) return;
-    fstances.innerHTML = '';
-    if (cl == null) return;
-    const anchors = App.state.positionAnchors;
-    if (!anchors) return;
-    // Honor the active timeline filter so the "loudest here" list reflects
-    // the period the user is studying, not all-time totals.
-    const range = store.get().filters.monthRange || null;
-    const entries = [];
-    // Respect an active subreddit filter: when r/X is pinned the user
-    // is studying that community — the "loudest here" list should reflect
-    // stances where r/X actually voices, not generic all-time tops.
-    const srId = _activeSubredditFilter?.id ?? null;
-    const posSubTable = App._posSubTable;
-    for (const [gidStr, doc] of Object.entries(anchors)) {
-      if (doc.cl !== cl) continue;
-      const gid = +gidStr;
-      const positions = doc.positions || [];
-      positions.forEach((p, idx) => {
-        const allCount = p.count || 0;
-        if (allCount < 30) return;
-        let subCount = null;
-        if (srId != null && posSubTable) {
-          const m = posSubTable.get((gid << 8) | idx);
-          const n = m ? (m.get(srId) || 0) : 0;
-          if (n < 5) return;
-          subCount = n;
-        }
-        const series = getPositionSeries(gid, idx);
-        const rawCount = range
-          ? (series ? _rangeSum(series, range.lo, range.hi) : 0)
-          : allCount;
-        if (range && rawCount < 10) return;
-        // Prefer the sub count when a sub filter is active, so weighting
-        // matches what the user cares about in this view.
-        const count = subCount != null ? subCount : rawCount;
-        const t = getTrendInfo(series);
-        const boost = Math.max(0, t.rel - 1) * 0.5;
-        const score = (range || subCount != null) ? count : count * (1 + boost);
-        entries.push({ gid, posIdx: idx, cl: doc.cl, name: p.name,
-                       sub_name: doc.sub_name, count, rel: t.rel, dir: t.dir,
-                       score, description: p.description || '', inRange: !!range, inSub: !!srId });
-      });
-    }
-    if (entries.length === 0) return;
-    entries.sort((a, b) => b.score - a.score);
-    const top = entries.slice(0, 6);
-    const color = sphereColor(cl);
-    // What's the cluster's dominant voice? Used as a reference point so
-    // each stance row can flag when it diverges — a "most stances here
-    // are r/boston but this one is r/medfordma" callout, in line with
-    // the ⇋ marker already used on the position card.
-    const cData = App.state.subredditBreakdown?.by_cluster?.[String(cl)] || [];
-    const clusterTopName = cData[0]?.r || null;
-    const chips = top.map(e => {
-      const arrow = e.dir === 'up' ? '<span class="fc-st-up" title="trending up">▲</span>'
-                  : e.dir === 'down' ? '<span class="fc-st-down" title="fading">▼</span>' : '';
-      const dom = getPositionDominantSub(e.gid, e.posIdx);
-      const different = dom && clusterTopName && dom.name !== clusterTopName;
-      const voice = dom ? `
-        <span class="fc-st-voice${different ? ' fc-st-voice-diff' : ''}"
-              title="${escapeHtml(different ? `voiced mostly in r/${dom.name} — different from this topic's dominant r/${clusterTopName}` : `voiced mostly in r/${dom.name}`)}">
-          ${different ? '<span class="fc-st-cross">⇋</span>' : ''}r/${escapeHtml(dom.name)}
-        </span>` : '';
-      // Full name + description in tooltip for the ellipsized fc-st-name.
-      const titleTxt = e.description ? `${e.name} — ${e.description}` : e.name;
-      return `
-        <button class="fc-stance${different ? ' fc-stance-diff' : ''}"
-                data-cl="${e.cl}" data-gid="${e.gid}" data-pos="${e.posIdx}"
-                style="--stance-color:${color}"
-                title="${escapeHtml(titleTxt)}">
-          <span class="fc-st-name">${escapeHtml(e.name)}</span>
-          ${arrow}
-          ${voice}
-          <span class="fc-st-sub">${escapeHtml(e.sub_name)}</span>
-          <span class="fc-st-count">${e.count.toLocaleString()}</span>
-        </button>
-      `;
-    }).join('');
-    let sectionLabel = 'loudest points of view here';
-    if (top[0]?.inSub && top[0]?.inRange) sectionLabel = `loudest in r/${_activeSubredditFilter.name} · this period`;
-    else if (top[0]?.inSub) sectionLabel = `loudest in r/${_activeSubredditFilter.name}`;
-    else if (top[0]?.inRange) sectionLabel = 'loudest points of view — this period';
-    fstances.innerHTML = `
-      <div class="fc-stances-label">${sectionLabel}</div>
-      <div class="fc-stances-list">${chips}</div>
-    `;
-    fstances.querySelectorAll('.fc-stance').forEach(btn => {
-      btn.onclick = () => {
-        const cl2 = +btn.dataset.cl, gid2 = +btn.dataset.gid, posIdx2 = +btn.dataset.pos;
-        nav.focus({ cl: cl2, gid: gid2 });
-        scheduleFocusPosition(cl2, gid2, posIdx2, 180);
-      };
-    });
-  }
-
-  // Render up-navigation breadcrumbs inside the focus card. The default
-  // header crumbs are tiny; these are big enough to reliably hit.
-  function renderFocusCrumbs(cl, gid) {
-    if (!fcrumbs) return;
-    const parts = [`<button class="fc-up" data-level="all">← All topics</button>`];
-    if (cl != null && gid != null) {
-      const clName = App.state.clusterMeta?.[String(cl)]?.name || `Topic ${cl}`;
-      parts.push(`<button class="fc-up" data-level="cluster" style="color:${sphereColor(cl)}">${escapeHtml(clName)}</button>`);
-    }
-    fcrumbs.innerHTML = parts.join('<span class="fc-sep">›</span>');
-    fcrumbs.querySelectorAll('.fc-up').forEach(b => {
-      b.onclick = () => {
-        const lvl = b.dataset.level;
-        if (lvl === 'all') nav.focus({});
-        else if (lvl === 'cluster') nav.focus({ cl });
-      };
-    });
-  }
   const inspBody = document.getElementById('insp-body');
   const inspEmpty = document.getElementById('insp-empty-main');
 
@@ -935,7 +879,6 @@ async function boot() {
   }
   function showInspectorEmpty() {
     const anyOpen =
-      !focusCard.classList.contains('hidden') ||
       !dom.el('pinnedView').classList.contains('hidden') ||
       !dom.el('interviewCard').classList.contains('hidden') ||
       !dom.el('voicesListInline').classList.contains('hidden');
@@ -943,59 +886,29 @@ async function boot() {
     syncIntroGlobeHighlight();
   }
 
+  // Topic / subtopic / stance focus drives the globe (rotate + spotlight)
+  // and nothing else. The details viewer pane intentionally stays in its
+  // empty state — only an explicit click on a globe point or P-pin fills
+  // it (see showDetailCard / showInterviewCard).
   nav.addEventListener('focus', (ev) => {
     const { cl, gid, posIdx } = ev.detail;
     globe.setHighlight({ cl, gid, posIdx });
 
     if (cl == null) {
       globe.rotateTo(0, 0, DEFAULT_DISTANCE, 700);
-      focusCard.classList.add('hidden');
-      if (fspark) fspark.innerHTML = '';
-      globe.loadThreadArcs([]);
       showInspectorEmpty();
       return;
     }
-    // Focusing a cluster/sub closes any open interview card — the user
-    // shifted their attention away from the pinned voice.
-    const iv = document.getElementById('interview-card');
-    if (iv && !iv.classList.contains('hidden')) {
-      iv.classList.add('hidden');
-      document.querySelectorAll('.pin.selected').forEach(el => el.classList.remove('selected'));
-    }
-    hideInspectorEmpty();
     if (gid == null) {
       const a = clusterAnchor(App.state, cl);
       if (a) globe.rotateTo(a.lat, a.lon, TOPIC_FRAMING);
-      const meta = App.state.clusterMeta[String(cl)];
-      ftitle.textContent = meta ? meta.name : `Topic ${cl}`;
-      ftitle.style.color = sphereColor(cl);
-      fkind.innerHTML = `topic ${renderTrendBadge(getClusterSeries(cl))}`;
-      fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
-      if (fspark) fspark.innerHTML = renderClusterSparkline(cl, sphereColor(cl));
-      renderFocusCrumbs(cl, null);
-      renderFocusSubreddits(cl, null, sphereColor(cl));
-      renderFocusStances(cl);
-      renderFocusVoices(cl, null);
-      focusCard.classList.remove('hidden');
-      globe.loadThreadArcs([]);
       return;
     }
     const g = App.subGidMap.byGid[gid];
     if (g) {
       const a = subAnchor(App.state, g.cl, g.sub);
       if (a) { globe.rotateTo(a.lat, a.lon, SUB_FRAMING); pulseAt(a.lat, a.lon, sphereColor(g.cl)); }
-      ftitle.textContent = g.name;
-      ftitle.style.color = sphereColor(g.cl);
-      fkind.innerHTML = `subtopic ${renderTrendBadge(getSubSeries(gid))}`;
-      fmeta.textContent = `${(a?.count ?? 0).toLocaleString()} items`;
-      if (fspark) fspark.innerHTML = renderSubSparkline(gid, sphereColor(g.cl));
-      renderFocusCrumbs(cl, gid);
-      renderFocusSubreddits(cl, gid, sphereColor(g.cl));
-      renderFocusStances(null);  // clear the cluster-level shortcut
-      renderFocusVoices(cl, gid);
-      focusCard.classList.remove('hidden');
     }
-    globe.loadThreadArcs([]);
   });
 
   document.querySelectorAll('.intro-cluster-chip').forEach((btn) => {
@@ -1012,14 +925,6 @@ async function boot() {
   // Hoisted here so the hover handlers can check the toggle modes before
   // their key listeners are registered farther down.
   let _spaceDown = false;
-  let _shiftActive = false;
-  let _shiftEpoch = 0;
-  let _priorThreadsEnabled = false;
-  // Mirrors _shiftActive into the cross-module store. Cheap; called from
-  // the same handful of sites that flip the closure variable.
-  function _publishConnectionsMode() {
-    try { store.set({ modes: { connections: _shiftActive } }); } catch {}
-  }
   // Mirrors sprout-overlay activity. Called from sproutSpawn (after pushing
   // sprouts) and sproutClear (after teardown). Reads `activeSprouts.length`
   // + `_spaceDown` rather than threading a boolean through every callsite.
@@ -1031,7 +936,7 @@ async function boot() {
     } catch {}
   }
 
-  // ─── Globe hover → floating cursor tooltip + thread arcs ────────
+  // ─── Globe hover → floating cursor tooltip ───────────────────────
   // Tooltip is a fixed-position card that follows the mouse. It replaces
   // the old sidebar preview + the "Hot now" placeholder block.
   const pointTooltip = document.getElementById('point-tooltip');
@@ -1050,17 +955,16 @@ async function boot() {
     pointTooltip.classList.add('hidden');
   };
   // ─── Cursor-over-card guard ──────────────────────────────────────
-  // Hover tooltip + halo + thread arcs all read messy when the cursor
-  // is over a floating panel: the tooltip can stack on top of the card
-  // body, the halo shows for a point the user can't actually see, and
-  // arcs flicker through the panel chrome. We track cursor position
-  // globally and gate every hover affordance on whether the cursor is
-  // currently over an opaque panel. Listener is in capture phase so
-  // panel-internal pointermoves still register.
+  // Hover tooltip + halo read messy when the cursor is over a floating
+  // panel: the tooltip can stack on top of the card body and the halo
+  // shows for a point the user can't actually see. We track cursor
+  // position globally and gate every hover affordance on whether the
+  // cursor is currently over an opaque panel. Listener is in capture
+  // phase so panel-internal pointermoves still register.
   const _cardSelectors = [
-    '.pinned-view', '.interview-card', '.focus-card',
+    '.pinned-view', '.interview-card',
     '#tour-overlay .tour-card', '#tour-overlay .tour-hero', '#tour-overlay .tour-outro',
-    '#bookmarks-panel', '#search-suggestions', '#nav', '.timeline',
+    '#search-suggestions', '#nav', '.timeline',
   ].join(', ');
   let _cursorOverCard = false;
   const _isOverCard = (target) => {
@@ -1076,12 +980,22 @@ async function boot() {
         hoverPointIdx = -1;
         try { globe.setHoverPoint(-1); } catch {}
         try { globe.canvas.style.cursor = ''; } catch {}
-        if (globe._hoverArcsActive) {
-          try { restoreFocusThreads(); } catch {}
-        }
       }
     }
   }, true);
+  // Belt-and-braces: when the cursor enters #nav (or leaves the globe
+  // canvas) at speed, the pointermove tracking above can lag a frame —
+  // force the tooltip + hover state down immediately on these enter/leave
+  // events so a stale popup never lingers over the left panel.
+  const _forceHideHover = () => {
+    _cursorOverCard = true;
+    hideTooltip();
+    hoverPointIdx = -1;
+    try { globe.setHoverPoint(-1); } catch {}
+    try { globe.canvas.style.cursor = ''; } catch {}
+  };
+  document.getElementById('nav')?.addEventListener('pointerenter', _forceHideHover);
+  globe.canvas.addEventListener('pointerleave', _forceHideHover);
   globe.addEventListener('hover', async (ev) => {
     // Suppress the hover card entirely while SPACE is held — otherwise
     // moving the mouse around to read the sprouts keeps flashing
@@ -1094,26 +1008,35 @@ async function boot() {
     const { idx, clientX, clientY } = ev.detail;
     if (idx < 0) {
       hideTooltip();
-      if (globe._hoverArcsActive) restoreFocusThreads();
       return;
     }
     try {
       const details = await getPointDetails(App.state, idx);
+      // The hover dispatch above is async (chunk fetch). If the cursor
+      // moved off the canvas onto a panel during the await, _cursorOverCard
+      // flipped true — bail before painting the tooltip so a stale popup
+      // doesn't pop up over the nav.
+      if (_cursorOverCard || _spaceDown || hoverPointIdx !== idx) {
+        hideTooltip();
+        return;
+      }
       const title = (details.title || '').trim();
       const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
       const meta = App.state.clusterMeta[String(details.cluster)];
       const catName = meta ? meta.name : `Topic ${details.cluster}`;
       const clColor = sphereColor(details.cluster);
+      // Highlight the active search query inside the hover tooltip too,
+      // matching the pinned-post / thread-context behaviour (#4).
+      const _hvParsedQ = getActiveSearchParsed();
       pointTooltip.innerHTML = `
         <div class="hv-cluster" style="color:${clColor}">${catName}</div>
         <div class="hv-meta">r/${escapeHtml(details.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
-        ${title ? `<div class="hv-title">${escapeHtml(title)}</div>` : ''}
-        <div class="hv-body">${escapeHtml(body)}</div>
+        ${title ? `<div class="hv-title">${highlightSearchHits(title, _hvParsedQ)}</div>` : ''}
+        <div class="hv-body">${highlightSearchHits(body, _hvParsedQ)}</div>
       `;
       pointTooltip.classList.remove('hidden');
       pointTooltip.classList.add('visible');
       if (clientX != null) positionTooltip(clientX, clientY);
-      if (!_shiftActive || pinnedPointIdx < 0) buildHoverArcs(idx, details);
     } catch (e) {}
   });
   globe.addEventListener('hovermove', (ev) => {
@@ -1145,10 +1068,6 @@ async function boot() {
       _setSelection({ pinnedIdx: ev.detail.idx });
       globe.setPinnedPoint(pinnedPointIdx);
       showDetailCard(details);
-      // Connections mode: smoothly redraw arcs around the new pin so
-      // the user can pin → see context → pin a different post → see
-      // new context, without ever leaving "view threads" mode.
-      if (_shiftActive) refreshConnectionsIfActive();
     }
   });
   globe.addEventListener('pinhover', (ev) => {
@@ -1174,18 +1093,10 @@ async function boot() {
       } });
     } catch {}
   }
-  function clearSelectedPoint({ refreshRelations = true } = {}) {
-    const hadPinned = pinnedPointIdx >= 0;
+  function clearSelectedPoint(_opts = {}) {
     _setSelection({ pinnedIdx: -1, hoveredIdx: -1 });
     globe.setPinnedPoint(-1);
     globe.setHoverPoint(-1);
-    // Smooth refresh: when the user clears a pin while in connections
-    // mode, slide the arc set to "visible-pool sample" rather than
-    // hide-then-show (which flickered the arcs through empty for a
-    // frame). The new render path is idempotent.
-    if (hadPinned && refreshRelations && _shiftActive) {
-      refreshConnectionsIfActive();
-    }
   }
   globe.addEventListener('hover', (ev) => {
     if (_spaceDown) { hoverPointIdx = -1; globe.setHoverPoint(-1); globe.canvas.style.cursor = ''; return; }
@@ -1276,7 +1187,23 @@ async function boot() {
     const dimArr = globe.pointGeom?.attributes?.dim?.array;
     const matchesFocus = (i) => dimArr ? dimArr[i] > 0.5 : true;
 
-    // 1) Collect ALL on-screen + focus-matching points (up to a cap).
+    // 1) Collect on-screen + focus-matching points inside the centered
+    //    sub-disc. Disc center = camera focal screen position (viewport
+    //    center, since the globe is canvas-centered). Disc diameter =
+    //    viewport_h * SPROUT_DISC_FRAC, so radius = viewport_h *
+    //    SPROUT_DISC_FRAC / 2. With the default 0.5 the diameter is half
+    //    the viewport height. Cards are placed on a ring strictly outside
+    //    this disc so leader lines stay short and never cross (#25).
+    const DISC_W = globe.canvas.clientWidth;
+    const DISC_H = globe.canvas.clientHeight;
+    const discCx = DISC_W * 0.5;
+    const discCy = DISC_H * 0.5;
+    const discR = DISC_H * SPROUT_DISC_FRAC * 0.5;
+    const inDisc = (sx, sy) => {
+      const ddx = sx - discCx;
+      const ddy = sy - discCy;
+      return (ddx * ddx + ddy * ddy) <= (discR * discR);
+    };
     const POOL_CAP = 800;
     const pool = [];
     const stride = Math.max(1, Math.floor(N / 4000));
@@ -1287,6 +1214,7 @@ async function boot() {
       const lon = state.coords[2 * idx + 1];
       const s = _screenOf(lat, lon);
       if (!s) continue;
+      if (!inDisc(s.x, s.y)) continue;
       pool.push({ idx, lat, lon, sx: s.x, sy: s.y });
     }
     // If we skipped too many by stride (e.g. zoomed way in, or filter is
@@ -1299,10 +1227,14 @@ async function boot() {
         const lon = state.coords[2 * idx + 1];
         const s = _screenOf(lat, lon);
         if (!s) continue;
+        if (!inDisc(s.x, s.y)) continue;
         pool.push({ idx, lat, lon, sx: s.x, sy: s.y });
       }
     }
-    if (pool.length === 0) return;
+    if (pool.length === 0) {
+      _showSproutsEmptyNote();
+      return;
+    }
     if (token !== sproutRenderToken) return;
 
     // 2) Pick 5 with margin-aware + greedy max-min spatial diversity.
@@ -1415,8 +1347,11 @@ async function boot() {
     if (token !== sproutRenderToken) return;
 
     // ── Phase 1: build DOM + measure ────────────────────────────────────
-    // Each "rec" carries the anchor screen pos, measured card box, and the
-    // current proposed (bx, by) — repulsion mutates bx/by in place.
+    // Each "rec" carries the anchor screen pos, measured card box, and a
+    // proposed (bx, by). For the disc-radiate layout the seed is on the
+    // ring (discR + SPROUT_DISC_RING_OFFSET_PX) at the anchor's angle from
+    // the disc center; sorting by angle and de-conflicting along the ring
+    // guarantees non-crossing leader lines (#12).
     activeSprouts = [];
     const recs = [];
     for (const { k, d } of details) {
@@ -1463,80 +1398,127 @@ async function boot() {
       const bw = el.offsetWidth || 200;
       const bh = el.offsetHeight || 80;
 
-      // Seed: place card SPROUT_INITIAL_OFFSET_PX from anchor on the side
-      // that has the most room (toward viewport center). The repulsion pass
-      // will refine. Card top-left is positioned so the anchor sits roughly
-      // along the card's nearest edge.
-      const cxv = W * 0.5, cyv = H * 0.5;
-      const dirX = (cxv - k.sx) || 0.001;
-      const dirY = (cyv - k.sy) || 0.001;
-      const dlen = Math.hypot(dirX, dirY);
-      const ox = (dirX / dlen) * SPROUT_INITIAL_OFFSET_PX;
-      const oy = (dirY / dlen) * SPROUT_INITIAL_OFFSET_PX;
-      // Anchor sits at near edge: shift box so its near edge is offset by ox/oy.
-      let bx = k.sx + ox - (ox < 0 ? bw : 0);
-      let by = k.sy + oy - (oy < 0 ? bh : 0);
+      // Anchor angle: from disc center to the anchor's screen pos. Cards
+      // place on a ring just outside the disc at that same angle.
+      const ang = Math.atan2(k.sy - discCy, k.sx - discCx);
       recs.push({
-        k, d, el, bw, bh, bx, by, anchorColor,
-        ax: k.sx, ay: k.sy,
+        k, d, el, bw, bh, anchorColor,
+        ax: k.sx, ay: k.sy, ang,
+        bx: 0, by: 0,
       });
     }
 
-    // ── Phase 2: iterative repulsion ───────────────────────────────────
-    // Push each card away from every other card's bbox + every anchor
-    // (so cards don't sit on dense point regions). Clamp inside viewport.
+    // ── Phase 2: ring-radial layout ────────────────────────────────────
+    // Sort by anchor angle so iteration order matches visual order around
+    // the disc; each card center sits on a ring at radius =
+    // discR + RING_OFFSET + card_half_size, so the card's inner edge clears
+    // the disc by RING_OFFSET. If two adjacent cards collide, slide the
+    // later one along the ring until clear. After clamping inside the
+    // viewport we re-project any card that crossed back into the disc.
+    recs.sort((a, b) => a.ang - b.ang);
     const m = SPROUT_VIEWPORT_MARGIN_PX;
-    const gap = SPROUT_CARD_GAP_PX;
-    const anchors = recs.map((r) => ({ x: r.ax, y: r.ay }));
-    for (let it = 0; it < SPROUT_REPEL_ITERATIONS; it++) {
-      let moved = 0;
-      for (let i = 0; i < recs.length; i++) {
-        const r = recs[i];
-        let dx = 0, dy = 0;
-        // Card-vs-card AABB overlap → push apart along centroid axis.
-        for (let j = 0; j < recs.length; j++) {
-          if (i === j) continue;
-          const o = recs[j];
-          const overlapX = Math.min(r.bx + r.bw + gap, o.bx + o.bw + gap)
-                        - Math.max(r.bx - gap, o.bx - gap);
-          const overlapY = Math.min(r.by + r.bh + gap, o.by + o.bh + gap)
-                        - Math.max(r.by - gap, o.by - gap);
-          if (overlapX > 0 && overlapY > 0) {
-            const rcx = r.bx + r.bw * 0.5, rcy = r.by + r.bh * 0.5;
-            const ocx = o.bx + o.bw * 0.5, ocy = o.by + o.bh * 0.5;
-            const vx = rcx - ocx, vy = rcy - ocy;
-            const vlen = Math.hypot(vx, vy) || 1;
-            const push = SPROUT_REPEL_STEP_PX;
-            dx += (vx / vlen) * push;
-            dy += (vy / vlen) * push;
-          }
-        }
-        // Anchor avoidance: push away from any anchor inside the card+pad.
-        for (let a = 0; a < anchors.length; a++) {
-          const ax = anchors[a].x, ay = anchors[a].y;
-          // Closest point on card rect to anchor.
-          const px = Math.max(r.bx, Math.min(ax, r.bx + r.bw));
-          const py = Math.max(r.by, Math.min(ay, r.by + r.bh));
-          const ddx = (r.bx + r.bw * 0.5) - ax;
-          const ddy = (r.by + r.bh * 0.5) - ay;
-          const dist = Math.hypot(px - ax, py - ay);
-          // Skip the card's own anchor — the leader line connects to it; we
-          // don't want to repel the card off its own point.
-          if (a === i) continue;
-          if (dist < SPROUT_ANCHOR_AVOID_PX) {
-            const vlen = Math.hypot(ddx, ddy) || 1;
-            const strength = (SPROUT_ANCHOR_AVOID_PX - dist) / SPROUT_ANCHOR_AVOID_PX;
-            dx += (ddx / vlen) * SPROUT_REPEL_STEP_PX * strength;
-            dy += (ddy / vlen) * SPROUT_REPEL_STEP_PX * strength;
-          }
-        }
-        if (dx === 0 && dy === 0) continue;
-        const nbx = Math.max(m, Math.min(W - m - r.bw, r.bx + dx));
-        const nby = Math.max(m, Math.min(H - m - r.bh, r.by + dy));
-        if (nbx !== r.bx || nby !== r.by) moved++;
-        r.bx = nbx; r.by = nby;
+    const innerR = discR + SPROUT_DISC_RING_OFFSET_PX;
+    const placeAtAngle = (r, ang) => {
+      const cardHalf = Math.hypot(r.bw, r.bh) * 0.5;
+      const ringR = innerR + cardHalf;
+      const cxR = discCx + Math.cos(ang) * ringR;
+      const cyR = discCy + Math.sin(ang) * ringR;
+      let bx = cxR - r.bw * 0.5;
+      let by = cyR - r.bh * 0.5;
+      // Clamp inside viewport.
+      bx = Math.max(m, Math.min(W - m - r.bw, bx));
+      by = Math.max(m, Math.min(H - m - r.bh, by));
+      // If the viewport clamp pulled the card center back inside the disc,
+      // push it radially outward so its center sits on innerR again.
+      const ccx = bx + r.bw * 0.5;
+      const ccy = by + r.bh * 0.5;
+      const dxC = ccx - discCx;
+      const dyC = ccy - discCy;
+      const distC = Math.hypot(dxC, dyC) || 1;
+      if (distC < innerR) {
+        const ux = dxC / distC;
+        const uy = dyC / distC;
+        bx = discCx + ux * innerR - r.bw * 0.5;
+        by = discCy + uy * innerR - r.bh * 0.5;
+        bx = Math.max(m, Math.min(W - m - r.bw, bx));
+        by = Math.max(m, Math.min(H - m - r.bh, by));
       }
-      if (moved === 0) break;
+      r.bx = bx; r.by = by; r.ang = ang;
+    };
+    for (const r of recs) placeAtAngle(r, r.ang);
+    // De-collide along the ring — bump each card's angle clockwise until
+    // its bbox no longer overlaps the previous card's bbox.
+    const gap = SPROUT_CARD_GAP_PX;
+    const overlaps = (a, b) => {
+      const ox = Math.min(a.bx + a.bw + gap, b.bx + b.bw + gap)
+               - Math.max(a.bx - gap, b.bx - gap);
+      const oy = Math.min(a.by + a.bh + gap, b.by + b.bh + gap)
+               - Math.max(a.by - gap, b.by - gap);
+      return ox > 0 && oy > 0;
+    };
+    const ANGLE_STEP = 0.04;
+    for (let i = 1; i < recs.length; i++) {
+      let safety = 80;
+      while (safety-- > 0 && overlaps(recs[i - 1], recs[i])) {
+        placeAtAngle(recs[i], recs[i].ang + ANGLE_STEP);
+      }
+    }
+
+    // ── Phase 2b: dodge tour modal ─────────────────────────────────────
+    // During the tour the modal floats over the bottom-right of the canvas.
+    // A sprout card landing in that quadrant gets visually buried under it.
+    // Treat any visible .tour-card as an obstacle bbox: bump the card's
+    // angle until it clears, trying both directions so we don't loop the
+    // ring uselessly.
+    const obstacles = [];
+    try {
+      const canvasRect = globe.canvas.getBoundingClientRect();
+      const PAD = SPROUT_CARD_GAP_PX;
+      document.querySelectorAll('#tour-overlay .tour-card:not(.hidden)').forEach((tc) => {
+        const r = tc.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) return;
+        const lx = r.left - canvasRect.left - PAD;
+        const ly = r.top - canvasRect.top - PAD;
+        const rw = r.width + PAD * 2;
+        const rh = r.height + PAD * 2;
+        // Only count obstacles that actually intrude into the canvas.
+        if (lx + rw <= 0 || ly + rh <= 0 || lx >= W || ly >= H) return;
+        obstacles.push({ bx: lx, by: ly, bw: rw, bh: rh });
+      });
+    } catch {}
+    const hitsObstacle = (r) => {
+      for (const o of obstacles) {
+        const ox = Math.min(r.bx + r.bw, o.bx + o.bw) - Math.max(r.bx, o.bx);
+        const oy = Math.min(r.by + r.bh, o.by + o.bh) - Math.max(r.by, o.by);
+        if (ox > 0 && oy > 0) return true;
+      }
+      return false;
+    };
+    if (obstacles.length) {
+      for (const r of recs) {
+        if (!hitsObstacle(r)) continue;
+        const startAng = r.ang;
+        let cleared = false;
+        // Try both rotational directions (up to ~2π) and pick the first
+        // angle at which the card clears every obstacle.
+        for (let step = 1; step <= 160 && !cleared; step++) {
+          const delta = step * ANGLE_STEP;
+          for (const sign of [-1, 1]) {
+            placeAtAngle(r, startAng + sign * delta);
+            if (!hitsObstacle(r)) { cleared = true; break; }
+          }
+        }
+        if (!cleared) placeAtAngle(r, startAng);
+      }
+      // One more neighbor de-collide pass — angle-sort first since
+      // dodging may have re-ordered cards around the ring.
+      recs.sort((a, b) => a.ang - b.ang);
+      for (let i = 1; i < recs.length; i++) {
+        let safety = 80;
+        while (safety-- > 0 && overlaps(recs[i - 1], recs[i])) {
+          placeAtAngle(recs[i], recs[i].ang + ANGLE_STEP);
+        }
+      }
     }
 
     // ── Phase 3: commit positions + render leader lines + halos ─────────
@@ -1598,12 +1580,34 @@ async function boot() {
     if (immediate) {
       sproutsEl.innerHTML = '';
       slClearLinesSafe();
+    } else {
+      // Hide any lingering empty-note even on animated clears.
+      const note = document.getElementById('sprouts-empty-note');
+      if (note) { note.classList.remove('show'); setTimeout(() => note.remove(), 240); }
     }
     _publishSproutsMode();
   }
   function slClearLinesSafe() {
     if (!sproutLinesEl) return;
     while (sproutLinesEl.firstChild) sproutLinesEl.removeChild(sproutLinesEl.firstChild);
+  }
+  // Inline note shown when the disc-bound pool is empty (zoomed too far in,
+  // narrow filter, or the user is looking at the back of the sphere). Auto-
+  // dismisses; sproutClear also removes it.
+  function _showSproutsEmptyNote() {
+    if (!sproutsEl) return;
+    const old = document.getElementById('sprouts-empty-note');
+    if (old) old.remove();
+    const note = document.createElement('div');
+    note.id = 'sprouts-empty-note';
+    note.className = 'sprout-empty-note';
+    note.textContent = 'Few points here — try rotating';
+    sproutsEl.appendChild(note);
+    requestAnimationFrame(() => note.classList.add('show'));
+    setTimeout(() => {
+      note.classList.remove('show');
+      setTimeout(() => note.remove(), 240);
+    }, 1800);
   }
   function updateSprouts() {
     if (!activeSprouts.length) return;
@@ -1663,6 +1667,9 @@ async function boot() {
     keys: [' '],
     priority: 25,
     label: 'sprouts-toggle',
+    helpLabel: 'Hold Space — sprout snippets from posts on screen',
+    helpGroup: 'navigate',
+    helpKeys: ['Space'],
     when: () => !document.body.classList.contains('tour-active'),
     handler: (e) => {
       if (!_sproutSpaceAllowed(e)) return false;
@@ -1686,22 +1693,14 @@ async function boot() {
   });
 
   // ─── HUD buttons ────────────────────────────────────────────────
-  const btnThreads = document.getElementById('btn-threads');
   // Per-toggle preferences persist so the user doesn't have to re-disable
-  // labels / pins / threads on every reload. Keys: vizPref.labels, .pins,
-  // .threads — each 'on' | 'off'. Defaults: labels on, pins on, threads off.
+  // labels / pins on every reload. Keys: vizPref.labels, .pins — each 'on' | 'off'.
+  // Defaults: labels on, pins on.
   const _prefKey = 'pref';
   const _prefs = storage.getJSON(_prefKey, {}) || {};
   function _savePrefs() {
     storage.setJSON(_prefKey, _prefs);
   }
-  if (btnThreads) btnThreads.onclick = () => {
-    const next = !globe.threadArcsEnabled;
-    globe.setThreadsEnabled(next);
-    btnThreads.classList.toggle('on', next);
-    _prefs.threads = next ? 'on' : 'off';
-    _savePrefs();
-  };
   const btnLabels = document.getElementById('btn-labels');
   if (btnLabels) btnLabels.onclick = () => {
     labelsEnabled = !labelsEnabled;
@@ -1728,7 +1727,6 @@ async function boot() {
   queueMicrotask(() => {
     if (_prefs.labels === 'off' && btnLabels?.classList.contains('on')) btnLabels.click();
     if (_prefs.pins === 'off' && btnPins?.classList.contains('on')) btnPins.click();
-    if (_prefs.threads === 'on' && btnThreads && !btnThreads.classList.contains('on')) btnThreads.click();
   });
   const btnReset = document.getElementById('btn-reset');
   // True reset — unwinds drill focus, subreddit filter, timeline range,
@@ -1740,7 +1738,6 @@ async function boot() {
     _spaceDown = false;
     cancelSproutClearTimer();
     sproutClear({ immediate: true });
-    if (_shiftActive) shiftHideRelations();
     hideInterviewCard();
     clearSelectedPoint();
     // Subreddit filter
@@ -1760,9 +1757,10 @@ async function boot() {
     ss?.classList.add('hidden');
     // Close pinned view if open
     hidePinnedView();
-    // Drop the pinned back-stack so ← on the pinned-view doesn't keep
-    // offering posts from the session before the reset.
+    // Drop the pinned back/forward stacks so ←/→ on the pinned-view don't
+    // keep offering posts from the session before the reset.
     _pinnedBackStack.length = 0;
+    _pinnedForwardStack.length = 0;
     _currentDetailPin = null;
     _syncPvBackBtn();
     // Clear hash last — after all state changes
@@ -1808,9 +1806,8 @@ async function boot() {
   // ─── Timeline scrubber: drag a date range to filter the globe ───
   initTimeline({ App, globe, storage, store, writeHash: () => (typeof writeHash === "function") && writeHash(),
     refreshOnRange: () => {
-      // Re-rank the cluster-level loudest list + subreddit agenda when the
-      // range changes so they reflect the period the user is studying.
-      if (nav.focusCl != null && nav.focusGid == null) renderFocusStances(nav.focusCl);
+      // Re-rank the subreddit agenda when the range changes so it reflects
+      // the period the user is studying.
       if (_activeSubredditFilter) _renderSubredditAgendaPanel();
     },
   });
@@ -1828,6 +1825,8 @@ async function boot() {
     keys: ['[', ']', '{', '}'],
     priority: 20,
     label: 'lateral-nav',
+    helpLabel: '[ ] cycle stances · { } cycle subtopics within current topic',
+    helpGroup: 'navigate',
     handler: (e) => {
       const k = e.key;
       if (k === '[' || k === ']') {
@@ -1941,6 +1940,11 @@ async function boot() {
         if (!a) continue;
         const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         t.classList.add('lbl-sub');
+        // Subtopic labels carry their parent cluster's colour proudly —
+        // not a faint white. Stroke (set in cards.css) keeps them legible
+        // against the globe.
+        t.style.fill = clusterColor(c);
+        t.style.fontWeight = '600';
         t.textContent = s.name;
         labelSvg.appendChild(t);
         subLabelEls.set(`${c}_${s.sub}`, { el: t, lat: a.lat, lon: a.lon, count: a.count, name: s.name, cl: c });
@@ -2135,8 +2139,6 @@ async function boot() {
   }
 
   globe._onFrame = () => {
-    const rvHint = document.getElementById('reset-view-hint');
-    if (rvHint) rvHint.classList.toggle('rv-away', !!globe.isZoomedAwayFromCanonical?.());
     // Pin DOM projection is owned by globe._tick now (runs immediately
     // after the camera tween updates), so we only drive the auxiliary
     // overlays from the per-frame hook.
@@ -2158,6 +2160,7 @@ async function boot() {
     const placed = [];
 
     function project(info, fontSize, strongPri = false) {
+      if (!Number.isFinite(info.lat) || !Number.isFinite(info.lon)) return null;
       const wp = globe.worldPositionOf(info.lat, info.lon, 1.0);
       const facing = wp.x*(camPos.x-wp.x) + wp.y*(camPos.y-wp.y) + wp.z*(camPos.z-wp.z);
       if (facing <= 0) return null;
@@ -2165,6 +2168,7 @@ async function boot() {
       if (proj.z > 1) return null;
       const sx = (proj.x * 0.5 + 0.5) * w;
       const sy = (-proj.y * 0.5 + 0.5) * h;
+      if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
       const sz = approxTextSize(info.el.textContent || '', fontSize);
       const pad = strongPri ? 2 : 6;
       const box = { x0: sx - sz.w/2 - pad, x1: sx + sz.w/2 + pad, y0: sy - sz.h/2 - pad, y1: sy + sz.h/2 + pad };
@@ -2223,14 +2227,15 @@ async function boot() {
         const size = 11 + (1 - zoomNorm) * 1.5;
         let op;
         if (focusKey == null) {
-          op = 0.95;
+          op = 1;
         } else if (key === focusKey) {
           op = 1;
         } else {
-          // Fade sub labels by angular distance to the focused sub.
-          // ~0 rad → 0.72, 0.3 rad → 0.38, 0.7+ rad → 0.18.
+          // Fade sub labels by angular distance to the focused sub, but
+          // keep the falloff gentler than before so the cluster's other
+          // subtopics still read brightly nearby.
           const ang = angDistTo(info, focusSubXYZ);
-          op = Math.max(0.18, 0.72 - ang * 0.75);
+          op = Math.max(0.35, 0.95 - ang * 0.75);
         }
         if (!tryPlace(info, size, op)) info.el.style.opacity = '0';
       }
@@ -2277,7 +2282,7 @@ async function boot() {
       if (t > 0.02) {
         const size = 10.5 + (1 - zoomNorm) * 1.2;
         for (const [, info] of subLabelEls) {
-          if (!tryPlace(info, size, t * 0.85)) info.el.style.opacity = '0';
+          if (!tryPlace(info, size, t)) info.el.style.opacity = '0';
         }
       } else {
         for (const [, info] of subLabelEls) info.el.style.opacity = '0';
@@ -2301,6 +2306,47 @@ async function boot() {
     if (Array.isArray(arr) && arr.length) return arr.map(x => String(x).trim()).filter(Boolean);
     if (iv.quote) return [String(iv.quote).trim()].filter(Boolean);
     return [];
+  }
+  // Per-id character sketches for the 18 interviews. interviews.json only
+  // carries `id`, `themes`, `quotes` — no role/bio/lives — so a generic
+  // theme-list template ("Cares about X, Y, Z.") reads like metadata
+  // instead of a person. Hand-written sentences below paint each Px as
+  // a human carrying those concerns, without fabricating demographics.
+  const INTERVIEW_SKETCHES = {
+    P1: "High schoolers caught at Quincy Red Line, walking-and-bussing to school and the mall while their family scouts a Braintree house to rent the old one out.",
+    P2: "Legal assistant a week from retirement, lives on the water in Squantum and rides the ferry downtown — calls it half an hour of pure delight.",
+    P3: "Retired homemaker and kids' crossing guard, interviewed at a Bánh Mi shop; her one transit wish is a self-driving car so she never parallel-parks again.",
+    P4: "MBTA Transit Ambassador out of Weymouth, drives to a different assigned station every shift because most of them have nowhere for staff to park.",
+    P5: "Electrician on the Braintree Commuter Rail platform, two hours each way to a Chelsea jobsite, finishes the trip on an electric scooter to skip parking.",
+    P6: "Construction worker at the Braintree bus station, lives in Weymouth where no transit runs Sunday, so the only way to the station that day is an Uber.",
+    P7: "Pastry chef at UMass/JFK working Back Bay and Seaport kitchens, has lived in Braintree, Southie, Beacon Hill, and Dorchester chasing a shorter commute.",
+    P8: "South Shore high schoolers — Weymouth, Scituate — riding the commuter rail an hour-plus each way to a Boston exam school, making the case for free fares.",
+    P9: "Practice assistant at Brigham and Women's, catches the 4:25am train out of Bedford because it was the only apartment that felt affordable after New York.",
+    P10: "UMass Boston student commuting in from Brockton, juggling commuter rail and a bus-to-Red-Line backup once the morning trains stop running direct.",
+    P11: "Delivers medical equipment for Boston Scientific from Dorchester to Quincy by commuter rail, glad to skip car payments, gas, and worrying about accidents.",
+    P12: "Boston Public Schools teacher who bought a Dorchester house through the city's first-time buyer program and drives to Hyde Park; pregnant wife rides the T.",
+    P13: "Medical technician in from Middleborough, 45 minutes by commuter rail and bus to Beth Israel, points out the MBTA app itself logs his line under 75% on-time.",
+    P14: "UMass Amherst student raised in Brockton, home for the weekend at JFK/UMass, says he's actually happy with how transit works for him.",
+    P15: "Startup CTO who left Seattle for SF to launch a company, takes two MUNI buses thirty minutes each way and wants the connection to vanish.",
+    P16: "Medford homeowner Andrea, decade of working from home, wants to move into Cambridge to drop one car after her express bus was paused for COVID and never restored.",
+    P17: "Philly resident from Fairmount visiting friends in Boston, drives 30 minutes to a New Jersey desk job in industrial pump rentals, frustrated PA transit lives or dies on state funding.",
+    P18: "MIT postdoc, 31, lives in Somerville with three housemates because the salary won't cover a one-bedroom; bikes to lab year-round and calls Boston riding life-threatening.",
+  };
+  // Build a one-line human descriptor for an interview. Prefers a
+  // hand-written sketch keyed by id; falls back to a themes paraphrase
+  // for any interview added later that we haven't sketched yet.
+  function interviewDescriptor(iv) {
+    if (!iv) return '';
+    const sketch = INTERVIEW_SKETCHES[iv.id];
+    if (sketch) return sketch;
+    const themes = Array.isArray(iv.themes) ? iv.themes.map(t => String(t).trim()).filter(Boolean) : [];
+    if (!themes.length) return 'A street voice from the Boston housing & transit conversation.';
+    const picks = themes.slice(0, 3);
+    let phrase;
+    if (picks.length === 1) phrase = picks[0];
+    else if (picks.length === 2) phrase = `${picks[0]} and ${picks[1]}`;
+    else phrase = `${picks.slice(0, -1).join(', ')}, and ${picks[picks.length - 1]}`;
+    return `Carries the ${phrase} side of the conversation.`;
   }
   function subtopicLineForPin(pin) {
     if (pin == null || pin.sub == null) return '';
@@ -2401,7 +2447,6 @@ async function boot() {
     btnVoices.classList.toggle('on', !showing);
     if (!showing) {
       // Showing voices → hide other cards
-      focusCard.classList.add('hidden');
       hidePinnedView();
       document.getElementById('interview-card').classList.add('hidden');
       hideInspectorEmpty();
@@ -2439,38 +2484,44 @@ async function boot() {
     pointTooltip.classList.add('hidden');
   }
 
-  // Interview + position cards. In the current minimal layout, #insp-body
-  // is CSS-hidden via display:none !important, which nukes the whole
-  // subtree — so clicking an interview pin or an L3 position bar
-  // populated the card but rendered nothing. Moving them out on boot
-  // lets those interactions actually show the card at top-right.
+  // Interview + pinned cards live INSIDE #insp-body — the permanent
+  // bottom pane of the 50/50 nav split. They stack naturally and replace
+  // the empty/intro state when active.
   const ic = document.getElementById('interview-card');
-  if (ic && ic.parentElement?.id === 'insp-body') {
-    document.body.appendChild(ic);
-  }
-  // Pinned post lives INSIDE #insp-body (B1: nav-resident, not floating).
   const pvEl = dom.el('pinnedView');
-  const fcEl = document.getElementById('focus-card');
-  if (fcEl && fcEl.parentElement?.id === 'insp-body') {
-    document.body.appendChild(fcEl);
-  }
-  const bmCardEl = document.getElementById('bookmarks-card');
-  if (bmCardEl && bmCardEl.parentElement?.id === 'insp-body') {
-    document.body.appendChild(bmCardEl);
-  }
-  // Keep <body class="has-floating-card"> in sync so CSS can fade the
-  // keyboard hints when a card covers that top-right region. Uses a
-  // single MutationObserver watching each card's class attribute.
-  // (Pinned-view is nav-resident now and doesn't count as a floating card.)
+  // Empty-state restoration: the bottom (details) pane is permanent.
+  // Whenever every card in it is hidden, ensure the intro / empty state
+  // is visible so the pane never reads as a blank dark band. Watching
+  // class attributes catches every hide path (pv-back, Esc, tour
+  // cleanup, hideInterviewCard, etc.) without us having to rewrite each
+  // callsite.
   (() => {
-    const cards = [ic, fcEl].filter(Boolean);
-    if (cards.length === 0) return;
+    const navCards = [pvEl, ic].filter(Boolean);
+    const inspEmptyEl = document.getElementById('insp-empty-main');
+    if (navCards.length === 0 || !inspEmptyEl) return;
+    const voicesEl = document.getElementById('voices-list-inline');
     const refresh = () => {
-      const anyVisible = cards.some(c => !c.classList.contains('hidden'));
-      document.body.classList.toggle('has-floating-card', anyVisible);
+      const anyVisible = navCards.some(c => !c.classList.contains('hidden'))
+        || (voicesEl && !voicesEl.classList.contains('hidden'));
+      // When any inspector card is showing, hide the empty/intro and clear
+      // the intro-globe highlight. When nothing is showing, restore it.
+      if (anyVisible) {
+        if (!inspEmptyEl.classList.contains('hidden')) {
+          inspEmptyEl.classList.add('hidden');
+          inspEmptyEl.classList.add('compact');
+          try { storage.set('intro-seen', '1'); } catch {}
+          try { clearIntroGlobeHighlightIfActive(); } catch {}
+        }
+      } else {
+        if (inspEmptyEl.classList.contains('hidden')) {
+          inspEmptyEl.classList.remove('hidden');
+          try { syncIntroGlobeHighlight?.(); } catch {}
+        }
+      }
     };
     const obs = new MutationObserver(refresh);
-    for (const c of cards) obs.observe(c, { attributes: true, attributeFilter: ['class'] });
+    for (const c of navCards) obs.observe(c, { attributes: true, attributeFilter: ['class'] });
+    if (voicesEl) obs.observe(voicesEl, { attributes: true, attributeFilter: ['class'] });
     refresh();
   })();
   const icClose = document.getElementById('ic-close');
@@ -2483,81 +2534,28 @@ async function boot() {
     if (!ic) return;
     hidePinnedView();
     clearSelectedPoint();
-    focusCard.classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
     const iv = (App.state.interviews?.interviews || []).find(x => x.id === pin.id);
     if (!iv) return;
     const color = sphereColor(pin.cluster);
-    const topic = pin.cluster_name || App.state.clusterMeta?.[String(pin.cluster)]?.name || `Topic ${pin.cluster}`;
-    const subn = subtopicLineForPin(pin);
-    const topicLine = subn ? `${topic} · ${subn}` : topic;
     const quotes = interviewQuotes(iv);
     const quotesHtml = quotes.length
       ? `<div class="ic-quotes">${quotes.map(q => `<blockquote class="ic-quote" style="border-left-color:${color}">“${escapeHtml(q)}”</blockquote>`).join('')}</div>`
       : '';
-    const bridge =
-      `This pin sits among threads in “${topic}”${subn ? ` → “${subn}”` : ''} because the interview text matched language in this region of the map. It is one street voice, not a summary of every post here.`;
+    const descriptor = interviewDescriptor(iv);
     ic.innerHTML = `
       <button class="ic-close" id="ic-close-btn" aria-label="Close">×</button>
       <div class="ic-head">
-        <div class="ic-avatar" style="background:${color}">${escapeHtml(pin.id)}</div>
-        <div class="ic-head-text">
-          <div class="ic-eyebrow">Street voice</div>
-          <div class="ic-role">${escapeHtml(topicLine)}</div>
-        </div>
+        <span class="ic-pin-chip" style="--rc-color:${color}">${escapeHtml(pin.id)}</span>
+        <p class="ic-descriptor">${escapeHtml(descriptor)}</p>
       </div>
       ${quotesHtml}
-      <p class="ic-bridge">${escapeHtml(bridge)}</p>
-      <div class="ic-reddit-row">
-        <div class="ic-reddit-label">Nearest Reddit voice</div>
-        <button class="ic-reddit-btn" id="ic-reddit-btn">open the pinned thread →</button>
-      </div>
-      ${(() => {
-        // Surface 3 top Reddit stances from the same sub this interview
-        // is pinned to — turns the card into a launchpad into the data.
-        const gid = App.subGidMap.byLocal[pin.cluster]?.[pin.sub];
-        if (gid == null) return '';
-        const doc = App.state.positionAnchors?.[String(gid)];
-        if (!doc || !doc.positions) return '';
-        const picks = doc.positions
-          .map((p, i) => ({ p, i }))
-          .filter(o => o.p.count && o.p.count > 0)
-          .sort((a, b) => (b.p.count || 0) - (a.p.count || 0))
-          .slice(0, 3);
-        if (picks.length === 0) return '';
-        const chips = picks.map(o => `
-          <button class="ic-nearby-stance" data-gid="${gid}" data-pos="${o.i}" data-cl="${pin.cluster}"
-                  style="--rc-color:${color}" title="${escapeHtml(o.p.description || '')}">
-            <span class="ic-ns-dot" style="background:${color}"></span>
-            <span class="ic-ns-name">${escapeHtml(o.p.name)}</span>
-            <span class="ic-ns-count">${(o.p.count || 0).toLocaleString()}</span>
-          </button>
-        `).join('');
-        return `
-          <div class="ic-nearby-label">Stances in "${escapeHtml(doc.sub_name || '')}"</div>
-          <div class="ic-nearby-list">${chips}</div>
-        `;
-      })()}
     `;
     ic.classList.remove('hidden');
     scrollCardIntoView(ic);
     document.getElementById('ic-close-btn').onclick = hideInterviewCard;
-    document.getElementById('ic-reddit-btn').onclick = async () => {
-      const d = await getPointDetails(App.state, pin.idx);
-      openRedditThreadOrDetail(d);
-    };
-    // Nearby-stance chips → drill to that position.
-    ic.querySelectorAll('.ic-nearby-stance').forEach(btn => {
-      btn.onclick = () => {
-        const gid = +btn.dataset.gid;
-        const pos = +btn.dataset.pos;
-        const clb = +btn.dataset.cl;
-        nav.focus({ cl: clb, gid });
-        scheduleFocusPosition(clb, gid, pos, 220);
-      };
-    });
     // Rotate the globe so the pin faces the camera, then drop the pulse.
     globe.rotateTo(pin.lat, pin.lon, STANCE_FRAMING);
     pulseAt(pin.lat, pin.lon, sphereColor(pin.cluster));
@@ -2597,237 +2595,15 @@ async function boot() {
     setTimeout(() => el.remove(), 1100);
   }
 
-  // Connections mode redraws on focus change so the visible-pool
-  // sampler stays in sync with whatever filter is now active. Wait
-  // for the dim buffer to settle before re-sampling (focus changes
-  // are animated; the dim attribute updates in the same RAF tick but
-  // the user-perceptible "settle" includes the camera).
-  nav.addEventListener('focus', () => {
-    if (!_shiftActive) return;
-    setTimeout(() => { try { refreshConnectionsIfActive(); } catch {} }, 600);
-  });
-
-  // ─── Hover arcs (per-point thread connections) ────────────────
-  let hoverEpoch = 0;
-  // ─── Connections relation buckets ─────────────────────────────
-  // Lazy build: on first use, iterate every chunk and bucket points
-  // by postId (extracted from permalink). Cached forever.
-  let _threadMap = null;
-  async function ensureThreadMap() {
-    if (_threadMap) return _threadMap;
-    const st = App.state;
-    const byPost = new Map();
-    for (let ci = 0; ci < st.manifest.files.length; ci++) {
-      let p = st.chunkCache.get(ci);
-      if (!p) {
-        p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
-        st.chunkCache.set(ci, p);
-      }
-      const c = await p;
-      const off = c.offset;
-      const perms = c.permalink || [];
-      for (let j = 0; j < c.n; j++) {
-        const pm = perms[j] || '';
-        const m = pm.match(/\/comments\/([a-z0-9]+)\//);
-        if (!m) continue;
-        const id = m[1];
-        let arr = byPost.get(id);
-        if (!arr) { arr = []; byPost.set(id, arr); }
-        arr.push(off + j);
-      }
-    }
-    _threadMap = byPost;
-    return byPost;
-  }
-
-  async function relationPairsForPoint(idx) {
-    if (idx == null || idx < 0) return [];
-    const details = await getPointDetails(App.state, idx);
-    const m = (details?.permalink || '').match(/\/comments\/([a-z0-9]+)\//);
-    const postId = m ? m[1] : null;
-    if (!postId) return [];
-    const postIdx = await buildPostIndex();
-    const anchorIdx = postIdx.get(postId);
-    const siblings = await siblingsForThread(postId);
-    const anchor = anchorIdx != null && siblings.includes(anchorIdx) ? anchorIdx : idx;
-    const pairs = [];
-    for (const s of siblings) {
-      if (s !== anchor) pairs.push([anchor, s]);
-    }
-    if (anchor !== idx) pairs.push([anchor, idx]);
-    return pairs;
-  }
-  // ─── Connections mode (formerly shift-to-show) ───────────────────
-  // Now a persistent VIEW MODE rather than a transient toggle.
-  //
-  //   • Toggling on  → arcs render for whatever's currently pinned
-  //                    (or, if nothing pinned, a sample of visible
-  //                    threads from the current filter).
-  //   • Pinning a different post   → arcs SMOOTHLY refresh to that
-  //                                  post's thread.
-  //   • Drilling cluster/sub/pos   → if no pin, arcs refresh to the
-  //                                  newly visible pool. With a pin,
-  //                                  the user's pin still drives.
-  //   • Clearing a pin via Esc     → arcs refresh to the visible pool;
-  //                                  mode stays on.
-  //   • Toggling off  → via C, the chip, or the explicit Clear affordance.
-  //
-  // The chip's `is-on` class mirrors `_shiftActive` exactly, so the
-  // user always has a visible signal of the current mode.
-  function _syncShiftHint() {
-    const sh = document.getElementById('shift-hint');
-    if (sh) sh.classList.toggle('is-on', _shiftActive);
-  }
-
-  // Internal: actually compute and load the arcs for the current
-  // selected/visible state. `epoch` is captured once per call so a
-  // later refresh aborts an earlier in-flight render. Safe to call
-  // back-to-back during user actions.
-  async function _renderConnectionArcs() {
-    if (!_shiftActive) return;
-    const epoch = ++_shiftEpoch;
-    const selectedIdx = pinnedPointIdx >= 0 ? pinnedPointIdx : hoverPointIdx;
-    if (selectedIdx >= 0) {
-      const selectedPairs = await relationPairsForPoint(selectedIdx);
-      if (epoch !== _shiftEpoch || !_shiftActive) return;
-      if (selectedPairs.length > 0) {
-        await globe.loadThreadArcs(selectedPairs, { thin: true, opacity: 0.7 });
-        if (epoch !== _shiftEpoch || !_shiftActive) return;
-        globe.threadArcsEnabled = true;
-        if (globe.threadArcs) globe.threadArcs.visible = true;
-        return;
-      }
-      // pinned point isn't a Reddit thread (or has no siblings) →
-      // fall through to the visible-pool sampler.
-    }
-    const map = await ensureThreadMap();
-    if (epoch !== _shiftEpoch || !_shiftActive) return;
-    const dimArr = globe.pointGeom?.attributes?.dim?.array;
-    const candidates = [];
-    for (const [id, idxs] of map) {
-      if (idxs.length < 2) continue;
-      let visible = false;
-      for (const pi of idxs) {
-        if (!dimArr || dimArr[pi] > 0.5) { visible = true; break; }
-      }
-      if (!visible) continue;
-      candidates.push({ id, idxs, n: idxs.length });
-    }
-    if (candidates.length === 0) {
-      // No visible threads under current filter — keep the mode on
-      // but draw nothing. (Don't flip _shiftActive off; that would
-      // surprise the user and desync the chip.)
-      await globe.loadThreadArcs([], { thin: true, opacity: 0.55 });
-      return;
-    }
-    candidates.sort(() => Math.random() - 0.5);
-    const picks = candidates.slice(0, 60);
-    const postIndex = await buildPostIndex();
-    const pairs = [];
-    for (const c of picks) {
-      const anchorIdx = postIndex.get(c.id);
-      const anchor = anchorIdx != null && c.idxs.includes(anchorIdx) ? anchorIdx : c.idxs[0];
-      for (const m of c.idxs) {
-        if (m === anchor) continue;
-        pairs.push([anchor, m]);
-        if (pairs.length >= 1500) break;
-      }
-      if (pairs.length >= 1500) break;
-    }
-    if (epoch !== _shiftEpoch || !_shiftActive) return;
-    await globe.loadThreadArcs(pairs, { thin: true, opacity: 0.55 });
-    if (epoch !== _shiftEpoch || !_shiftActive) return;
-    globe.threadArcsEnabled = true;
-    if (globe.threadArcs) globe.threadArcs.visible = true;
-  }
-
-  // Public refresh hook — called from `clearSelectedPoint` and the
-  // nav focus listener. Cheap when the mode is off.
-  async function refreshConnectionsIfActive() {
-    if (!_shiftActive) return;
-    await _renderConnectionArcs();
-  }
-
-  async function shiftShowRelations() {
-    if (_shiftActive) return;
-    _shiftActive = true;
-    _publishConnectionsMode();
-    _priorThreadsEnabled = globe.threadArcsEnabled;
-    _syncShiftHint();
-    await _renderConnectionArcs();
-    emphasizeDetailContextForConnections();
-  }
-  function shiftHideRelations() {
-    if (!_shiftActive) return;
-    _shiftActive = false;
-    _publishConnectionsMode();
-    _shiftEpoch++;
-    _syncShiftHint();
-    clearDetailContextEmphasis();
-    globe.threadArcsEnabled = _priorThreadsEnabled;
-    if (globe.threadArcs) globe.threadArcs.visible = _priorThreadsEnabled;
-    if (!_priorThreadsEnabled) globe.loadThreadArcs([]);
-  }
-  window.App.toggleConnectionsMode = () => {
-    if (_shiftActive) shiftHideRelations();
-    else shiftShowRelations();
-    return _shiftActive;
-  };
-  window.App.connectionsModeActive = () => _shiftActive;
-  window.App.refreshConnections = refreshConnectionsIfActive;
-  window.App.emphasizeDetailContextForConnections = emphasizeDetailContextForConnections;
-
-  keys.bind({
-    keys: ['c'],
-    priority: 25,
-    label: 'connections-toggle',
-    handler: (e) => {
-      e.preventDefault();
-      window.App.toggleConnectionsMode();
-      return true;
-    },
-  });
-
-  // Make the connections chip a real button. Click toggles the mode;
-  // its visual `is-on` state is owned by `_syncShiftHint()` so it
-  // always agrees with `_shiftActive`.
-  (() => {
-    const chip = document.getElementById('shift-hint');
-    if (!chip) return;
-    chip.addEventListener('click', (e) => {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      window.App.toggleConnectionsMode();
-    });
-    _syncShiftHint();
-  })();
-
-  window.App.clearTransientModes = () => {
-    _spaceDown = false;
-    cancelSproutClearTimer();
-    window.App.clearSprouts({ immediate: true });
-    if (_shiftActive) shiftHideRelations();
-    clearSelectedPoint({ refreshRelations: false });
-    hideTooltip();
-    hideInterviewCard();
-    hidePinnedView();
-  };
-  // Escape: the universal "back out of transient modes" key, split across
-  // three separate bindings (priority 50). All three may run on a single
-  // press because they target distinct, simultaneously-active modes
-  // (sprouts + connections + pinned point). Each handler returns `false`
-  // so the next priority-50 binding still sees the event; this preserves
-  // the original "clear all transient modes at once" behavior.
-  //
-  // Note: the original handler used stopImmediatePropagation() to suppress
-  // layered handlers when no top-level overlay was open. Under the unified
-  // dispatcher there is exactly one window-level keydown listener, so
-  // stopImmediatePropagation is no longer necessary; priority ordering does
-  // the same job.
+  // Esc cascade (#28): scattershot dismissal owns the highest non-tour Esc
+  // slot. When sprouts are up, Esc dismisses just them and stops the
+  // cascade so pinned cards / search / camera-zoom stay put. When sprouts
+  // are absent it falls through to the priority-50 handlers below.
   keys.bind({
     keys: ['Escape'],
-    priority: 50,
+    priority: 75,
     label: 'esc-clear-sprouts',
+    helpHidden: true,
     handler: (e) => {
       const sproutHang = sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
       const hasSprouts = _spaceDown || activeSprouts.length > 0 || !!sproutHang;
@@ -2836,24 +2612,14 @@ async function boot() {
       cancelSproutClearTimer();
       window.App.clearSprouts({ immediate: true });
       e.preventDefault();
-      return false;
-    },
-  });
-  keys.bind({
-    keys: ['Escape'],
-    priority: 50,
-    label: 'esc-clear-connections',
-    handler: (e) => {
-      if (!_shiftActive) return false;
-      shiftHideRelations();
-      e.preventDefault();
-      return false;
+      return true;
     },
   });
   keys.bind({
     keys: ['Escape'],
     priority: 50,
     label: 'esc-clear-pinned-point',
+    helpHidden: true,
     handler: (e) => {
       if (pinnedPointIdx < 0) return false;
       clearSelectedPoint();
@@ -2862,29 +2628,9 @@ async function boot() {
     },
   });
 
-  async function buildHoverArcs(idx, details) {
-    const myEpoch = ++hoverEpoch;
-    const st = App.state;
-    const m = (details.permalink || '').match(/\/comments\/([a-z0-9]+)\//);
-    const postId = m ? m[1] : null;
-    if (!postId) { restoreFocusThreads(); return; }
-    const postIdx = await buildPostIndex();
-    if (myEpoch !== hoverEpoch) return;
-    const pIdx = postIdx.get(postId);
-    const siblings = await siblingsForThread(postId);
-    if (myEpoch !== hoverEpoch) return;
-    const pairs = [];
-    const anchor = pIdx != null ? pIdx : idx;
-    for (const s of siblings) {
-      if (s === anchor) continue;
-      pairs.push([anchor, s]);
-    }
-    if (anchor !== idx) pairs.push([anchor, idx]);
-    if (pairs.length === 0) { restoreFocusThreads(); return; }
-    globe.loadThreadArcs(pairs, { thin: true, opacity: 0.65 });
-    globe._hoverArcsActive = true;
-  }
-
+  // Lookup of all points sharing the same Reddit thread (postId). Used
+  // by `renderDetailContext` to populate the pinned-view's Thread Context
+  // surface. Cached per postId for the life of the session.
   const siblingsCache = new Map();
   async function siblingsForThread(postId) {
     if (siblingsCache.has(postId)) return siblingsCache.get(postId);
@@ -2906,60 +2652,108 @@ async function boot() {
     siblingsCache.set(postId, out);
     return out;
   }
-  function restoreFocusThreads() {
-    hoverEpoch++;
-    globe._hoverArcsActive = false;
-    globe.loadThreadArcs([]);
-  }
 
   // ─── Pinned view (Reddit post/comment) — B1: lives in nav, not floating
+  // Single-column thread layout: post on top, comments below, pinned row
+  // gets an accent rail. See viz/css/pinned.css `.pv-row` family.
   const pinnedView    = dom.el('pinnedView');
-  const pvMeta        = dom.el('pvMeta');
-  const pvPostTitle   = dom.el('pvPostTitle');
-  const pvPostBody    = dom.el('pvPostBody');
-  const pvPostLink    = dom.el('pvPostLink');
   const pvBackBtn     = dom.el('pvBack');
-  const pvCloseBtn    = dom.el('pvClose');
+  const pvForwardBtn  = dom.el('pvForward');
   const pvThreadEl    = dom.el('pvThread');
-  // Hoisted so showDetailCard / bookmark wiring can reference it before the
-  // bookmarks block declares the rest of the persistent UI further down.
+  // Clear button lives in the pane-header next to Back/Forward. Disabled when
+  // nothing is pinned; click drops the thread + empties both nav stacks.
+  const pvClearBtn    = document.getElementById('pv-clear');
   let _currentDetailPin = null;
-  // Back-stack for pinned points. Capped at 10. Each entry is the prior
-  // pinned-pin payload (the same `d` shape passed to showDetailCard).
+  // Back/Forward stacks for pinned points (browser-history semantics).
+  // Both capped at 10. Each entry is a pinned-pin payload (the same `d`
+  // shape passed to showDetailCard). Back pops top → pushes current onto
+  // Forward; Forward pops top → pushes current onto Back; any *new* pin
+  // (via showDetailCard) clears the Forward stack.
   const PV_BACKSTACK_MAX = 10;
   const _pinnedBackStack = [];
-  function _syncPvBackBtn() {
-    if (!pvBackBtn) return;
-    const can = _pinnedBackStack.length > 0;
-    pvBackBtn.disabled = !can;
-    pvBackBtn.setAttribute('aria-disabled', can ? 'false' : 'true');
+  const _pinnedForwardStack = [];
+  function _syncPvControls() {
+    const canBack = _pinnedBackStack.length > 0;
+    const canForward = _pinnedForwardStack.length > 0;
+    const interviewOpen = !!ic && !ic.classList.contains('hidden');
+    if (pvBackBtn) {
+      pvBackBtn.disabled = !canBack;
+      pvBackBtn.setAttribute('aria-disabled', canBack ? 'false' : 'true');
+    }
+    if (pvForwardBtn) {
+      pvForwardBtn.disabled = !canForward;
+      pvForwardBtn.setAttribute('aria-disabled', canForward ? 'false' : 'true');
+    }
+    // Clear is enabled whenever a pin is showing OR a P-pin interview card
+    // is showing OR there is nav history in either direction.
+    const canClear = !!_currentDetailPin || interviewOpen || canBack || canForward;
+    if (pvClearBtn) {
+      pvClearBtn.disabled = !canClear;
+      pvClearBtn.setAttribute('aria-disabled', canClear ? 'false' : 'true');
+    }
   }
+  // Back-compat aliases — earlier code paths called _syncPvBackBtn().
+  const _syncPvBackBtn = _syncPvControls;
+  const _syncPvForwardBtn = _syncPvControls;
   function hidePinnedView() {
     if (!pinnedView) return;
     pinnedView.classList.add('hidden');
   }
-  if (pvCloseBtn) pvCloseBtn.onclick = () => {
+  if (pvClearBtn) pvClearBtn.onclick = () => {
+    // Clear becomes part of the navigation history: push the current pin
+    // onto the back stack (so Back restores it), then drop the displayed
+    // thread. The forward stack is dropped — Clear ends the user's
+    // forward branch the same way a fresh pin would. Also dismisses the
+    // P-pin interview card if one is open, so Clear is the single
+    // "blank-slate" button regardless of which surface owns the focus.
+    if (_currentDetailPin) {
+      _pinnedBackStack.push(_currentDetailPin);
+      if (_pinnedBackStack.length > PV_BACKSTACK_MAX) _pinnedBackStack.shift();
+    }
+    _pinnedForwardStack.length = 0;
+    _currentDetailPin = null;
     hidePinnedView();
-    _pinnedBackStack.length = 0;
-    _syncPvBackBtn();
+    hideInterviewCard();
+    _syncPvControls();
     clearSelectedPoint();
   };
+  // Shared re-pin helper: drives globe selection + camera and renders the
+  // pinned view without touching either nav stack. Both Back and Forward
+  // handlers route through here so the two flows stay symmetric.
+  function _navigateToPin(target) {
+    if (!target) return;
+    if (typeof target.idx === 'number' && target.idx >= 0) {
+      _setSelection({ pinnedIdx: target.idx });
+      globe.setPinnedPoint(target.idx);
+      const lat = App.state.coords?.[2 * target.idx];
+      const lon = App.state.coords?.[2 * target.idx + 1];
+      if (lat != null && lon != null) globe.rotateTo(lat, lon, ZOOM_TO_POINT_FRAMING);
+    }
+    _renderPinned(target);
+  }
   if (pvBackBtn) pvBackBtn.onclick = () => {
     if (_pinnedBackStack.length === 0) return;
     const prev = _pinnedBackStack.pop();
-    _syncPvBackBtn();
-    if (!prev) return;
-    // Re-pin via globe so the camera + selection state both follow the
-    // user back to the prior post. Use _renderPinned (no stack push).
-    if (typeof prev.idx === 'number' && prev.idx >= 0) {
-      _setSelection({ pinnedIdx: prev.idx });
-      globe.setPinnedPoint(prev.idx);
-      const lat = App.state.coords?.[2 * prev.idx];
-      const lon = App.state.coords?.[2 * prev.idx + 1];
-      if (lat != null && lon != null) globe.rotateTo(lat, lon, ZOOM_TO_POINT_FRAMING);
-      if (_shiftActive) refreshConnectionsIfActive();
+    // Push the current pin onto the forward stack so Forward can return
+    // to it. Cap at the same depth as the back stack.
+    if (_currentDetailPin) {
+      _pinnedForwardStack.push(_currentDetailPin);
+      if (_pinnedForwardStack.length > PV_BACKSTACK_MAX) _pinnedForwardStack.shift();
     }
-    _renderPinned(prev);
+    _syncPvControls();
+    _navigateToPin(prev);
+  };
+  if (pvForwardBtn) pvForwardBtn.onclick = () => {
+    if (_pinnedForwardStack.length === 0) return;
+    const next = _pinnedForwardStack.pop();
+    // Push the current pin onto the back stack (mirror of Back's push to
+    // forward) so the user can ← back to where they just were.
+    if (_currentDetailPin) {
+      _pinnedBackStack.push(_currentDetailPin);
+      if (_pinnedBackStack.length > PV_BACKSTACK_MAX) _pinnedBackStack.shift();
+    }
+    _syncPvControls();
+    _navigateToPin(next);
   };
   /** Prefer opening the Reddit thread in a new tab when we have a permalink. */
   function openRedditThreadOrDetail(d) {
@@ -2985,145 +2779,321 @@ async function boot() {
       _pinnedBackStack.push(_currentDetailPin);
       if (_pinnedBackStack.length > PV_BACKSTACK_MAX) _pinnedBackStack.shift();
     }
+    // Standard browser-history semantics: any *new* pin (i.e. not a same-idx
+    // re-render) invalidates the forward stack. Back/Forward handlers route
+    // through _renderPinned directly so they don't trip this clear.
+    if (d && !sameIdx) _pinnedForwardStack.length = 0;
     _renderPinned(d);
   }
   function _renderPinned(d) {
     if (!pinnedView) return;
     if (ic) ic.classList.add('hidden');
-    focusCard.classList.add('hidden');
     if (voicesInline) voicesInline.classList.add('hidden');
     const btnV = document.getElementById('btn-voices'); if (btnV) btnV.classList.remove('on');
     hideInspectorEmpty();
-    if (d._metaOverride != null) {
-      pvMeta.innerHTML = `<span class="pv-meta-text">${escapeHtml(d._metaOverride)}</span>`;
-    } else {
-      const left = `r/${escapeHtml(d.subreddit)} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month)}`;
-      pvMeta.innerHTML = `<span class="pv-meta-text">${left}</span>${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}`;
-    }
-    // Highlight active search query inside the pinned post (#4). The
-    // helper escapes everything, so it's safe to drop into innerHTML.
-    const _parsedQ = getActiveSearchParsed();
-    pvPostTitle.innerHTML = highlightSearchHits((d.title || '').trim(), _parsedQ);
-    pvPostBody.innerHTML = highlightSearchHits((d.body || '').slice(0, 1600), _parsedQ);
-    if (d.permalink) { pvPostLink.href = d.permalink; pvPostLink.style.display = ''; }
-    else pvPostLink.style.display = 'none';
     _currentDetailPin = d;
-    _syncPvBackBtn();
-    if (typeof updateDetailBookmarkBtn === 'function') updateDetailBookmarkBtn();
+    _syncPvControls();
     pinnedView.classList.remove('hidden');
-    renderDetailContext(d, pvThreadEl).catch(() => {});
+    // Render an immediate fallback (just the pinned row, highlighted) so
+    // the panel never appears empty while the thread fetch resolves.
+    _paintThread(d, [], { loading: true });
+    renderDetailContext(d).catch(() => {});
     scrollCardIntoView(pinnedView);
   }
 
-  function clearDetailContextEmphasis() {
-    pvThreadEl?.classList.remove('connections-focus');
+  // ─── Thread renderer ────────────────────────────────────────────
+  // Builds the unified Reddit-style column inside #pv-thread:
+  //   row 0   = the OP (post)        — `.pv-row--post`
+  //   rows 1+ = sibling comments     — `.pv-row--comment`
+  // The pinned target gets `.pv-row--pinned` (accent rail + tint).
+  // Thread membership comes from `siblingsForThread(postId)` which walks
+  // every chunk and collects all idxs whose permalink shares the same
+  // /comments/{postId}/ id. Chunk data has no parent_id/link_id, so we
+  // render a flat list (ordered: comments by score desc).
+  function _renderRowHtml(det, { idx, isPinned, isPost, parsedQ, depth = 1 }) {
+    const col = det != null ? sphereColor(det.cluster) : '#666';
+    const cls = [
+      'pv-row',
+      isPost ? 'pv-row--post' : 'pv-row--comment',
+      isPinned ? 'pv-row--pinned' : '',
+    ].filter(Boolean).join(' ');
+    const titleRaw = (det?.title || '').trim();
+    const title = (isPost && titleRaw)
+      ? `<h3 class="pv-row-title">${highlightSearchHits(titleRaw, parsedQ)}</h3>`
+      : '';
+    // No truncation — the full body is always rendered. Long threads are
+    // managed by chunked lazy loading in _paintThread (IntersectionObserver
+    // on a sentinel <li>) rather than per-row clamps + "… more" buttons.
+    const rawBody = ((det?.body || '').replace(/\s+\n/g, '\n').trim()) || (isPost ? '' : '(no text)');
+    const meta = det
+      ? `r/${escapeHtml(det.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(det.type))}${det.month ? ' · ' + escapeHtml(det.month) : ''}${det.score != null ? ' · ' + redditScoreInlineHtml(det.score) : ''}`
+      : 'unknown';
+    const linkUrl = (det?.permalink || '').trim();
+    const linkAttr = linkUrl
+      ? (/^https?:\/\//i.test(linkUrl) ? linkUrl : `https://www.reddit.com${linkUrl.startsWith('/') ? '' : '/'}${linkUrl}`)
+      : '';
+    // Tiny "open in new tab" glyph: square frame + arrow popping out top-right.
+    // Replaces the prior "View on Reddit ↗" text link to keep rows uncluttered.
+    const link = linkAttr
+      ? `<a class="pv-row-link" href="${escapeHtml(linkAttr)}" target="_blank" rel="noopener" data-act="open" aria-label="Open on Reddit" title="Open on Reddit">
+           <svg class="pv-row-link-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+             <path d="M9.5 2.5h4v4"/>
+             <path d="M13.5 2.5L7 9"/>
+             <path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/>
+           </svg>
+         </a>`
+      : '';
+    // Reddit-thread layout for posts: title sits at top (big), then meta,
+    // then body. Comments use meta → body (no title) so they read as
+    // replies under the post.
+    const inner = isPost
+      ? `${title}
+         <div class="pv-row-meta">
+           <span class="pv-row-dot" style="background:${col}"></span>
+           <span class="pv-row-meta-text">${meta}</span>
+           ${link}
+         </div>
+         <div class="pv-row-body">${highlightSearchHits(rawBody, parsedQ)}</div>`
+      : `<div class="pv-row-meta">
+           <span class="pv-row-dot" style="background:${col}"></span>
+           <span class="pv-row-meta-text">${meta}</span>
+           ${link}
+         </div>
+         <div class="pv-row-body">${highlightSearchHits(rawBody, parsedQ)}</div>`;
+    return `
+      <li>
+        <button type="button" class="${cls}" data-idx="${idx}" data-depth="${depth}"
+                aria-pressed="${isPinned ? 'true' : 'false'}"
+                title="${isPinned ? 'Pinned' : 'Click to pin and rotate to this point'}">
+          ${inner}
+        </button>
+      </li>
+    `;
   }
 
-  function emphasizeDetailContextForConnections() {
-    if (!pvThreadEl || pvThreadEl.classList.contains('hidden')) return false;
-    pvThreadEl.classList.add('connections-focus');
-    try { pvThreadEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
-    return true;
+  // Render a (possibly partial) thread immediately. `postDet` may be null
+  // when the post belonging to a pinned comment isn't resolvable; in that
+  // case the pinned comment is promoted to the top "post" slot and no
+  // siblings are shown. `loading` paints a spinner-line under the rows.
+  //
+  // Comments are not capped: we render the post + pinned comment + first
+  // CHUNK_SIZE siblings, then drop a sentinel <li> at the bottom that an
+  // IntersectionObserver watches against the single scroll container
+  // (#insp-body, ~200px rootMargin). When it intersects, the next chunk is
+  // appended in place. When all siblings are rendered we replace the
+  // sentinel with a quiet "loaded all N comments" footer.
+  //
+  // Depth>1 collapse hook: chunk data carries no parent_id today so all
+  // rows render at depth=1 (flat). If/when parent_id arrives, comments
+  // with depth > 1 are grouped under their parent and rendered into a
+  // collapsed `<ul class="pv-row-replies hidden">` toggled by a small
+  // "show N replies" button. The hook lives in _wireRowClicks below.
+  let _threadObserver = null;
+  function _disposeThreadObserver() {
+    if (_threadObserver) { try { _threadObserver.disconnect(); } catch {} _threadObserver = null; }
+  }
+  const PV_CHUNK_SIZE = 12;
+
+  function _wireRowClicks(rowEl, pinnedIdx) {
+    rowEl.addEventListener('click', (ev) => {
+      if (ev.target.closest('a[data-act="open"]')) return;
+      if (ev.target.closest('.pv-replies-toggle')) return;
+      ev.stopPropagation();
+      const idx = +rowEl.dataset.idx;
+      if (isNaN(idx) || idx === pinnedIdx) return;
+      // Canonical "pin this index" entry point: selects on globe,
+      // rotates camera, re-renders pinned-view (which lands the new
+      // highlighted row in this same panel). See features/search-find.js.
+      pinPointByIndex(idx);
+    });
   }
 
-  // Thread context list in the pinned view. Rendered into the passed target
-  // element so the renderer is not hardcoded to a single id.
+  function _paintThread(d, allDetailsByIdx, { loading = false, postIdx = null } = {}) {
+    if (!pvThreadEl) return;
+    _disposeThreadObserver();
+    const parsedQ = getActiveSearchParsed();
+    const pinnedIdx = d?.idx ?? -1;
+    const map = allDetailsByIdx instanceof Map
+      ? allDetailsByIdx
+      : new Map((allDetailsByIdx || []).map(x => [x?.idx, x]));
+    // Always keep a copy of the pinned d in the map so we don't refetch it.
+    if (pinnedIdx >= 0 && !map.has(pinnedIdx)) map.set(pinnedIdx, d);
+
+    // Determine which idx is the post (type === 'submission').
+    let resolvedPostIdx = postIdx;
+    if (resolvedPostIdx == null) {
+      for (const [i, det] of map) {
+        if (det?.type === 'submission') { resolvedPostIdx = i; break; }
+      }
+    }
+    // Whether the pinned target IS the post itself.
+    const pinnedIsPost = resolvedPostIdx != null && resolvedPostIdx === pinnedIdx;
+
+    let rowsHtml = '';
+
+    // Row 1: the post. The corpus only sampled a fraction of every Reddit
+    // thread — for many comments the parent post isn't in our data. In
+    // that case we still render an empty placeholder post slot so the
+    // viewer always reads as Reddit-thread-shaped (post on top, comments
+    // below). The pinned comment then renders as the first comment.
+    if (resolvedPostIdx != null) {
+      const postDet = map.get(resolvedPostIdx);
+      rowsHtml += _renderRowHtml(postDet, {
+        idx: resolvedPostIdx,
+        isPost: true,
+        isPinned: pinnedIsPost,
+        parsedQ,
+      });
+    } else {
+      rowsHtml += `<li>
+        <div class="pv-row pv-row--post pv-row--placeholder" aria-hidden="true">
+          <div class="pv-row-meta">
+            <span class="pv-row-dot pv-row-dot--placeholder"></span>
+            <span class="pv-row-meta-text">Original post not in our sample</span>
+          </div>
+        </div>
+      </li>`;
+    }
+
+    // Rows 2+: comments. If the pinned target is itself a comment, place
+    // it FIRST so the user's pinned context is visible without scrolling.
+    const commentIdxs = [];
+    for (const [i, det] of map) {
+      if (i === resolvedPostIdx) continue;
+      if (det == null) continue;
+      commentIdxs.push(i);
+    }
+    // Sort: pinned-comment first, then by score desc (null score sinks).
+    commentIdxs.sort((a, b) => {
+      if (a === pinnedIdx) return -1;
+      if (b === pinnedIdx) return 1;
+      const sa = map.get(a)?.score ?? -Infinity;
+      const sb = map.get(b)?.score ?? -Infinity;
+      return sb - sa;
+    });
+
+    // First chunk renders inline; the rest stream in via IntersectionObserver.
+    const firstChunk = commentIdxs.slice(0, PV_CHUNK_SIZE);
+    for (const i of firstChunk) {
+      const det = map.get(i);
+      rowsHtml += _renderRowHtml(det, {
+        idx: i,
+        isPost: false,
+        isPinned: i === pinnedIdx,
+        parsedQ,
+      });
+    }
+
+    if (loading) {
+      rowsHtml += `<li class="pv-thread-loading">Loading thread context…</li>`;
+    } else if (commentIdxs.length > firstChunk.length) {
+      // Sentinel for the IntersectionObserver. No visible label — we don't
+      // want a "+N more" affordance; chunks just appear as the user scrolls.
+      rowsHtml += `<li class="pv-thread-sentinel" aria-hidden="true"></li>`;
+    } else if (commentIdxs.length > 0) {
+      rowsHtml += `<li class="pv-thread-end">All ${commentIdxs.length} comment${commentIdxs.length === 1 ? '' : 's'} loaded</li>`;
+    }
+
+    pvThreadEl.innerHTML = rowsHtml;
+    pvThreadEl.classList.remove('hidden');
+
+    // Wire up clicks on the rows we just painted.
+    pvThreadEl.querySelectorAll('.pv-row').forEach(rowEl => _wireRowClicks(rowEl, pinnedIdx));
+
+    // Set up chunked lazy load if more comments remain.
+    if (!loading && commentIdxs.length > firstChunk.length) {
+      let cursor = firstChunk.length;
+      const root = document.getElementById('insp-body'); // single scroll container
+      const sentinel = pvThreadEl.querySelector('.pv-thread-sentinel');
+      if (sentinel && 'IntersectionObserver' in window) {
+        const renderNextChunk = () => {
+          const next = commentIdxs.slice(cursor, cursor + PV_CHUNK_SIZE);
+          if (!next.length) return;
+          // Build chunk HTML, then insert before the sentinel so the sentinel
+          // stays at the bottom and re-fires on the next scroll.
+          const frag = document.createDocumentFragment();
+          const tmp = document.createElement('ul');
+          tmp.innerHTML = next.map(i => _renderRowHtml(map.get(i), {
+            idx: i,
+            isPost: false,
+            isPinned: i === pinnedIdx,
+            parsedQ,
+          })).join('');
+          while (tmp.firstChild) {
+            const li = tmp.firstChild;
+            li.querySelectorAll('.pv-row').forEach(rowEl => _wireRowClicks(rowEl, pinnedIdx));
+            frag.appendChild(li);
+          }
+          pvThreadEl.insertBefore(frag, sentinel);
+          cursor += next.length;
+          if (cursor >= commentIdxs.length) {
+            // Done — replace sentinel with a quiet end-of-thread footer.
+            _disposeThreadObserver();
+            const end = document.createElement('li');
+            end.className = 'pv-thread-end';
+            end.textContent = `All ${commentIdxs.length} comments loaded`;
+            sentinel.replaceWith(end);
+          }
+        };
+        _threadObserver = new IntersectionObserver((entries) => {
+          for (const e of entries) if (e.isIntersecting) renderNextChunk();
+        }, { root, rootMargin: '200px 0px', threshold: 0 });
+        _threadObserver.observe(sentinel);
+      } else if (sentinel) {
+        // No IntersectionObserver support → just render everything.
+        const rest = commentIdxs.slice(cursor);
+        const tmp = document.createElement('ul');
+        tmp.innerHTML = rest.map(i => _renderRowHtml(map.get(i), {
+          idx: i,
+          isPost: false,
+          isPinned: i === pinnedIdx,
+          parsedQ,
+        })).join('');
+        const frag = document.createDocumentFragment();
+        while (tmp.firstChild) {
+          const li = tmp.firstChild;
+          li.querySelectorAll('.pv-row').forEach(rowEl => _wireRowClicks(rowEl, pinnedIdx));
+          frag.appendChild(li);
+        }
+        sentinel.replaceWith(frag);
+      }
+    }
+  }
+
+  // Thread context fetcher. Walks every chunk via siblingsForThread()
+  // (defined above), then per-idx getPointDetails for body/score, then
+  // hands the lot to _paintThread for layout.
   let _detailContextToken = 0;
-  async function renderDetailContext(d, targetEl) {
-    const ctxEl = targetEl || pvThreadEl;
-    if (!ctxEl) return;
+  async function renderDetailContext(d) {
+    if (!pvThreadEl) return;
     const token = ++_detailContextToken;
-    ctxEl.classList.add('hidden');
-    ctxEl.innerHTML = '';
     const m = (d?.permalink || '').match(/\/comments\/([a-z0-9]+)\//);
     const postId = m ? m[1] : null;
-    if (!postId || d?.idx == null) return;
-    ctxEl.classList.remove('hidden');
-    ctxEl.innerHTML = `<h4 class="pv-thread-h">Thread context</h4><div class="pv-thread-loading">Loading thread…</div>`;
-    let siblings;
-    try { siblings = await siblingsForThread(postId); }
-    catch { siblings = []; }
-    if (token !== _detailContextToken) return;
-    const others = siblings.filter(s => s !== d.idx);
-    if (others.length === 0) {
-      ctxEl.innerHTML = `<h4 class="pv-thread-h">Thread context</h4><div class="pv-thread-empty">No other points share this thread.</div>`;
-      if (_shiftActive) emphasizeDetailContextForConnections();
+    if (!postId || d?.idx == null) {
+      // No way to compute thread → fall back: pinned item alone.
+      _paintThread(d, [d], { loading: false });
       return;
     }
-    const MAX = 10;
-    const shown = others.slice(0, MAX);
-    const detailsList = await Promise.all(
-      shown.map(i => getPointDetails(App.state, i).catch(() => null))
+    let siblings;
+    try { siblings = await siblingsForThread(postId); }
+    catch { siblings = [d.idx]; }
+    if (token !== _detailContextToken) return;
+    if (!siblings.includes(d.idx)) siblings = [d.idx, ...siblings];
+
+    const allDetails = await Promise.all(
+      siblings.map(i => i === d.idx ? Promise.resolve(d) : getPointDetails(App.state, i).catch(() => null))
     );
     if (token !== _detailContextToken) return;
-
-    // Highlight matches inside thread-context entry titles (#4).
-    const _parsedQctx = getActiveSearchParsed();
-    const rowHtml = shown.map((idx, i) => {
-      const det = detailsList[i];
-      const col = det != null ? sphereColor(det.cluster) : '#666';
-      const titleText = ((det?.title || det?.body || '').replace(/\s+/g, ' ').trim()) || '(no text)';
-      const meta = det
-        ? `r/${escapeHtml(det.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(det.type))}`
-        : 'unknown';
-      return `
-        <li>
-          <button class="pv-thread-row" data-idx="${idx}" type="button">
-            <span class="pv-thread-dot" style="background:${col}"></span>
-            <span class="pv-thread-meta">${meta}</span>
-            <span class="pv-thread-title">${highlightSearchHits(titleText.slice(0, 120), _parsedQctx)}</span>
-          </button>
-        </li>
-      `;
-    }).join('');
-
-    const moreNote = others.length > shown.length
-      ? `<div class="pv-thread-more">+${others.length - shown.length} more in this thread</div>`
-      : '';
-
-    const headLabel = `Thread context · ${others.length} ${others.length === 1 ? 'point' : 'points'}`;
-    if (shown.length > 3) {
-      // Collapsible when there are many siblings — keeps the nav from
-      // getting overwhelmed by long threads.
-      ctxEl.innerHTML = `
-        <details open>
-          <summary>${headLabel}</summary>
-          <ol class="pv-thread-list">${rowHtml}</ol>
-          ${moreNote}
-        </details>
-      `;
-    } else {
-      ctxEl.innerHTML = `
-        <h4 class="pv-thread-h">${headLabel}</h4>
-        <ol class="pv-thread-list">${rowHtml}</ol>
-        ${moreNote}
-      `;
-    }
-    if (_shiftActive) emphasizeDetailContextForConnections();
-
-    const refocus = (idx) => {
-      if (idx == null || isNaN(idx)) return;
-      pinPointByIndex(idx);
-    };
-    ctxEl.querySelectorAll('.pv-thread-row').forEach(el => {
-      el.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        refocus(+el.dataset.idx);
-      });
-    });
+    const map = new Map();
+    siblings.forEach((i, k) => { if (allDetails[k]) map.set(i, allDetails[k]); });
+    _paintThread(d, map, { loading: false });
   }
   _syncPvBackBtn();
 
-  // Public API: stable signatures kept for tour beats + search-find +
-  // App.showSnippetCard. emphasizeDetailContextForConnections still works
-  // and now points at the pv-thread element.
+  // Public API: stable signature kept for tour beats + search-find +
+  // App.showSnippetCard.
   window.App.showDetailCard = showDetailCard;
 
-  // ─── Bookmarks: save pinned points for later browsing ─────────
-  const _bmAPI = initBookmarks({ App, storage, sphereColor, pinPointByIndex,
-    getCurrentDetailPin: () => _currentDetailPin });
-  const updateDetailBookmarkBtn = _bmAPI.updateDetailBookmarkBtn;
-  const syncBookmarksUI = _bmAPI.syncBookmarksUI;
   // ─── Random-five action ──────────────────────────────────────────
   // Random-sample is now an *action*, not a toggle: each fire clears
   // any currently-displayed sprouts and immediately spawns a fresh
@@ -3175,41 +3145,44 @@ async function boot() {
   window.App.clearPinnedPoint = () => {
     try { clearSelectedPoint({ refreshRelations: false }); } catch {}
   };
-  // Clear the pinned back-stack and the "currently pinned detail" pointer so
-  // the ← button on the pinned-view stops offering stale prior pins. Used
-  // wherever we hard-reset pinned state (App.resetAll, tour close, tour Esc
-  // cascade, beat cleanups that owned the pin lifecycle).
+  // Clear the pinned back/forward stacks and the "currently pinned detail"
+  // pointer so the ←/→ buttons on the pinned-view stop offering stale prior
+  // pins. Used wherever we hard-reset pinned state (App.resetAll, tour close,
+  // tour Esc cascade, beat cleanups that owned the pin lifecycle).
   window.App.clearPinnedBackStack = () => {
     _pinnedBackStack.length = 0;
+    _pinnedForwardStack.length = 0;
     _currentDetailPin = null;
     _syncPvBackBtn();
   };
   // Public alias so tour beats can hide the pinned-view through the same path
   // the close button uses, instead of poking #pinned-view.classList directly.
   window.App.hidePinnedView = () => { hidePinnedView(); };
-  window.App.clearConnectionsMode = () => {
-    try {
-      if (_shiftActive) shiftHideRelations();
-      _shiftActive = false;
-      _publishConnectionsMode();
-      _priorThreadsEnabled = false;
-      _shiftEpoch++;
-      _syncShiftHint();
-      clearDetailContextEmphasis();
-      globe.threadArcsEnabled = false;
-      if (globe.threadArcs) globe.threadArcs.visible = false;
-      globe.loadThreadArcs([]);
-    } catch {}
+  // Toggle helper: R / chip click dismisses scattershot when it's already
+  // up (#26), otherwise resamples. We branch here rather than in
+  // sampleFiveRandom() so the tour beat (which calls sampleFiveRandom
+  // directly with curated indices) keeps its always-spawn semantics.
+  const _scattershotActive = () =>
+    activeSprouts.length > 0
+    || !!sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
+  window.App.toggleScattershot = () => {
+    if (_scattershotActive()) {
+      cancelSproutClearTimer();
+      _spaceDown = false;
+      sproutClear({ immediate: true });
+      return false;
+    }
+    window.App.sampleFiveRandom();
+    return true;
   };
-  // Make the floating chip act as a button. Resampling on each click
-  // is ergonomic — the user wants new voices, not the same five.
+  // Make the floating chip act as a toggle button.
   (() => {
     const chip = document.getElementById('random-hint');
     if (!chip) return;
     chip.addEventListener('click', (e) => {
       e?.preventDefault?.();
       e?.stopPropagation?.();
-      window.App.sampleFiveRandom();
+      window.App.toggleScattershot();
     });
   })();
   // R keybind. Allowed during the guided tour (Space stays gated there).
@@ -3218,10 +3191,12 @@ async function boot() {
     keys: ['r'],
     priority: 25,
     label: 'random-five',
+    helpLabel: 'Scattershot — sample 5 random posts (press again to dismiss)',
+    helpGroup: 'navigate',
     handler: (e) => {
       if (!_sproutRandomKeyAllowed(e)) return false;
       e.preventDefault();
-      window.App.sampleFiveRandom();
+      window.App.toggleScattershot();
       return true;
     },
   });
@@ -3238,39 +3213,38 @@ async function boot() {
     });
   }
 
-  // ─── Thread arcs for focused cluster/sub ────────────────────
-  let postIndexPromise = null;
-  async function buildPostIndex() {
-    if (postIndexPromise) return postIndexPromise;
-    postIndexPromise = (async () => {
-      try {
-        const r = await fetch('tsne_chunks/post_index.json');
-        if (r.ok) {
-          const d = await r.json();
-          const m = new Map();
-          for (let i = 0; i < d.ids.length; i++) m.set(d.ids[i], d.idx[i]);
-          return m;
-        }
-      } catch (e) {}
-      const st = App.state;
-      const idx = new Map();
-      for (let ci = 0; ci < st.manifest.files.length; ci++) {
-        const c = await (st.chunkCache.get(ci) || (() => {
-          const p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
-          st.chunkCache.set(ci, p);
-          return p;
-        })());
-        const off = c.offset;
-        for (let j = 0; j < c.n; j++) {
-          if (c.type[j] !== 'submission' && c.type[j] !== 'post') continue;
-          const m = (c.permalink[j] || '').match(/\/comments\/([a-z0-9]+)\//);
-          if (m) idx.set(m[1], off + j);
-        }
+  // Stage 1.5 — keys-coverage check. Walk every chip-rendered key annotation
+  // in the DOM (kbd.sh-key plus aria-keyshortcuts attributes) and confirm
+  // each resolves to a registered handler. Catches drift like the beat-6
+  // "Press Esc to dismiss cards" hint that lies (#26).
+  setTimeout(() => {
+    try {
+      const stale = [];
+      const norm = (s) => {
+        const t = String(s || '').trim().toLowerCase();
+        if (t === 'esc' || t === 'escape') return 'Escape';
+        if (t === 'space') return ' ';
+        return t;
+      };
+      const check = (raw, hint) => {
+        const k = norm(raw);
+        if (!k) return;
+        if (!keys.hasHandlerFor(k)) stale.push({ hint, key: raw });
+      };
+      document.querySelectorAll('kbd.sh-key').forEach((el) => {
+        check(el.textContent, el.outerHTML.slice(0, 120));
+      });
+      document.querySelectorAll('[aria-keyshortcuts]').forEach((el) => {
+        const v = el.getAttribute('aria-keyshortcuts') || '';
+        for (const tok of v.split(/\s+/)) check(tok, el.tagName + '#' + (el.id || '?'));
+      });
+      for (const s of stale) {
+        console.warn('[keys] visible hint without handler:', s);
       }
-      return idx;
-    })();
-    return postIndexPromise;
-  }
+    } catch (err) {
+      console.warn('[keys] coverage check failed:', err);
+    }
+  }, 0);
 }
 
 boot().catch(e => {

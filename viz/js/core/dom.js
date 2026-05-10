@@ -5,7 +5,6 @@ const KNOWN = {
   loading: 'loading',
   loadingMsg: 'loading-msg',
   tourOverlay: 'tour-overlay',
-  helpOverlay: 'help-overlay',
   globeOverlay: 'globe-overlay',
   // tour hero / card
   tourCard: { selector: '.tour-card' },
@@ -19,7 +18,6 @@ const KNOWN = {
   hoverHalo: 'hover-halo',
   sprouts: 'sprouts',
   sproutLines: 'sprout-lines',
-  ribbonsOverlay: 'ribbons-overlay',
 
   // ── nav / sidebar ──────────────────────────────────────────────────
   nav: 'nav',
@@ -30,7 +28,6 @@ const KNOWN = {
   searchSuggestions: 'search-suggestions',
   inspBody: 'insp-body',
   inspEmptyMain: 'insp-empty-main',
-  breadcrumbs: 'breadcrumbs',
   spotlightChip: 'spotlight-chip',
   srFilterChip: 'sr-filter-chip',
   srAgendaPanel: 'sr-agenda-panel',
@@ -39,58 +36,28 @@ const KNOWN = {
   // ── chips / dock / hints ───────────────────────────────────────────
   globeControlsDock: 'globe-controls-dock',
   randomHint: 'random-hint',
-  shiftHint: 'shift-hint',
-  resetViewHint: 'reset-view-hint',
   surpriseHint: 'surprise-hint',
 
   // ── HUD buttons ────────────────────────────────────────────────────
-  btnThreads: 'btn-threads',
   btnLabels: 'btn-labels',
   btnPins: 'btn-pins',
   btnReset: 'btn-reset',
   btnShare: 'btn-share',
-  btnHelp: 'btn-help',
   btnSurprise: 'btn-surprise',
   btnVoices: 'btn-voices',
-
-  // ── bookmarks ──────────────────────────────────────────────────────
-  bookmarksToggle: 'bookmarks-toggle',
-  bookmarksToggleCount: 'bookmarks-toggle-count',
-  bookmarksCard: 'bookmarks-card',
-  bmList: 'bm-list',
-  bmEmpty: 'bm-empty',
-  bmClear: 'bm-clear',
-  bmClose: 'bm-close',
 
   // ── cards ──────────────────────────────────────────────────────────
   // pinned-view (B1: pinned-comment surface lives in nav, not floating)
   pinnedView: 'pinned-view',
   pvBack: 'pv-back',
-  pvMeta: 'pv-meta',
-  pvBookmark: 'pv-bookmark',
-  pvClose: 'pv-close',
-  pvPostTitle: 'pv-post-title',
-  pvPostBody: 'pv-post-body',
-  pvPostLink: 'pv-post-link',
+  pvForward: 'pv-forward',
   pvThread: 'pv-thread',
-  pvThreadList: 'pv-thread-list',
 
-  focusCard: 'focus-card',
-  focusKind: 'focus-kind',
-  focusTitle: 'focus-title',
-  focusMeta: 'focus-meta',
-  focusSpark: 'focus-spark',
-  focusVoices: 'focus-voices',
-  focusSubs: 'focus-subs',
-  focusStances: 'focus-stances',
   focusCompass: 'focus-compass',
-  fcBreadcrumbs: 'fc-breadcrumbs',
-  fcCopyMd: 'fc-copy-md',
 
   interviewCard: 'interview-card',
   icClose: 'ic-close',
   icCloseBtn: 'ic-close-btn',
-  icRedditBtn: 'ic-reddit-btn',
 
   voicesListInline: 'voices-list-inline',
 
@@ -107,12 +74,6 @@ const KNOWN = {
 
   // ── tour launcher ──────────────────────────────────────────────────
   tourLauncher: 'tour-launcher',
-
-  // ── help panel pieces ──────────────────────────────────────────────
-  helpClose: 'help-close',
-  helpClusterGrid: 'help-cluster-grid',
-  helpFilterAll: 'help-filter-all',
-  helpFilterHot: 'help-filter-hot',
 
   // ── misc ───────────────────────────────────────────────────────────
   layoutToggle: 'layout-toggle',

@@ -3,16 +3,16 @@
     background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.72);
     backdrop-filter: blur(6px);
     display: flex; align-items: center; justify-content: center;
-    z-index: 100;
+    z-index: var(--z-modal);
     opacity: 1;
-    transition: opacity 0.15s;
+    transition: opacity var(--t-fast);
   }
   .help-overlay.hidden { display: none; }
 
   /* ── Guided tour overlay ─────────────────────────────────────────── */
   .tour-overlay {
     position: fixed; inset: 0;
-    z-index: 110;
+    z-index: var(--z-tour-card);
     pointer-events: none;
   }
   .tour-overlay.hidden { display: none; }
@@ -20,7 +20,7 @@
   /* While the hero is up, match body to --bg so the cleared canvas reads
      as the same ground as the rest of the app (no #000 seam). */
   body.tour-active.tour-at-hero {
-    background: var(--bg) !important;
+    background: var(--bg);
   }
 
   /* ── Hero: split layout — left text / right live globe ─────────── */
@@ -30,7 +30,7 @@
     display: flex;
     align-items: stretch;
     pointer-events: auto;
-    animation: tour-hero-in 0.55s ease;
+    animation: tour-hero-in var(--t-slow) ease;
   }
   .tour-overlay .tour-hero.hidden { display: none; }
   @keyframes tour-hero-in {
@@ -61,65 +61,55 @@
     pointer-events: none;
   }
   .tour-hero-globe-label {
-    font: 400 11px/1 'Source Sans Pro', sans-serif;
+    font: 400 var(--fs-xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 2px;
     text-transform: uppercase;
-    color: rgba(244,237,225,0.28);
+    color: color-mix(in srgb, var(--paper) 28%, transparent);
     pointer-events: none;
   }
 
   .tour-hero-inner {
     max-width: 540px;
-    color: #f4ede1;
+    color: var(--paper);
   }
   .tour-hero .tour-eyebrow {
     display: none;
   }
+  /* Hero headline keeps the magazine-y serif tone (one of two opt-in serif
+     uses across the product); the lede + meta read in the system Inter. */
   .tour-hero .tour-headline {
-    font: 400 38px/1.22 'Source Serif Pro', Georgia, serif;
+    font: 400 var(--fs-display)/1.22 var(--serif);
     color: #fff;
     margin: 0 0 22px;
     letter-spacing: -0.4px;
   }
   .tour-hero .tour-lede {
-    font: 400 15px/1.65 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.75);
+    font: 400 var(--fs-lg)/1.65 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 75%, transparent);
     margin: 0 0 22px;
   }
   .tour-hero .tour-hero-team {
-    font: 400 12px/1.5 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.55);
+    font: 400 var(--fs-sm)/1.5 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 55%, transparent);
     margin: 0 0 18px;
   }
-  .tour-hero .tour-hero-audience {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin: 0 0 18px;
-    padding: 14px 16px;
-    border-left: 1px solid rgba(244,237,225,0.18);
+  .tour-hero .tour-meta {
+    font: 400 var(--fs-xs)/1.55 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 55%, transparent);
+    margin: 0 0 22px;
   }
-  .tour-hero .tour-hero-audience-row {
-    display: block;
+  .tour-hero .tour-meta a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--paper) 30%, transparent);
+    text-underline-offset: 2px;
   }
-  .tour-hero .tour-hero-audience-label {
-    font: 600 12px/1 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.85);
-    letter-spacing: 1.4px;
-    text-transform: uppercase;
-    margin: 0 0 6px;
+  .tour-hero .tour-meta a:hover {
+    color: color-mix(in srgb, var(--paper) 85%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--paper) 60%, transparent);
   }
-  .tour-hero .tour-hero-audience-desc {
-    font: 400 13px/1.55 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.7);
-    margin: 0;
-  }
-  .tour-hero .tour-hero-mapc {
-    font: 400 11px/1.5 'Source Sans Pro', system-ui, sans-serif;
-    font-style: italic;
-    color: rgba(244,237,225,0.5);
-    margin: 0 0 24px;
-  }
+  .tour-hero .tour-meta-line { display: block; }
+  .tour-hero .tour-meta-line + .tour-meta-line { margin-top: 4px; }
   .tour-hero .tour-hero-actions {
     display: flex;
     gap: 16px;
@@ -129,26 +119,26 @@
 
   /* ── Shared tour buttons ────────────────────────────────────────── */
   .tour-btn {
-    font: 500 12px/1 'Source Sans Pro', sans-serif;
+    font: 500 var(--fs-sm)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     padding: 13px 20px;
-    border-radius: 2px;
+    border-radius: var(--r-sm);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
   }
   .tour-btn-primary {
-    background: #f4ede1;
+    background: var(--paper);
     color: #111418;
-    border: 1px solid #f4ede1;
+    border: 1px solid var(--paper);
   }
   .tour-btn-primary:hover { background: #fff; border-color: #fff; }
   .tour-btn-ghost {
     background: transparent;
-    color: rgba(244,237,225,0.72);
-    border: 1px solid rgba(244,237,225,0.28);
+    color: color-mix(in srgb, var(--paper) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--paper) 28%, transparent);
   }
-  .tour-btn-ghost:hover { color: #fff; border-color: rgba(244,237,225,0.6); }
+  .tour-btn-ghost:hover { color: #fff; border-color: color-mix(in srgb, var(--paper) 60%, transparent); }
   .tour-btn.hidden { display: none; }
 
   /* ── Narration card (floats over globe during beats 1–9) ──────────
@@ -157,36 +147,44 @@
      detail / focus / position) so the two never visually stack. The
      card is centered horizontally over the globe area; when the nav is
      visible it offsets to the right of the nav rail. */
+  /* The narration card lives bottom-left of the viewport (just outside
+     the nav rail). Width and max-height are clamped against the viewport
+     so the card is always fully visible regardless of viewport size or
+     nav width. */
   .tour-card {
     position: absolute;
     bottom: 28px;
-    left: calc(var(--nav-w, 0px) + (100vw - var(--nav-w, 0px)) / 2);
-    transform: translateX(-50%);
-    width: min(620px, calc(100vw - var(--nav-w, 0px) - 64px));
-    max-width: calc(100vw - var(--nav-w, 0px) - 64px);
+    right: 24px;
+    left: auto;
+    transform: none;
+    width: min(540px, calc(100vw - var(--nav-w, 0px) - 48px));
+    max-width: calc(100vw - var(--nav-w, 0px) - 48px);
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
     padding: 22px 28px 18px;
-    background: linear-gradient(155deg, rgba(14,13,12,0.97), rgba(8,8,7,0.97));
-    border: 1px solid rgba(244,237,225,0.13);
-    border-radius: 4px;
-    color: #f4ede1;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 2px 4px rgba(0,0,0,0.4);
+    background: rgba(14,15,20,0.94);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--r-md);
+    color: var(--paper);
     pointer-events: auto;
-    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
-                width 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+    transition: right var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1),
+                width var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1);
   }
-  /* When the nav is hidden (chrome-off interstitials, tour-at-hero), the
-     card centres against the full viewport. */
+  /* Chrome-off interstitials and nav-hidden step beats: no nav rail to
+     budget around, so the card can use the full viewport width clamp. It
+     stays anchored to the bottom-right corner regardless. */
   body.tour-active.tour-chrome-off:not(.tour-at-hero) .tour-card,
   body.tour-step-mode:not(.tour-step-show-nav) .tour-card {
-    left: 50vw;
-    width: min(620px, calc(100vw - 64px));
-    max-width: calc(100vw - 64px);
+    right: 24px;
+    left: auto;
+    width: min(540px, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
   }
   .tour-card.hidden { display: none; }
-  .tour-card.tour-in { animation: tour-card-in 0.5s ease; }
+  .tour-card.tour-in { animation: tour-card-in var(--t-slow) ease; }
   @keyframes tour-card-in {
-    from { opacity: 0; transform: translate(-50%, 14px); }
-    to   { opacity: 1; transform: translate(-50%, 0); }
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   /* ─── Interactive-step mode ─────────────────────────────────────────
@@ -202,22 +200,23 @@
   body.tour-step-mode:not(.tour-step-show-nav) .tour-card {
     width: min(560px, calc(100vw - 64px));
   }
-  /* The time step cues the user to click the ⏱ chip. Once they do, the
-     timeline-scrubber occupies the bottom 80px of the screen — the
-     tour-card needs to lift up so it doesn't sit on top of the
-     scrubber. The same logic applies whenever the scrubber is open
-     during any tour beat: shift the card to the top to avoid the
-     stack. */
-  body.tour-active.has-timeline-open .tour-card,
-  body.tour-step-mode.tour-step-show-random .tour-card,
-  body.tour-step-mode.tour-step-show-shift .tour-card,
-  body.tour-step-mode.tour-step-show-time .tour-card {
-    bottom: auto;
-    top: 28px;
-    transition: top 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
-                bottom 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
-                left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1),
-                width 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  /* The card lives bottom-right consistently across beats. When the
+     timeline-scrubber is open, lift the card so its bottom edge sits
+     `--tour-card-timeline-gap` above the scrubber's actual rendered
+     height. The scrubber's height is published live by features/
+     timeline.js (ResizeObserver → `--timeline-h`), so this rule
+     structurally guarantees a fixed gap regardless of scrubber
+     content/padding/bar count. The fallback constant matches the
+     scrubber's known minimum height; the gap stays fixed at 24px. */
+  body.tour-active.has-timeline-open .tour-card {
+    bottom: calc(
+      var(--timeline-h, 80px)
+      + var(--tour-card-timeline-gap, 24px)
+      + 18px /* the scrubber's own bottom offset (#timeline-scrubber: bottom: 18px) */
+    );
+    transition: bottom var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1),
+                left var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1),
+                width var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1);
   }
   /* Bottom dock lifts above the scrubber via the base control rules. */
   /* Default chrome state inside step mode: HIDDEN. Each step opts in to
@@ -227,55 +226,68 @@
      that the sidebar (z-index 5, on top of the canvas) cannot peek through
      during the fade — visibility flips after the opacity transition. */
   body.tour-step-mode #globe-controls-dock > button {
-    display: none !important;
+    display: none;
   }
-  body.tour-step-mode #nav,
+  /* Step beats hide auxiliary chrome by default but KEEP the left nav
+     visible — the colored topic bars are core context the user is meant
+     to read alongside the tour narration. */
   body.tour-step-mode .timeline,
   body.tour-step-mode #tl-toggle,
   body.tour-step-mode #globe-controls-dock,
   body.tour-step-mode .pin-labels {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    transition: opacity 0.3s ease, visibility 0s 0.3s;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-base);
+  }
+  body.tour-step-mode #nav {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--t-swivel) ease, visibility var(--t-fast);
   }
   /* Per-step affordance reveals — only the chrome the current step needs.
      visibility flips immediately on show so the fade-in actually animates. */
   body.tour-step-mode.tour-step-show-nav #nav {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transition: opacity 0.3s ease, visibility 0s 0s;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
   }
   body.tour-step-mode.tour-step-show-pins .pin-labels {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transition: opacity 0.3s ease, visibility 0s 0s;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
   }
   body.tour-step-mode.tour-step-show-pins .pin-labels .pin {
-    pointer-events: auto !important;
+    pointer-events: auto;
   }
-  body.tour-step-mode.tour-step-show-random #globe-controls-dock,
-  body.tour-step-mode.tour-step-show-shift #globe-controls-dock {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: none !important;
-    transition: opacity 0.3s ease, visibility 0s 0s;
+  body.tour-step-mode.tour-step-show-random #globe-controls-dock {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: none;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
   }
   body.tour-step-mode.tour-step-show-random #globe-controls-dock #random-hint,
   body.tour-step-mode.tour-step-show-random #globe-controls-dock #reset-view-hint {
-    display: flex !important;
+    display: flex;
   }
-  body.tour-step-mode.tour-step-show-shift #globe-controls-dock #shift-hint {
-    display: flex !important;
-  }
+  body.tour-step-mode.tour-step-show-time #globe-controls-dock,
   body.tour-step-mode.tour-step-show-time #tl-toggle,
   body.tour-step-mode.tour-step-show-time #timeline-scrubber:not(.hidden) {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transition: opacity 0.3s ease, visibility 0s 0s;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
+  }
+  /* Inside the dock during the time beat, only show the ⏱ button — the R
+     scattershot chip and the help "?" would distract from the single tool
+     this step is teaching. Mirrors the random-beat reveal pattern. */
+  body.tour-step-mode.tour-step-show-time #globe-controls-dock #tl-toggle {
+    display: flex;
+  }
+  body.tour-step-mode.tour-step-show-time #globe-controls-dock > button:not(#tl-toggle) {
+    display: none;
   }
   /* Hide the timeline scrubber across the entire rest of the tour. Even
      if a previous session left it open in localStorage (or some other
@@ -286,140 +298,167 @@
      in the DOM so it returns to whatever the user had once the tour
      closes. */
   body.tour-active #timeline-scrubber:not(.hidden) {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
   }
   body.tour-active.tour-step-mode.tour-step-show-time #timeline-scrubber:not(.hidden) {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
-  /* Inspector cards (pinned-view / interview / focus) need to be interactive
+  /* Inspector cards (pinned-view / interview) need to be interactive
      during step 3 so the close × actually closes them; the broader
      `body.tour-active .interview-card { pointer-events: none }` rule
      above defaults them off, and this per-step opt-in re-enables them. */
   body.tour-step-mode.tour-step-show-cards .interview-card,
-  body.tour-step-mode.tour-step-show-cards .pinned-view,
-  body.tour-step-mode.tour-step-show-cards .focus-card {
-    pointer-events: auto !important;
-    opacity: 1 !important;
+  body.tour-step-mode.tour-step-show-cards .pinned-view {
+    pointer-events: auto;
+    opacity: 1;
   }
   /* Tour card itself stays clickable always. */
-  body.tour-step-mode .tour-card { pointer-events: auto !important; }
+  body.tour-step-mode .tour-card { pointer-events: auto; }
 
   /* When the sidebar isn't shown for the current step, slide the globe
      stack left so the canvas fills the viewport edge-to-edge. Avoids the
      "blank black strip" the user otherwise sees where the nav would be.
      Step 2 reintroduces the nav, animating the globe back into place. */
   body.tour-step-mode:not(.tour-step-show-nav) #globe-root {
-    left: 0 !important;
-    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+    left: 0;
+    transition: left var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1);
   }
   body.tour-step-mode.tour-step-show-nav #globe-root {
-    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+    transition: left var(--t-slow) cubic-bezier(0.22, 0.65, 0.2, 1);
   }
   /* Same idea on chrome-off interstitials (e.g. "Why a sphere?", the
      pin-spotlight beat, the outro): the nav is faded, so let the globe
      fill the area it would otherwise occupy. Hero is excluded — it has
      its own transform-based translation that this would fight with. */
-  body.tour-active.tour-chrome-off:not(.tour-at-hero) #globe-root {
-    left: 0 !important;
-    transition: left 0.4s cubic-bezier(0.22, 0.65, 0.2, 1);
+  body.tour-active.tour-chrome-off:not(.tour-at-hero):not(.tour-at-opener) #globe-root {
+    left: 0;
+    transition: left var(--t-swivel) cubic-bezier(0.22, 0.65, 0.2, 1);
   }
+  /* Opener cards keep the hero's right-half framing — globe stays on the
+     right, text on the left, no swap mid-sequence. */
+  body.tour-active.tour-at-opener .tour-card #tour-skip { display: none; }
 
-  /* Compact the step card a notch — eyebrow and pullquote slot are tighter. */
-  body.tour-step-mode .tour-card .tour-quotes {
-    margin-top: 10px;
-    border-top: 1px dashed rgba(244,237,225,0.16);
-    padding-top: 10px;
+  /* Step beats: drop the per-card "Explore" exit (the launcher pill +
+     keyboard Esc both already cover it) and move Back / Next to the top
+     of the card on the same line as "Step X of Y" so the bottom of the
+     card is just the prose. */
+  body.tour-step-mode .tour-card #tour-skip { display: none; }
+  /* The base .tour-card already establishes a positioned containing block
+     (position: absolute), so the action row + step counter below can be
+     absolutely positioned inside the card without overriding the card's
+     own placement. Just reserve top padding so they don't overlap prose. */
+  body.tour-step-mode .tour-card {
+    padding-top: 36px;
+  }
+  body.tour-step-mode .tour-card .tour-actions {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    margin-top: 0;
+    gap: 6px;
+    align-items: center;
+  }
+  body.tour-step-mode .tour-card .tour-actions > div:last-child { gap: 6px; }
+  body.tour-step-mode .tour-card .tour-actions .tour-btn {
+    font-size: var(--fs-2xs);
+    letter-spacing: 1px;
+    padding: 5px 11px;
+    border-radius: var(--r-sm);
   }
   body.tour-step-mode .tour-card .tour-step {
-    color: rgba(244,237,225,0.55);
-    font-size: 10px;
-    letter-spacing: 1.4px;
+    position: absolute;
+    top: 14px;
+    left: 22px;
+    margin: 0;
+  }
+
+  /* Compact the step card a notch — collapse the empty pullquote slot
+     entirely so there's no dashed border or padding when no quote/hint
+     is present (current step beats are text-only). */
+  body.tour-step-mode .tour-card .tour-quotes {
+    margin-top: 8px;
+    padding-top: 0;
+    border: none;
+  }
+  body.tour-step-mode .tour-card .tour-quotes:empty {
+    display: none;
+    margin: 0;
+  }
+  body.tour-step-mode .tour-card .tour-step {
+    color: color-mix(in srgb, var(--paper) 55%, transparent);
+    font: 400 var(--fs-2xs)/1.3 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.4px;
+    text-transform: none;
+  }
+  body.tour-step-mode .tour-card .tour-step .topic-tag {
+    font-weight: 600;
   }
   body.tour-step-mode .tour-card .tour-title {
-    font-size: 18px !important;
-    margin-bottom: 6px !important;
+    font-size: var(--fs-xl);
+    margin-bottom: 6px;
   }
   body.tour-step-mode .tour-card .tour-prose {
-    font-size: 13px !important;
-    line-height: 1.55 !important;
+    font-size: var(--fs-base);
+    line-height: 1.55;
   }
   .tour-step-hint {
-    font: 600 12px/1.3 'Source Sans Pro', sans-serif;
-    color: #ffd166;
+    font: 600 var(--fs-sm)/1.3 'Inter', system-ui, sans-serif;
+    color: var(--warm);
     letter-spacing: 0.4px;
     text-align: center;
   }
-  .tour-step-hint-done {
-    color: #7cf0c9;
-  }
   /* Promoted "Continue" affordance — appears on steps with manualContinue.
-     Same Next button, just visually pulled forward so the user knows the
-     mini-lesson is complete and they can move on at their own pace. */
+     Reads as a normal bordered button with a thin mint border so the user
+     can tell the gate has lifted, but no fill / no halo. Mint is one of
+     the two reserved uses of the accent (active state on tour controls). */
   .tour-btn.tour-btn-continue {
-    background: #7cf0c9;
-    color: #0a1812;
-    border-color: #7cf0c9;
-    animation: tour-step-pulse-glow 1.6s ease-in-out infinite;
+    background: transparent;
+    color: var(--paper);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   }
   .tour-btn.tour-btn-continue:hover {
-    background: #9bf5d6;
-    border-color: #9bf5d6;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 85%, transparent);
+    color: #fff;
   }
   /* Disabled Next on a manualContinue step beat — visually pulled back so
      the user reads the gate. Pointer is allowed (we no-op the click in
      the handler) so hovers don't feel broken. */
   .tour-btn.tour-btn-disabled {
-    background: rgba(244,237,225,0.18);
-    color: rgba(244,237,225,0.42);
-    border-color: rgba(244,237,225,0.18);
+    background: color-mix(in srgb, var(--paper) 18%, transparent);
+    color: color-mix(in srgb, var(--paper) 42%, transparent);
+    border-color: color-mix(in srgb, var(--paper) 18%, transparent);
     cursor: not-allowed;
   }
   .tour-btn.tour-btn-disabled:hover {
-    background: rgba(244,237,225,0.18);
-    color: rgba(244,237,225,0.42);
-    border-color: rgba(244,237,225,0.18);
+    background: color-mix(in srgb, var(--paper) 18%, transparent);
+    color: color-mix(in srgb, var(--paper) 42%, transparent);
+    border-color: color-mix(in srgb, var(--paper) 18%, transparent);
   }
 
-  /* Per-step affordance highlights — pulse the element the user is
-     being told to interact with so it's findable without breaking the
-     tour card. Same family of motion as the Continue button (which
-     uses `tour-step-pulse-glow` directly): a quiet breathing glow that
-     reads as "this is the next step", paired with an outline pulse so
-     the click target's perimeter is clear at every phase of the cycle.
-     No shimmer streak — that effect's borders never matched the host
-     element's silhouette (rounded chips, narrow pin labels, bar
-     segments with rotated/clipped backgrounds), so it always read as
-     bleeding outside the highlight target. */
-  @keyframes tour-step-pulse-glow {
+  /* ── Single tour-pulse keyframe ─────────────────────────────────────
+     One shared 1.6s cadence; per-target variation comes from CSS custom
+     properties (--pulse-from / --pulse-to) on each element rather than
+     separate keyframes. Reads as a single instrument breathing across
+     all the tour-step affordances. */
+  @keyframes tour-pulse {
     0%, 100% {
-      box-shadow:
-        0 0 0 0 rgba(124,240,201,0),
-        0 0 0 0 rgba(124,240,201,0),
-        0 0 16px 0 rgba(124,240,201,0.52);
+      box-shadow: var(--pulse-from, 0 0 0 0 transparent);
+      outline-color: var(--pulse-outline-from, color-mix(in srgb, var(--accent) 45%, transparent));
+      transform: var(--pulse-transform-from, none);
+      filter: var(--pulse-filter-from, none);
+      text-shadow: var(--pulse-text-shadow-from, none);
     }
     50% {
-      box-shadow:
-        0 0 0 4px rgba(124,240,201,0.78),
-        0 0 0 13px rgba(124,240,201,0.36),
-        0 0 36px 10px rgba(124,240,201,0.72);
-    }
-  }
-  /* Outline pulse — opacity + width breathe in lockstep with the glow,
-     so even at the dimmest part of the cycle the click target's edge
-     is visible. Applied to the same set of targets via a single
-     selector list below. */
-  @keyframes tour-step-outline-pulse {
-    0%, 100% {
-      outline-color: rgba(124,240,201,0.76);
-      outline-width: 2px;
-    }
-    50% {
-      outline-color: rgba(160,255,220,0.95);
-      outline-width: 3.5px;
+      box-shadow: var(--pulse-to, 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent));
+      outline-color: var(--pulse-outline-to, color-mix(in srgb, var(--accent) 85%, transparent));
+      transform: var(--pulse-transform-to, none);
+      filter: var(--pulse-filter-to, none);
+      text-shadow: var(--pulse-text-shadow-to, none);
     }
   }
   /* Step beats with showChrome:['nav'] used to ring the entire #nav with a
@@ -428,67 +467,57 @@
      the whole topic list (#47). The chip-level pulse is enough; just keep
      a faint inset hairline so the user knows the rail is in scope. */
   body.tour-step-show-nav #nav {
-    box-shadow: inset 0 0 0 1px rgba(124,240,201,0.22);
-    transition: box-shadow 0.25s ease;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+    transition: box-shadow var(--t-base) ease;
   }
   /* Shared pulse rule — every per-step pulse target shares the same
-     glow + outline-pulse animation so the visual vocabulary is
-     consistent across drill bars, pin chips, search input, and the
-     bottom-right toolbar chips. Per-target tweaks (z-index, dot
-     scale-up, etc.) come after this. */
+     keyframe + 1.6s cadence so the visual vocabulary is consistent
+     across drill bars, pin chips, search input, and toolbar chips. */
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id,
   body.tour-pulse-search:not(.tour-step-done) #search-input,
   body.tour-pulse-random:not(.tour-step-done) #random-hint,
-  body.tour-pulse-shift:not(.tour-step-done) #shift-hint,
   body.tour-pulse-time:not(.tour-step-done) #tl-toggle,
   body.tour-pulse-time:not(.tour-step-done) #timeline-scrubber:not(.hidden) {
-    animation:
-      tour-step-pulse-glow 1.6s ease-in-out infinite,
-      tour-step-outline-pulse 1.6s ease-in-out infinite;
+    animation: tour-pulse var(--t-pulse) ease-in-out infinite;
     outline-style: solid;
     outline-offset: 2px;
   }
-  /* Spotlight markers (#41) — the body.tour-pulse-spotlight target gets a
-     dedicated keyframe so the rings actually breathe (ring scale + halo +
-     border opacity). The shared pulse-glow above was too subtle on the
-     thin 2px green ring — users read the dots as static. This rule wins
-     because it's listed after, and the keyframe scales the ring itself
-     so motion is visible at any zoom. transform-origin is the marker's
-     center because the marker is positioned with translate(-50%,-50%). */
+  /* Spotlight markers — tight breath. Smaller scale range so the ring
+     stays visually tied to the underlying point instead of swelling
+     loosely around it. */
   body.tour-pulse-spotlight:not(.tour-step-done) .tour-spotlight-pulse {
-    animation: tour-step-spotlight-pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes tour-step-spotlight-pulse {
-    0%, 100% {
-      transform: translate(-50%, -50%) scale(0.92);
-      border-color: rgba(124,240,201,0.85);
-      box-shadow:
-        0 0 0 0 rgba(124,240,201,0),
-        0 0 18px 2px rgba(124,240,201,0.45);
-    }
-    50% {
-      transform: translate(-50%, -50%) scale(1.18);
-      border-color: rgba(180,255,225,1.0);
-      box-shadow:
-        0 0 0 6px rgba(124,240,201,0.34),
-        0 0 38px 12px rgba(124,240,201,0.78);
-    }
+    --pulse-transform-from: translate(-50%, -50%) scale(0.96);
+    --pulse-transform-to: translate(-50%, -50%) scale(1.04);
+    --pulse-outline-from: color-mix(in srgb, var(--accent) 60%, transparent);
+    --pulse-outline-to: color-mix(in srgb, var(--accent) 95%, transparent);
+    --pulse-from: none;
+    --pulse-to: none;
+    animation: tour-pulse var(--t-pulse) ease-in-out infinite;
   }
   /* Sidebar bar pulse — tightly bounded to the chip itself (#2 #39) so
      the glow doesn't leak into adjacent segments or wash the whole
      sidebar. Inset rings carry the highlight (the chip is the spotlight
      target), and the outer glow is short-radius + zero spread so it
      decays inside the segment's own bounding box rather than bleeding
-     vertically into siblings. Peak intensity is roughly 2× the previous
-     value so the chip actually pops at full pulse without a giant halo. */
+     vertically into siblings. */
   body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"],
   body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"],
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"],
   body.tour-pulse-l1-8:not(.tour-step-done) #stack-l1 .bar-seg[data-key="8"],
   body.tour-pulse-l2-8_2:not(.tour-step-done) #stack-l2 .bar-seg[data-key="8_2"],
-  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"] {
-    animation: tour-step-bar-pulse 1.35s ease-in-out infinite;
+  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"],
+  body.tour-pulse-l1-5:not(.tour-step-done) #stack-l1 .bar-seg[data-key="5"] {
+    /* Wider, brighter inset rings + a stronger brightness lift so the
+       pulse reads on the brightly-coloured chips (the previous 1px /
+       55→95% accent ring on a vivid pink chip was almost invisible). */
+    --pulse-from: inset 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent),
+                  inset 0 0 14px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+    --pulse-to:   inset 0 0 0 3px color-mix(in srgb, var(--accent) 100%, transparent),
+                  inset 0 0 22px 4px color-mix(in srgb, var(--accent) 60%, transparent);
+    --pulse-filter-from: brightness(1.04);
+    --pulse-filter-to: brightness(1.22);
+    animation: tour-pulse var(--t-pulse) ease-in-out infinite;
     z-index: 4;
     /* `.bar-seg` already has overflow:hidden, which clips outer
        box-shadows at the segment edge — that's why the previous outer
@@ -496,21 +525,22 @@
        work now lives in `inset` shadows so the highlight stays inside
        the chip and the visible peak is actually visible. */
   }
-  @keyframes tour-step-bar-pulse {
-    0%, 100% {
-      box-shadow:
-        inset 0 0 0 2px rgba(124,240,201,0.85),
-        inset 0 0 0 999px rgba(124,240,201,0.10),
-        inset 0 0 14px rgba(124,240,201,0.45);
-      filter: brightness(1.06) saturate(1.08);
-    }
-    50% {
-      box-shadow:
-        inset 0 0 0 3px rgba(180,255,225,1.0),
-        inset 0 0 0 999px rgba(124,240,201,0.34),
-        inset 0 0 28px rgba(160,255,220,0.92);
-      filter: brightness(1.45) saturate(1.35);
-    }
+  /* Label inside a pulsing chip gets a synced text-shadow breath so the
+     name itself reads as "this one!" — useful when the chip's accent
+     ring is colour-on-colour. */
+  body.tour-pulse-l1-32:not(.tour-step-done) #stack-l1 .bar-seg[data-key="32"] .label,
+  body.tour-pulse-l2-32_4:not(.tour-step-done) #stack-l2 .bar-seg[data-key="32_4"] .label,
+  body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"] .label,
+  body.tour-pulse-l1-8:not(.tour-step-done) #stack-l1 .bar-seg[data-key="8"] .label,
+  body.tour-pulse-l2-8_2:not(.tour-step-done) #stack-l2 .bar-seg[data-key="8_2"] .label,
+  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"] .label,
+  body.tour-pulse-l1-5:not(.tour-step-done) #stack-l1 .bar-seg[data-key="5"] .label {
+    --pulse-from: none;
+    --pulse-to: none;
+    --pulse-text-shadow-from: 0 0 0 transparent;
+    --pulse-text-shadow-to: 0 0 10px color-mix(in srgb, var(--accent) 90%, transparent);
+    animation: tour-pulse var(--t-pulse) ease-in-out infinite;
+    font-weight: 800;
   }
   /* Pin pulse — `.pin` is a 0×0 anchor; pulse the visible `.pin-id`
      chip (so outline/box-shadow render at chip dimensions) and pulse
@@ -523,51 +553,69 @@
   }
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-dot,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-dot {
-    animation:
-      tour-step-pulse-glow 1.6s ease-in-out infinite;
+    animation: tour-pulse var(--t-pulse) ease-in-out infinite;
     transform: scale(1.35);
   }
   /* Toolbar chips need to stay above floating cards while pulsing so
      the user can actually find them. The base z-index of #random-hint
      etc. is 8; bump pulsing chips above the focus card stack. */
-  body.tour-pulse-random:not(.tour-step-done) #globe-controls-dock,
-  body.tour-pulse-shift:not(.tour-step-done) #globe-controls-dock {
+  body.tour-pulse-random:not(.tour-step-done) #globe-controls-dock {
     z-index: 20;
-    opacity: 1 !important;
+    opacity: 1;
   }
   body.tour-pulse-time:not(.tour-step-done) #tl-toggle,
   body.tour-pulse-time:not(.tour-step-done) #timeline-scrubber:not(.hidden) {
     z-index: 18;
-    opacity: 1 !important;
+    opacity: 1;
   }
-  /* Spotlight on globe points — a free-floating ::after halo we attach
-     to the .pin-anchor surrogate created in main.js. The CSS just owns
-     the animation; placement / sizing is pure DOM. */
+  /* Spotlight on globe points — tight bright ring with a filled centre
+     so the dot itself reads as highlighted, not just the outline. */
   .tour-spotlight-pulse {
     position: absolute;
-    width: 46px; height: 46px;
+    width: 18px; height: 18px;
     border-radius: 50%;
     pointer-events: none;
-    border: 2px solid rgba(124,240,201,0.95);
+    border: 1.5px solid var(--accent);
+    box-shadow: 0 0 8px 0 color-mix(in srgb, var(--accent) 55%, transparent);
     z-index: 9;
     transform: translate(-50%, -50%);
     outline: 0 solid transparent;
-    background: radial-gradient(circle, rgba(124,240,201,0.22) 0 28%, rgba(124,240,201,0.06) 42%, transparent 70%);
+    background: transparent;
   }
-  .tour-spotlight-pulse[data-tag]::after {
-    content: attr(data-tag);
+  .tour-spotlight-pulse::before {
+    content: '';
     position: absolute;
-    left: 50%;
-    bottom: calc(100% + 8px);
-    transform: translateX(-50%);
-    font: 600 11px 'Inter', system-ui, sans-serif;
-    color: #0a1812;
-    background: #7cf0c9;
-    border: 1px solid #7cf0c9;
-    border-radius: 999px;
+    left: 50%; top: 50%;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #fff;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  /* Spotlight tag — separate fixed element positioned by spotlight.js so
+     adjacent rings don't get their tags stacked on top of each other.
+     Uses translate(-50%, -50%) so the JS-set top/left places the tag's
+     centre, not its top-left corner. */
+  .tour-spotlight-tag {
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: var(--z-tour-card);
+    font: 600 var(--fs-xs) 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 85%, transparent);
+    background: rgba(14,15,20,0.85);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-radius: var(--r-pill);
     padding: 2px 8px;
     white-space: nowrap;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    transition: opacity var(--t-slow) ease,
+                background var(--t-slow) ease,
+                border-color var(--t-slow) ease,
+                color var(--t-slow) ease;
+  }
+  .tour-spotlight-tag.consumed {
+    background: rgba(20,28,42,0.85);
+    color: rgba(255,255,255,0.75);
+    border-color: rgba(255,255,255,0.18);
   }
   /* When the spotlight is "consumed" (user already clicked it) — drop
      the pulse, dim the chip. The transitions on the consumed state echo
@@ -575,19 +623,16 @@
      ramping down rather than snapping. */
   .tour-spotlight-pulse {
     transition:
-      opacity 0.5s ease,
-      background 0.5s ease,
-      border-color 0.5s ease,
-      box-shadow 0.5s ease;
+      opacity var(--t-slow) ease,
+      background var(--t-slow) ease,
+      border-color var(--t-slow) ease,
+      box-shadow var(--t-slow) ease;
   }
-  .tour-spotlight-pulse.consumed[data-tag]::after {
-    background: rgba(20,28,42,0.85);
-    color: rgba(255,255,255,0.75);
-    border-color: rgba(255,255,255,0.18);
-  }
-  .tour-spotlight-pulse.consumed {
-    animation: none !important;
-    box-shadow: none !important;
+  body.tour-pulse-spotlight .tour-spotlight-pulse.consumed {
+    /* Higher specificity than the pulse-on rule above — no !important
+       needed because both selectors include body.tour-pulse-spotlight. */
+    animation: none;
+    box-shadow: none;
   }
   /* Once the whole step is done (tour-step-done body class), fade the
      remaining markers out gracefully instead of the abrupt animation
@@ -595,20 +640,16 @@
   body.tour-step-done .tour-spotlight-pulse {
     opacity: 0.45;
   }
-  /* Hint copy ("Click each glowing dot — 1, 2, 3" → "Nicely done.") fades
-     between states over the same 500ms window the Next button uses. */
+  /* Hint copy fades between states over the same 500ms window the Next
+     button uses. */
   .tour-step-hint {
-    transition: color 0.5s ease, opacity 0.5s ease;
-  }
-  .tour-btn {
-    /* Already has background/color/border-color transitions; the runner
-       sets an inline `transition: opacity ...` for the fade-in/out. */
+    transition: color var(--t-slow) ease, opacity var(--t-slow) ease;
   }
   .tour-card .tour-step {
-    font: 600 10px/1 'Source Sans Pro', sans-serif;
+    font: 600 var(--fs-2xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: rgba(244,237,225,0.38);
+    color: color-mix(in srgb, var(--paper) 38%, transparent);
     margin-bottom: 14px;
   }
   .tour-card .tour-step:empty {
@@ -618,28 +659,52 @@
     display: none;
   }
   .tour-card .tour-title {
-    font: 400 24px/1.24 'Source Serif Pro', Georgia, serif;
+    font: 500 var(--fs-3xl)/1.24 'Inter', system-ui, sans-serif;
     color: #fff;
     margin: 0 0 13px;
     letter-spacing: -0.2px;
   }
+  /* Beats that drop the heading (text-only narrative) leave .tour-title
+     empty — collapse the element so the prose isn't pushed down by an
+     invisible margin. */
+  .tour-card .tour-title:empty { display: none; }
   .tour-card .tour-prose {
-    font: 400 13.5px/1.62 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.8);
+    font: 400 var(--fs-md)/1.62 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 80%, transparent);
     margin: 0 0 14px;
+  }
+  /* Topic tag — inline emphasis tinted to a cluster's live colour.
+     One single treatment (semibold + colour), no chip/box/icon. The
+     colour is set inline by the renderer in tour/index.js. */
+  .tour-card .tour-prose .topic-tag {
+    font-weight: 600;
+    color: var(--paper);  /* fallback if JS hasn't tinted yet */
+  }
+  /* Keyboard key — small inset chip used inline in tour copy. */
+  .tour-card .tour-prose kbd {
+    display: inline-block;
+    font: 600 var(--fs-2xs)/1 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    padding: 2px 6px;
+    margin: 0 1px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: var(--r-sm);
+    color: var(--paper);
+    vertical-align: 0;
+    text-transform: uppercase;
   }
   .tour-card .tour-quotes {
     margin: 0 0 18px;
     padding: 12px 0 4px;
-    border-top: 1px solid rgba(244,237,225,0.1);
+    border-top: 1px solid color-mix(in srgb, var(--paper) 10%, transparent);
   }
   .tour-card .tour-quote {
-    font: 400 12.5px/1.5 'Source Serif Pro', Georgia, serif;
+    font: 400 var(--fs-base)/1.5 'Inter', system-ui, sans-serif;
     font-style: italic;
-    color: rgba(244,237,225,0.68);
+    color: color-mix(in srgb, var(--paper) 68%, transparent);
     margin: 0 0 8px;
     padding-left: 11px;
-    border-left: 2px solid rgba(244,237,225,0.2);
+    border-left: 2px solid color-mix(in srgb, var(--paper) 20%, transparent);
   }
   .tour-card .tour-actions {
     display: flex;
@@ -657,16 +722,16 @@
     justify-content: flex-end;
   }
   .tour-card-skip {
-    font: 400 10px/1 'Source Sans Pro', sans-serif;
+    font: 400 var(--fs-2xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     background: none;
     border: none;
-    color: rgba(244,237,225,0.38);
+    color: color-mix(in srgb, var(--paper) 38%, transparent);
     cursor: pointer;
     padding: 6px 4px;
   }
-  .tour-card-skip:hover { color: rgba(244,237,225,0.7); }
+  .tour-card-skip:hover { color: color-mix(in srgb, var(--paper) 70%, transparent); }
 
   /* ── Outro card (centred, full-pane) ─────────────────────────────── */
   .tour-outro {
@@ -678,88 +743,69 @@
     background: rgba(var(--bg-r), var(--bg-g), var(--bg-b), 0.82);
     backdrop-filter: blur(12px);
     pointer-events: auto;
-    animation: tour-hero-in 0.5s ease;
+    animation: tour-hero-in var(--t-slow) ease;
   }
   .tour-outro.hidden { display: none; }
   .tour-outro-inner {
     max-width: 560px;
     text-align: center;
-    color: #f4ede1;
+    color: var(--paper);
   }
   .tour-outro .tour-eyebrow {
     display: none;
   }
   .tour-outro .tour-title {
-    font: 400 48px/1.12 'Source Serif Pro', Georgia, serif;
+    font: 500 var(--fs-display)/1.12 'Inter', system-ui, sans-serif;
     color: #fff;
     margin: 0 0 22px;
     letter-spacing: -0.5px;
   }
   .tour-outro .tour-prose {
-    font: 400 15px/1.65 'Source Sans Pro', system-ui, sans-serif;
-    color: rgba(244,237,225,0.75);
+    font: 400 var(--fs-lg)/1.65 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 75%, transparent);
     margin: 0 0 32px;
   }
 
-  /* ── Tour pointer arrow (#44 #46) ───────────────────────────────────
-     Floats a curved-tail SVG arrow from off-screen toward the spotlit
-     element so the user finds the click target. Sized at 120×64 with
-     the head near the right edge of the box; we mirror via scaleX(-1)
-     when the target is to the LEFT of the arrow's origin, and scaleY(-1)
-     when the arrow needs to point UP. JS handles positioning. */
-  .tour-arrow {
-    position: fixed;
-    width: 120px;
-    height: 64px;
-    pointer-events: none;
-    z-index: 50;
-    color: #7cf0c9;
-    filter: drop-shadow(0 0 6px rgba(124,240,201,0.55))
-            drop-shadow(0 0 14px rgba(124,240,201,0.30));
-    animation: tour-arrow-bob 1.1s ease-in-out infinite;
-    transform-origin: 50% 50%;
-    will-change: transform, left, top;
-  }
-  .tour-arrow.hidden { display: none; }
-  .tour-arrow svg { width: 100%; height: 100%; display: block; }
-  .tour-arrow--mirror-x { transform: scaleX(-1); }
-  .tour-arrow--mirror-y { transform: scaleY(-1); }
-  .tour-arrow--mirror-x.tour-arrow--mirror-y { transform: scale(-1, -1); }
-  /* The bob anim composes onto the mirroring transforms via a translate
-     keyframe applied to a child wrapper instead of the root. Easier: use
-     a separate transform property via individual transforms (modern
-     browsers) — fall back gracefully when not supported. */
-  @keyframes tour-arrow-bob {
-    0%, 100% { translate: 0 0; }
-    50%      { translate: -4px -4px; }
-  }
-  /* Hide the arrow once the user has done the action — the step-done flag
-     is the same one that quiets the pulse glow. */
-  body.tour-step-done .tour-arrow { display: none; }
+  /* ── Tour pointer arrow (#44 #46, Stage 1.3) ────────────────────────
+     Straight line from the tour-card edge to the spotlit affordance,
+     terminated by a plain triangular arrowhead seated on the line.
+     Geometry is computed in runner.js; the SVG element spans the full
+     viewport so endpoints can be expressed in screen coordinates. */
+  /* Tour pointer arrows were removed — startArrowFor() in runner.js is
+     now a no-op, and any stale arrow element is force-hidden here as
+     belt-and-braces. */
+  svg.tour-arrow { display: none !important; }
 
   /* ── "Virtual click" pulse ring on sidebar segments ──────────────── */
   @keyframes tour-pulse-ring {
-    0%   { outline: 2px solid rgba(244,237,225,0.0); outline-offset: 0px; }
-    30%  { outline: 2px solid rgba(244,237,225,0.9); outline-offset: 3px; }
-    100% { outline: 2px solid rgba(244,237,225,0.0); outline-offset: 6px; }
+    0%   { outline: 2px solid color-mix(in srgb, var(--paper) 0%, transparent); outline-offset: 0px; }
+    30%  { outline: 2px solid color-mix(in srgb, var(--paper) 90%, transparent); outline-offset: 3px; }
+    100% { outline: 2px solid color-mix(in srgb, var(--paper) 0%, transparent); outline-offset: 6px; }
   }
   .tour-pulse {
-    animation: tour-pulse-ring 0.9s ease forwards !important;
+    animation: tour-pulse-ring var(--t-pulse) ease forwards;
   }
 
   /* ── When tour is active: chrome stays visible but is inert ─────── */
-  /* The tour drives the sidebar/focus-card through programmatic nav.focus()
-     calls, so they should remain visible. Only pointer-events are disabled
-     so the user can read the UI but not accidentally click away. */
+  /* The tour drives the sidebar through programmatic nav.focus() calls,
+     so it should remain visible. Only pointer-events are disabled so the
+     user can read the UI but not accidentally click away. */
   body.tour-active #nav,
-  body.tour-active .focus-card,
   body.tour-active .interview-card,
   body.tour-active .pinned-view,
   body.tour-active #point-tooltip,
   body.tour-active .timeline,
   body.tour-active .ui-topbar {
-    pointer-events: none !important;
+    pointer-events: none;
   }
+  /* During the tour the whole #nav has pointer-events: none (so users
+     can't click affordances we haven't introduced yet). The pane-header
+     info icons are pure-disclosure (hover-only tooltip), so they're safe
+     to keep interactive throughout. We also lift the nav's stacking
+     context above the tour overlay (z-index 110) so the tooltip floats
+     ABOVE the tour card / overlay instead of being covered by it. */
+  body.tour-active #nav { z-index: var(--z-nav-tour); }
+  body.tour-active .pane-header-info { pointer-events: auto; }
   /* Force the SIDEBAR visible during drill-down narrative beats — the
      left rail is what tells the user "we're now on cluster X / subtopic
      Y," so it has to remain visible while the tour rotates the globe.
@@ -767,55 +813,55 @@
      so this rule does NOT fight the per-step show/hide rules above
      (which hide the sidebar during the hover step). */
   body.tour-active:not(.tour-at-hero):not(.tour-chrome-off):not(.tour-step-mode) #nav {
-    opacity: 1 !important;
-    visibility: visible !important;
-    transition: opacity 0.3s, visibility 0s 0s;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--t-base), visibility var(--t-fast) var(--t-fast);
   }
-  /* Focus-card and pinned-view are hidden across the entire tour. The
-     tour-card carries the narrative; floating inspector cards on the
+  /* Pinned-view and interview-card are hidden across the entire tour.
+     The tour-card carries the narrative; floating inspector cards on the
      same right-side region just stack on top of each other and create
      the "tour covers the pinned post" amateurish look the user
      reported. Cards re-enable themselves only inside steps that opt in
      via `showChrome: ['cards']` (the P-pin click step). */
-  body.tour-active .focus-card,
   body.tour-active .pinned-view,
   body.tour-active .interview-card {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    transition: opacity 0.25s ease, visibility 0s 0.25s;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-base);
   }
-  body.tour-active.tour-step-mode.tour-step-show-cards .focus-card,
   body.tour-active.tour-step-mode.tour-step-show-cards .pinned-view,
   body.tour-active.tour-step-mode.tour-step-show-cards .interview-card {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transition: opacity 0.25s ease, visibility 0s 0s;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
   }
   /* Once the tour closes entirely, snap the keyboard hints back to full
      opacity so they don't stay stuck from the transition. */
   body:not(.tour-active) #globe-controls-dock > button {
-    opacity: 1 !important;
+    opacity: 1;
   }
   /* During the hero screen, fade chrome to zero — nothing to show yet */
   body.tour-active.tour-at-hero #nav,
-  body.tour-active.tour-at-hero .focus-card,
   body.tour-active.tour-at-hero .interview-card,
   body.tour-active.tour-at-hero .pinned-view,
   body.tour-active.tour-at-hero #point-tooltip,
   body.tour-active.tour-at-hero .timeline,
   body.tour-active.tour-at-hero .ui-topbar {
-    opacity: 0 !important;
+    opacity: 0;
   }
-  /* During hero: shift the whole globe stack right — canvas, label SVG,
-     and pin layer — so the sphere fits cleanly in the right half and
-     labels + interview pins stay aligned with the points they annotate. */
+  /* During hero / opener: shift the whole globe stack right — canvas,
+     label SVG, and pin layer — so the sphere fits cleanly in the right
+     half and labels + interview pins stay aligned with the points they
+     annotate. The swivel duration makes the opener → step hand-off feel
+     deliberate (globe glides back to centre as the chrome fades in). */
   #globe-root {
-    transition: transform 0.55s cubic-bezier(0.22, 0.65, 0.2, 1),
-                opacity 0.5s ease;
+    transition: transform var(--t-swivel) cubic-bezier(0.22, 0.65, 0.2, 1),
+                opacity var(--t-swivel) ease;
   }
-  body.tour-active.tour-at-hero #globe-root {
+  body.tour-active.tour-at-hero #globe-root,
+  body.tour-active.tour-at-opener #globe-root {
     transform: translateX(25%);
   }
 
@@ -825,7 +871,6 @@
      the sidebar (z-index 5) can't peek through the canvas during the
      transition or sit there as a faint silhouette. */
   body.tour-active.tour-chrome-off #nav,
-  body.tour-active.tour-chrome-off .focus-card,
   body.tour-active.tour-chrome-off .interview-card,
   body.tour-active.tour-chrome-off .pinned-view,
   body.tour-active.tour-chrome-off #point-tooltip,
@@ -834,38 +879,35 @@
   body.tour-active.tour-chrome-off #globe-controls-dock,
   body.tour-active.tour-chrome-off #hover-halo,
   body.tour-active.tour-chrome-off #loading {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    transition: opacity 0.3s, visibility 0s 0.3s;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--t-base), visibility var(--t-fast) var(--t-base);
   }
 
-  /* Tour launcher button (bottom-right corner) */
+  /* Tour launcher button — true bottom-right corner. The ⏱ toggle was
+     moved into the centered controls dock alongside the R chip, so the
+     launcher no longer needs to budget for it here. */
   .tour-launcher {
     position: fixed;
-    /* Sit clear of the bottom-right `⏱` toggle (right: 22, bottom: 18,
-       38×38). Stacking vertically — launcher above, toggle below — is
-       the only layout that holds up at every viewport width without
-       letting the launcher's pill cover the toggle's hit-target. */
-    bottom: 64px; right: 14px;
+    bottom: 18px; right: 22px;
     z-index: 90;
-    font: 500 11px/1 'Source Sans Pro', sans-serif;
+    font: 500 var(--fs-xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     padding: 9px 14px;
     background: rgba(20,22,28,0.82);
-    color: rgba(244,237,225,0.8);
-    border: 1px solid rgba(244,237,225,0.18);
-    border-radius: 2px;
+    color: color-mix(in srgb, var(--paper) 80%, transparent);
+    border: 1px solid color-mix(in srgb, var(--paper) 18%, transparent);
+    border-radius: var(--r-sm);
     cursor: pointer;
-    backdrop-filter: blur(6px);
-    transition: background 0.15s, color 0.15s, border-color 0.15s,
-                bottom 0.18s ease, opacity 0.18s ease;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast),
+                bottom var(--t-base) ease, opacity var(--t-base) ease;
   }
   .tour-launcher:hover {
     background: rgba(30,32,40,0.9);
     color: #fff;
-    border-color: rgba(244,237,225,0.36);
+    border-color: color-mix(in srgb, var(--paper) 36%, transparent);
   }
   body.tour-active .tour-launcher { display: none; }
   /* When the timeline scrubber is open, the bar runs from left:410 to
@@ -883,37 +925,92 @@
      treatment so the prose actually reads like prose: longer line length,
      larger leading, real headings inside the body, room to breathe at
      paragraph boundaries. The globe keeps spinning behind. */
+  /* Opener cards adopt the hero's split-screen layout: anchored to the
+     LEFT half of the viewport (mirroring .tour-hero-left's flex: 0 0 50%
+     and padding), the globe stays visible in the right half through the
+     transparent .tour-overlay. The centered/footer placement that the
+     base .tour-card uses is overridden here for opener beats only — step
+     narration cards keep their bottom-centered placement. */
   .tour-card.tour-card--opener {
-    width: min(720px, calc(100vw - 96px));
-    max-width: calc(100vw - 96px);
-    padding: 28px 36px 22px;
-    bottom: 32px;
-    /* Generous max-height so all three pages fit without overflow even at
-       laptop heights. If a viewport is shorter than this, scroll inside. */
-    max-height: min(72vh, 620px);
+    /* Left pane geometry — matches .tour-hero-left (50% width, 7vh top/
+       bottom inset, 56px left / 48px right padding). The card itself sits
+       inside that pane, vertically centred, with its own padding for the
+       chrome (border, rounded corners) on top. */
+    top: 7vh;
+    bottom: 7vh;
+    left: 0;
+    right: auto;
+    transform: none;
+    width: 50vw;
+    max-width: 50vw;
+    margin: 0;
+    /* Drop the card chrome — the opener reads as a left-pane column, not
+       a floating panel. Background stays transparent so the body bg shows
+       through (matches the hero treatment). */
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 7vh 48px 7vh 56px;
+    /* Inner column flexes the contents vertically; the actual prose width
+       is bounded by .tour-hero-inner's 540px reading band (applied to
+       .tour-prose / .tour-title below). */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     overflow-y: auto;
+    /* Cancel the base .tour-card width transition — geometry change is
+       discrete on opener entry, not animated. */
+    transition: opacity var(--t-slow) ease;
   }
+  /* Override the chrome-off and at-opener centering rules from the base
+     stack — opener cards no longer center, they live in the left pane. */
   body.tour-active.tour-chrome-off:not(.tour-at-hero) .tour-card.tour-card--opener,
   body.tour-at-opener .tour-card.tour-card--opener {
-    /* Centred against the full viewport (chrome-off path) but pulled up
-       a touch so the spinning globe is visible above the card. */
-    left: 50vw;
-    width: min(720px, calc(100vw - 96px));
-    max-width: calc(100vw - 96px);
+    left: 0;
+    width: 50vw;
+    max-width: 50vw;
+  }
+  /* The base .tour-card.tour-in animation translates -50% horizontally;
+     override for opener so the entry just fades + lifts vertically. */
+  .tour-card.tour-card--opener.tour-in {
+    animation: tour-card-opener-in var(--t-slow) ease;
+  }
+  @keyframes tour-card-opener-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Narrow viewports — collapse to full width so the prose stays
+     readable and the card doesn't get pinched against the globe. */
+  @media (max-width: 880px) {
+    .tour-card.tour-card--opener,
+    body.tour-active.tour-chrome-off:not(.tour-at-hero) .tour-card.tour-card--opener,
+    body.tour-at-opener .tour-card.tour-card--opener {
+      width: 100vw;
+      max-width: 100vw;
+      padding: 5vh 28px 5vh 28px;
+      /* On narrow screens the globe would render behind the text and read
+         poorly — restore a frosted backdrop so prose stays legible. */
+      background: rgba(14,15,20,0.88);
+      backdrop-filter: blur(6px);
+    }
   }
   /* Eyebrow ("WHERE THIS CAME FROM · 1 / 3") — the opener wants this
      visible. The base .tour-eyebrow rule hides it across the rest of the
      tour, so re-show it explicitly inside the opener variant. */
   .tour-card.tour-card--opener .tour-eyebrow {
     display: block;
-    font: 600 10.5px/1 'Source Sans Pro', sans-serif;
+    font: 600 var(--fs-xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: rgba(244,237,225,0.5);
+    color: color-mix(in srgb, var(--paper) 50%, transparent);
     margin: 0 0 12px;
   }
+  .tour-card.tour-card--opener .tour-eyebrow:empty { display: none; }
+  /* Opener-card title is the SECOND opt-in serif use across the product
+     (alongside the hero headline). System serif — no webfont. */
+  .tour-card.tour-card--opener .opener-title,
   .tour-card.tour-card--opener .tour-title {
-    font: 400 30px/1.18 'Source Serif Pro', Georgia, serif;
+    font: 400 var(--fs-display)/1.18 var(--serif);
     color: #fff;
     margin: 0 0 16px;
     letter-spacing: -0.3px;
@@ -925,13 +1022,13 @@
   }
   /* Body prose — paragraphs, h3 sections, opener-specific asides. The
      existing .tour-prose sets margin/font-size; we override here so the
-     opener reads at a comfortable longform size. */
+     opener reads at a comfortable longform size in the system Inter. */
   .tour-card.tour-card--opener .tour-prose {
-    font: 400 14.5px/1.7 'Source Serif Pro', Georgia, serif;
-    color: rgba(244,237,225,0.86);
+    font: 400 var(--fs-lg)/1.7 'Inter', system-ui, sans-serif;
+    color: color-mix(in srgb, var(--paper) 86%, transparent);
     margin: 0;
     /* Hold line length to ~66ch — the comfortable reading band for
-       longform serif at this size. */
+       longform at this size. */
     max-width: 66ch;
     hyphens: auto;
   }
@@ -943,13 +1040,13 @@
     margin-bottom: 0;
   }
   .tour-card.tour-card--opener .tour-prose h3 {
-    font: 600 11px/1 'Source Sans Pro', system-ui, sans-serif;
+    font: 600 var(--fs-xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 1.6px;
     text-transform: uppercase;
-    color: #f4ede1;
+    color: var(--paper);
     margin: 18px 0 8px;
     padding-top: 14px;
-    border-top: 1px solid rgba(244,237,225,0.12);
+    border-top: 1px solid color-mix(in srgb, var(--paper) 12%, transparent);
   }
   /* First h3 inside the prose follows the lede paragraph — give it a hair
      more space and skip the top border so it doesn't double-rule under
@@ -959,27 +1056,32 @@
     padding-top: 0;
     border-top: none;
   }
+  /* Anchor links inside opener prose — mint hover/active is one of the
+     two reserved accent uses (selection-acknowledgement on links). */
   .tour-card.tour-card--opener .tour-prose a {
-    color: #7cf0c9;
+    color: var(--paper);
     text-decoration: underline;
-    text-decoration-color: rgba(124,240,201,0.4);
+    text-decoration-color: color-mix(in srgb, var(--paper) 30%, transparent);
     text-underline-offset: 2px;
+    transition: color var(--t-fast) ease, text-decoration-color var(--t-fast) ease;
   }
-  .tour-card.tour-card--opener .tour-prose a:hover {
-    text-decoration-color: #7cf0c9;
+  .tour-card.tour-card--opener .tour-prose a:hover,
+  .tour-card.tour-card--opener .tour-prose a:active {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
   }
   .tour-card.tour-card--opener .tour-prose em {
-    color: #f4ede1;
+    color: var(--paper);
     font-style: italic;
   }
   /* Inline P-pin token used in opener page 1 to gloss "P-pins". */
   .tour-card.tour-card--opener .tour-prose .opener-pin {
     display: inline-block;
-    font: 600 10px/1 'Source Sans Pro', sans-serif;
+    font: 600 var(--fs-2xs)/1 'Inter', system-ui, sans-serif;
     letter-spacing: 0.5px;
     color: #0a1812;
-    background: #f4ede1;
-    border-radius: 999px;
+    background: var(--paper);
+    border-radius: var(--r-pill);
     padding: 2px 7px;
     vertical-align: 1px;
   }
@@ -988,10 +1090,10 @@
   .tour-card.tour-card--opener .tour-prose .opener-aside {
     margin: 14px 0;
     padding: 10px 14px;
-    border-left: 2px solid rgba(244,237,225,0.28);
-    background: rgba(244,237,225,0.04);
-    color: rgba(244,237,225,0.78);
-    font-size: 13.5px;
+    border-left: 2px solid color-mix(in srgb, var(--paper) 28%, transparent);
+    background: color-mix(in srgb, var(--paper) 4%, transparent);
+    color: color-mix(in srgb, var(--paper) 78%, transparent);
+    font-size: var(--fs-md);
   }
   /* Hide the dashed "quotes" rule line for opener beats — there are no
      pullquotes/hints to introduce on these pages. */
@@ -1000,7 +1102,9 @@
   }
   /* Globe canvas pointer-events are off during the opener so the user
      can't accidentally hover-pin or rotate the spinning backdrop while
-     reading. The card itself stays interactive (default for .tour-card). */
+     reading. The card itself stays interactive (default for .tour-card).
+     `!important` retained — overrides inline styles set on the canvas
+     element by the WebGL boot path. */
   body.tour-at-opener #globe-canvas,
   body.tour-at-opener #globe-overlay {
     pointer-events: none !important;

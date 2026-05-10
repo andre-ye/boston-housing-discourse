@@ -52,7 +52,7 @@ export function redditScoreInlineHtml(score) {
   return `<span class="reddit-score-inline ${cls}" title="Reddit score" aria-label="Score ${t}">${escapeHtml(text)}</span>`;
 }
 
-/** Meta strip label for Reddit items — post vs. comment is not shown; always "Thread". */
-export function formatRedditKindLabel(_type) {
-  return 'Thread';
+/** Meta strip label — distinguishes Reddit posts from comments. */
+export function formatRedditKindLabel(type) {
+  return type === 'submission' ? 'Post' : 'Comment';
 }

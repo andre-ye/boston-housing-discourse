@@ -3,7 +3,7 @@
     margin: 0; padding: 0;
     background: var(--bg); color: var(--fg);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-size: 13px;
+    font-size: var(--fs-base);
     height: 100%; width: 100%;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
@@ -12,4 +12,144 @@
     position: relative;
     height: 100vh; width: 100vw;
     background: var(--bg);
+  }
+
+  /* ── Design tokens (added in beauty-pass) ─────────────────────────── */
+  :root {
+    /* Border-radius scale: small chips, panels/cards, full pills. */
+    --r-sm: 4px;
+    --r-md: 10px;
+    --r-pill: 999px;
+    /* Single warm accent for "trending / surging / time-range" affordances.
+       Use color-mix(in srgb, var(--warm) NN%, transparent) for alpha
+       variants so changing this token actually propagates everywhere. */
+    --warm: rgb(255, 198, 125);
+    /* Search-suggestion kind chips (phrase / snippet / topic / subtopic).
+       Same color-mix() pattern as --warm/--accent for alpha variants. */
+    --kind-phrase:    rgb(196, 160, 255);
+    --kind-snippet:   rgb(91, 156, 255);
+    --kind-topic:     rgb(255, 194, 51);
+    --kind-subtopic:  rgb(255, 126, 26);
+    /* Literal-search row in the suggestion dropdown — leans on --accent so
+       the always-on top "Search for {q}" entry reads as the primary action. */
+    --kind-literal:   rgb(124, 240, 201);
+    /* One canonical elevation for floating panels on the dark canvas. */
+    --shadow-elev: 0 8px 24px rgba(0, 0, 0, 0.4);
+    /* Reddit net-score colors: warm = upvoted/trending, cool = downvoted.
+       Pulled out of inspector.css so the warm-=-trending semantic stays
+       coherent across the codebase. */
+    --score-pos: #ff7a4d;
+    --score-neg: #9db7ff;
+    /* Tour chrome paper color — the warm off-white used for tour cards,
+       opener type, and pulse outlines. Use color-mix() for alpha variants. */
+    --paper: #f4ede1;
+    /* System serif used sparingly (opener-card title, hero headline) so
+       we don't load a webfont just for two headings. */
+    --serif: Georgia, 'Iowan Old Style', Charter, serif;
+
+    /* Type scale — 11 sizes covering everything from micro labels to the
+       outro display headline. Every numeric font-size in the codebase
+       snaps UP to the nearest token below. */
+    --fs-3xs: 9px;
+    --fs-2xs: 10px;
+    --fs-xs:  11px;
+    --fs-sm:  12px;
+    --fs-base: 13px;
+    --fs-md:  14px;
+    --fs-lg:  16px;
+    --fs-xl:  18px;
+    --fs-2xl: 22px;
+    --fs-3xl: 28px;
+    --fs-display: 40px;
+
+    /* Motion scale — three speeds for everything that transitions or
+       animates. Past micro-tunings (0.12 / 0.14 / 0.18 / 0.22 …) all
+       snap to one of these three durations. */
+    --t-fast: 120ms;
+    --t-base: 220ms;
+    --t-slow: 400ms;
+    /* Slow heartbeat for *-pulse keyframe animations (P-pin halo, hover-halo, tour anchor pulse, sprout-anchor-pulse, landing-ping, pin-pulse, etc.). */
+    --t-pulse: 2400ms;
+    /* Long, deliberate swivel for the opener → tour hand-off (globe shift,
+       nav fade-in, opener fade-out). Slower than --t-slow so the whole UI
+       lands as one calm motion instead of a snap. */
+    --t-swivel: 1400ms;
+
+    /* ── Z-index tier system ────────────────────────────────────────
+       Every z-index across the app collapses to one of these tiers.
+       Spacings of 100 leave room for in-tier ordering without ever
+       crossing into the next tier. Tiers, low → high:
+         canvas         the WebGL canvas
+         in-canvas      hover halos, sprout lines, label SVG
+         controls       globe controls dock, search-suggestions, R chip
+         nav            left rail, right detail panel
+         loading        the boot-time loading overlay
+         tour-overlay   the tour overlay backdrop + spotlights
+         tour-card      the tour narration card
+         nav-tour       the left rail lifted above tour-card so its
+                        info-tooltips and pulse rings stay reachable
+         popup          floating tooltips (point-tooltip, info-tooltip)
+                        — must sit above everything but modals.
+         modal          help overlay, critical dialogs */
+    --z-canvas: 0;
+    --z-in-canvas: 6;
+    --z-controls: 10;
+    --z-nav: 20;
+    --z-loading: 50;
+    --z-tour-overlay: 100;
+    --z-tour-card: 110;
+    --z-nav-tour: 130;
+    --z-popup: 800;
+    --z-modal: 1000;
+
+    /* Single divider colour for every visual seam in the chrome — the
+       nav→globe edge, the globe→detail edge, and every pane-to-pane
+       split inside the nav (header→search, search→topics, topics→
+       details viewer). One value, one consistent intensity. */
+    --divider: rgba(255,255,255,0.28);
+  }
+
+  /* ── Button system ────────────────────────────────────────────────
+     Single base, two modifiers. Bespoke buttons compose .btn + a
+     modifier; icon-only buttons (.ic-close, etc.) are left
+     alone since they have unique sizing constraints. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--r-sm);
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--fg);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: border-color var(--t-fast) ease, color var(--t-fast) ease, background var(--t-fast) ease;
+  }
+  .btn:hover { border-color: var(--fg-dim); }
+  .btn:focus-visible {
+    outline: 2px solid var(--fg-dim);
+    outline-offset: 2px;
+  }
+  .btn--primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn--primary:hover {
+    border-color: var(--accent);
+    color: #fff;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  .btn--ghost {
+    border-color: transparent;
+    color: var(--fg-dim);
+  }
+  .btn--ghost:hover {
+    border-color: transparent;
+    color: var(--fg);
+    background: rgba(255, 255, 255, 0.04);
   }

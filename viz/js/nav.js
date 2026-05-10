@@ -1,12 +1,13 @@
 // Stacked-bar navigation (L1 clusters → L2 subtopics → L3 points of view)
 // with Sankey-style ribbons connecting parent segments to their children.
 
-import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js?v=234';
+import { clusterColor, shadeColor, summarizeClusters, summarizeSubs, buildSubGidMap } from './data.js';
 import { storage } from './core/storage.js';
-import { keys } from './core/keys.js?v=1';
+import { keys } from './core/keys.js';
 import { overlayManager } from './core/overlays.js';
 import { store } from './core/store.js';
 import { highlightSearchHits } from './features/html-utils.js';
+import { setVisibilityTiers, clearVisibilityTiers } from './features/visibility-tiers.js';
 import {
   BAR_SEG_FLOOR_PX,
   BAR_SEG_LABEL_MIN_PX,
@@ -106,7 +107,6 @@ export class NavController extends EventTarget {
     attachPopUp(this.colL3, () => this.focus({ cl: this.focusCl, gid: this.focusGid }));
     this.ribbonOverlay = document.getElementById('ribbons-overlay');
     this.navBars = document.getElementById('nav-bars');
-    this.breadcrumbs = document.getElementById('breadcrumbs');
 
     this._ribbonRedrawUntil = 0;
     this._ribbonRedrawPending = false;
@@ -161,7 +161,7 @@ export class NavController extends EventTarget {
 
     this.l1Data = summarizeClusters(state);
     this.renderL1();
-    this.renderBreadcrumbs();
+    this._updateColumnTitles();
 
     window.addEventListener('resize', () => {
       this.renderL1();
@@ -177,77 +177,8 @@ export class NavController extends EventTarget {
 
     this._initSearch();
     this._initGlobalShortcuts();
+    this._initBackChips();
     this._maybeShowIntroToast();
-  }
-
-  _populateHelpClusters() {
-    const grid = document.getElementById('help-cluster-grid');
-    if (!grid || grid.dataset.built === '1') return;
-    // Sort clusters by count desc, matching the L1 bar order.
-    const items = (this.l1Data?.list || []).slice();
-    items.sort((a, b) => (b.count || 0) - (a.count || 0));
-    // Attach per-cluster trend ratio (last-6-months vs. historical mean)
-    // so chips can flag ▲ surging / trending / ▼ fading at a glance.
-    const hist = this.state?.timeHist;
-    const trendOf = (cl) => {
-      const s = hist?.by_cluster?.[String(cl)];
-      if (!s || s.length < 12) return null;
-      const n = s.length;
-      const recent = s.slice(n - 6).reduce((a, v) => a + v, 0) / 6;
-      const base = s.slice(0, n - 6).reduce((a, v) => a + v, 0) / (n - 6);
-      return recent / Math.max(0.8, base);
-    };
-    const frag = document.createDocumentFragment();
-    for (const d of items) {
-      const chip = document.createElement('button');
-      chip.className = 'help-cluster-chip';
-      const r = trendOf(d.cl);
-      let trendHtml = '', trendClass = 'neutral';
-      if (r != null) {
-        if (r >= 2.4) { trendHtml = `<span class="help-chip-trend surging" title="Last 6 mo ${r.toFixed(1)}× historical">▲</span>`; trendClass = 'surging'; }
-        else if (r >= 1.6) { trendHtml = `<span class="help-chip-trend trending" title="Last 6 mo ${r.toFixed(1)}× historical">▲</span>`; trendClass = 'trending'; }
-        else if (r <= 0.40) { trendHtml = `<span class="help-chip-trend fading" title="Last 6 mo ${r.toFixed(2)}× historical">▼</span>`; trendClass = 'fading'; }
-      }
-      chip.dataset.trend = trendClass;
-      chip.dataset.ratio = r != null ? r.toFixed(3) : '';
-      chip.dataset.count = d.count || 0;
-      chip.innerHTML = `
-        <span class="help-cluster-swatch" style="background:${d.color}; color:${d.color}"></span>
-        <span class="help-cluster-name">${this._escHtml(d.name)}</span>
-        ${trendHtml}
-        <span class="help-cluster-count">${(d.count || 0).toLocaleString()}</span>
-      `;
-      chip.onclick = () => {
-        this.focus({ cl: d.cl });
-        overlayManager.close('help');
-      };
-      frag.appendChild(chip);
-    }
-    grid.appendChild(frag);
-    grid.dataset.built = '1';
-
-    // Filter buttons: "all" (count-desc) vs. "trending" (surging+trending, ratio-desc).
-    const btnAll = document.getElementById('help-filter-all');
-    const btnHot = document.getElementById('help-filter-hot');
-    if (btnAll && btnHot) {
-      const applyFilter = (mode) => {
-        btnAll.classList.toggle('active', mode === 'all');
-        btnHot.classList.toggle('active', mode === 'hot');
-        const chips = Array.from(grid.querySelectorAll('.help-cluster-chip'));
-        if (mode === 'hot') {
-          const hot = chips.filter(c => c.dataset.trend === 'trending' || c.dataset.trend === 'surging');
-          hot.sort((a, b) => +b.dataset.ratio - +a.dataset.ratio);
-          for (const c of chips) c.classList.add('hidden');
-          for (const c of hot) { c.classList.remove('hidden'); grid.appendChild(c); }
-        } else {
-          const sorted = chips.slice().sort((a, b) => +b.dataset.count - +a.dataset.count);
-          for (const c of chips) c.classList.remove('hidden');
-          for (const c of sorted) grid.appendChild(c);
-        }
-      };
-      btnAll.onclick = () => applyFilter('all');
-      btnHot.onclick = () => applyFilter('hot');
-    }
   }
 
   _maybeShowIntroToast() {
@@ -290,6 +221,7 @@ export class NavController extends EventTarget {
         ],
         priority: 5,
         label: 'intro-toast-dismiss',
+        helpHidden: true,
         allowInInput: true,
         allowModifiers: true,
         allowRepeat: true,
@@ -304,48 +236,38 @@ export class NavController extends EventTarget {
     }, 1500);   // grace period before interaction dismisses it
   }
 
-  _initGlobalShortcuts() {
-    // Register the help overlay with the manager so body-class state lives in
-    // one place. `closeOnEsc: true` means the priority-100 Esc bind below
-    // (the overlay-closer cascade) will hand off to overlayManager.closeTop().
-    const helpOverlayEl = document.getElementById('help-overlay');
-    if (helpOverlayEl) {
-      overlayManager.register({
-        name: 'help',
-        rootEl: helpOverlayEl,
-        bodyClasses: ['help-open'],
-        closeOnEsc: true,
-        priority: 100,
-        onOpen: () => this._populateHelpClusters(),
-      });
-    }
-    const toggleHelp = (show) => {
-      if (!helpOverlayEl) return;
-      const isOpen = overlayManager.isOpen('help');
-      const next = show === undefined ? !isOpen : !!show;
-      if (next) overlayManager.open('help');
-      else overlayManager.close('help');
-    };
-    const btnHelp = document.getElementById('btn-help');
-    if (btnHelp) btnHelp.onclick = () => toggleHelp();
-    const helpClose = document.getElementById('help-close');
-    if (helpClose) helpClose.onclick = () => toggleHelp(false);
-    if (helpOverlayEl) helpOverlayEl.addEventListener('click', (e) => {
-      if (e.target === helpOverlayEl) toggleHelp(false);
+  // Back-chip on L2 / L3 column headers: pop one drill level. L2 → topics,
+  // L3 → subtopics. Hidden when the column is in narrow mode (CSS).
+  _initBackChips() {
+    const b2 = document.getElementById('back-l2');
+    const b3 = document.getElementById('back-l3');
+    if (b2) b2.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.focus({});
     });
+    if (b3) b3.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.focus({ cl: this.focusCl });
+    });
+  }
+
+  _initGlobalShortcuts() {
+    // Help overlay was removed — the command surface compressed enough that
+    // a dedicated panel was more friction than help. The few remaining
+    // shortcuts (R, T, Esc) are surfaced in their own button titles or are
+    // standard.
 
     // ─── Escape cascade ─────────────────────────────────────────────
     //
     // The original implementation was one giant if-else cascade (tour →
-    // help → detail → interview → bookmarks → search → camera reset).
+    // help → detail → interview → search → camera reset).
     // Under the unified registry the cascade is split into ordered binds
     // at three priorities so the same precedence falls out of the
     // dispatcher's stable sort:
     //
     //   200 — tour swallows Esc (no-op while active).
     //   100 — overlay closers: help.
-    //    50 — card closers: detail, interview, bookmarks,
-    //         search-state, camera-zoom-reset.
+    //    50 — card closers: detail, interview, search-state, camera-zoom-reset.
     //
     // Each bind is allowInInput: true so Esc still escapes the search box
     // (the original used a single window listener that ran before the
@@ -355,6 +277,7 @@ export class NavController extends EventTarget {
     // overlay is up — Skip is the only way out.
     keys.bind({
       keys: ['Escape'], priority: 200, label: 'esc-tour-noop',
+      helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         const tourApi = window.App?.tour;
@@ -370,6 +293,7 @@ export class NavController extends EventTarget {
     // help registers with closeOnEsc: true, so behavior is identical.
     keys.bind({
       keys: ['Escape'], priority: 100, label: 'esc-overlay-closeTop',
+      helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         if (!overlayManager.closeTop()) return false;
@@ -377,15 +301,21 @@ export class NavController extends EventTarget {
         return true;
       },
     });
-    // Pinned view close (priority 50).
+    // Pinned view close (priority 50). Routes through the pane-header
+    // Clear button so the same teardown path runs (drops pin, empties
+    // back stack, restores empty state).
     keys.bind({
       keys: ['Escape'], priority: 50, label: 'esc-pinned-view',
+      // Single help row covers the whole Esc cascade — other esc-*
+      // binds keep helpHidden so we don't list Esc N times.
+      helpLabel: 'Dismiss cards / clear filters / unzoom (one layer at a time)',
+      helpGroup: 'view',
       allowInInput: true,
       handler: (e) => {
         const pv = document.getElementById('pinned-view');
         if (!pv || pv.classList.contains('hidden')) return false;
-        const closeBtn = document.getElementById('pv-close');
-        if (closeBtn) closeBtn.click();
+        const clearBtn = document.getElementById('pv-clear');
+        if (clearBtn && !clearBtn.disabled) clearBtn.click();
         else pv.classList.add('hidden');
         e.preventDefault();
         return true;
@@ -394,6 +324,7 @@ export class NavController extends EventTarget {
     // Interview card close (priority 50).
     keys.bind({
       keys: ['Escape'], priority: 50, label: 'esc-interview-card',
+      helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         const ivCard = document.getElementById('interview-card');
@@ -409,19 +340,10 @@ export class NavController extends EventTarget {
         return true;
       },
     });
-    // Bookmarks card close (priority 50).
-    keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-bookmarks-card',
-      allowInInput: true,
-      handler: (e) => {
-        if (!window.App?.closeBookmarksCard?.()) return false;
-        e.preventDefault();
-        return true;
-      },
-    });
     // Search state clear (priority 50).
     keys.bind({
       keys: ['Escape'], priority: 50, label: 'esc-search-state',
+      helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         if (!this._clearSearchState?.()) return false;
@@ -432,6 +354,7 @@ export class NavController extends EventTarget {
     // Camera zoom reset (priority 50, runs last in the cascade).
     keys.bind({
       keys: ['Escape'], priority: 50, label: 'esc-camera-reset',
+      helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         const gl = window.App?.globe;
@@ -446,6 +369,7 @@ export class NavController extends EventTarget {
     // ─── Top-level shortcuts (priority 20) ──────────────────────────
     keys.bind({
       keys: ['/'], priority: 20, label: 'focus-search',
+      helpLabel: 'Focus the search box', helpGroup: 'search',
       handler: (e) => {
         const input = document.getElementById('search-input');
         if (!input) return false;
@@ -456,18 +380,8 @@ export class NavController extends EventTarget {
       },
     });
     keys.bind({
-      keys: ['?'], priority: 20, label: 'toggle-help',
-      // Suppress while the tour is active — the tour owns its own help
-      // affordances and ? would compete with the step-mode UI.
-      when: () => !overlayManager.isOpen('tour'),
-      handler: (e) => {
-        toggleHelp();
-        e.preventDefault();
-        return true;
-      },
-    });
-    keys.bind({
       keys: ['t'], priority: 20, label: 'toggle-timeline',
+      helpLabel: 'Toggle the timeline scrubber', helpGroup: 'view',
       handler: (e) => {
         const tlToggle = document.getElementById('tl-toggle');
         if (!tlToggle) return false;
@@ -478,6 +392,8 @@ export class NavController extends EventTarget {
     });
     keys.bind({
       keys: ['s'], priority: 20, label: 'surprise-me',
+      helpLabel: 'Surprise me — jump to a random well-supported stance',
+      helpGroup: 'navigate',
       handler: (e) => {
         const btn = document.getElementById('btn-surprise');
         if (btn) { btn.click(); e.preventDefault(); return true; }
@@ -522,6 +438,8 @@ export class NavController extends EventTarget {
     });
     keys.bind({
       keys: ['x'], priority: 20, label: 'global-reset',
+      helpLabel: 'Reset everything — drill, filters, search, zoom',
+      helpGroup: 'view',
       handler: (e) => {
         // Global reset shortcut — unwinds drill + all filters + search.
         const btn = document.getElementById('btn-reset');
@@ -542,9 +460,11 @@ export class NavController extends EventTarget {
     const input = document.getElementById('search-input');
     const suggestions = document.getElementById('search-suggestions');
     if (!input || !suggestions) return;
-    // Single-word hint only (no long syntax placeholder in the field).
-    input.placeholder = 'Search';
-    input.setAttribute('aria-label', 'Search');
+    // Default placeholder hints at the quoted-phrase escape so users
+    // discover that `mass ave` and `"mass ave"` differ. _updateSearchPlaceholder
+    // (called on focus changes) swaps in a scope-aware version once drilled.
+    input.placeholder = 'Search (use quotes for exact phrase)';
+    input.setAttribute('aria-label', 'Search (use quotes for exact phrase)');
 
     this._ngrams = null;
     fetch('tsne_chunks/ngrams.json').then(r => r.ok ? r.json() : null).then(d => {
@@ -625,15 +545,18 @@ export class NavController extends EventTarget {
     // entry from the search index, so focusing the empty box shows all the
     // options up front. Tap/click any row to drill into it.
     const renderAll = () => {
-      const groups = { cluster: [], sub: [], position: [] };
+      const groups = { cluster: [], sub: [], subreddit: [] };
       for (const e of (this._searchIndex || [])) {
         if (groups[e.kind]) groups[e.kind].push(e);
       }
-      if (!groups.cluster.length && !groups.sub.length && !groups.position.length) {
+      if (!groups.cluster.length && !groups.sub.length && !groups.subreddit.length) {
         return renderHistory();
       }
-      const order = ['cluster', 'sub', 'position'];
-      const kindLabel = { cluster: 'topics', sub: 'subtopics', position: 'points of view' };
+      // Empty-state directory mirrors the typed-state ordering minus n-grams
+      // (which require a query to make sense). No "points of view" — those
+      // were intentionally dropped from the dropdown alongside post snippets.
+      const order = ['cluster', 'sub', 'subreddit'];
+      const kindLabel = { cluster: 'topics', sub: 'subtopics', subreddit: 'subreddits' };
       // Previews — not a table-of-contents dump. Keep it glanceable.
       const PREVIEW_PER_KIND = 5;
       const parts = [];
@@ -760,6 +683,10 @@ export class NavController extends EventTarget {
       }
     };
 
+    // Pseudo-hit kind for the always-on top row: "Search for {query}" runs the
+    // same per-post spotlight as the Enter key would on a plain phrase.
+    const makeLiteralHit = (qTrim) => ({ kind: 'literal', label: qTrim });
+
     const render = (q) => {
       const qTrim = q.trim();
       userNavigated = false;
@@ -770,33 +697,10 @@ export class NavController extends EventTarget {
         input.classList.remove('regex-mode', 'regex-error');
         return;
       }
-      // If the user is asking for a text search, eagerly fetch the corpus
-      // and re-render when it's ready. Show a loading placeholder in the
-      // meantime — or a distinct error if the fetch has already failed.
-      const wantsText = /(^|\s)-?text:/i.test(qTrim);
-      if (wantsText && !this._textCorpus) {
-        if (this._textCorpusFailed) {
-          suggestions.innerHTML = `<div class="sugg-item"><span class="sugg-text" style="color:#ff8a8a; font-style:italic;">post snippets unavailable — check that tsne_chunks/grid_cells_samples.json + grid_cell_clusters.json are served</span></div>`;
-          suggestions.classList.remove('hidden');
-          currentMatches = [];
-          activeIdx = -1;
-          return;
-        }
-        this._ensureTextCorpus().then(() => {
-          if (input.value === q) render(q);
-        });
-        suggestions.innerHTML = `<div class="sugg-item"><span class="sugg-text" style="color:var(--fg-mute); font-style:italic;">loading post snippets…</span></div>`;
-        suggestions.classList.remove('hidden');
-        currentMatches = [];
-        activeIdx = -1;
-        return;
-      }
       const hits = this._searchMatches(qTrim);
       this._currentSearchHits = hits;
-      currentMatches = hits;
-      activeIdx = hits.length > 0 ? 0 : -1;
       // No auto-paint while typing — globe only changes when the user
-      // explicitly clicks a result (cluster, sub, position, snippet, phrase).
+      // explicitly clicks a result (literal, cluster, sub, phrase, …).
       const parsed = this._lastQuery;
       input.classList.toggle('regex-mode', parsed && parsed.kind === 'regex');
       input.classList.toggle('regex-error', parsed && parsed.kind === 'error');
@@ -805,44 +709,37 @@ export class NavController extends EventTarget {
         suggestions.classList.remove('hidden');
         return;
       }
-      if (hits.length === 0) {
-        suggestions.innerHTML = `<div class="sugg-item"><span class="sugg-text" style="color:var(--fg-mute); font-style:italic;">no matches</span></div>`;
-        suggestions.classList.remove('hidden');
-        return;
+      // The literal-search row is ALWAYS the first entry, even before any
+      // backend matches resolve — clicking it (or pressing Enter on it) runs
+      // the same per-post regex/substring spotlight as Enter on a plain query.
+      const literal = makeLiteralHit(qTrim);
+      // Reordered groups: ngrams (phrases by frequency) → topic → subtopic
+      // → subreddit. `position`, `gridcell`, and `text` (post snippets) are
+      // intentionally dropped from the dropdown: positions/sentiment cells
+      // are noise here, and snippets are visible in the details viewer when
+      // a result is clicked.
+      const groups = { ngram: [], cluster: [], sub: [], subreddit: [] };
+      for (const h of hits) {
+        if (groups[h.kind]) groups[h.kind].push(h);
       }
-      const groups = { subreddit: [], cluster: [], sub: [], position: [], gridcell: [], ngram: [], text: [] };
-      for (const h of hits) groups[h.kind]?.push(h);
       const kindLabel = {
-        subreddit: 'subreddits', cluster: 'topics', sub: 'subtopics', position: 'points of view',
-        gridcell: 'Sentiment', ngram: 'phrases', text: 'post snippets',
+        ngram: 'phrases', cluster: 'topics', sub: 'subtopics', subreddit: 'subreddits',
       };
-      // Per-row chip labels — appear on every result so users immediately
-      // see WHAT each row is (a phrase that paints, a snippet that pins a
-      // post, a topic that drills into the nav, etc.) without having to
-      // read the section header above. Different from kindLabel because
-      // these are singular and short.
       const kindChip = {
-        subreddit: 'subreddit', cluster: 'topic', sub: 'subtopic', position: 'point of view',
-        gridcell: 'sentiment', ngram: 'phrase', text: 'snippet',
+        ngram: 'phrase', cluster: 'topic', sub: 'subtopic', subreddit: 'subreddit',
       };
-      // One-line tooltip explaining what clicking each kind does — surfaced
-      // as the chip's title attribute so users discover it on hover.
       const kindHint = {
-        subreddit: 'Click to filter posts to this subreddit',
+        ngram: 'Click to paint every post containing this phrase on the globe',
         cluster: 'Click to drill into this topic in the sidebar',
         sub: 'Click to drill into this subtopic in the sidebar',
-        position: 'Click to focus this point of view',
-        gridcell: 'Click to focus this region',
-        ngram: 'Click to paint every post containing this phrase on the globe',
-        text: 'Click to pin the post containing this snippet',
+        subreddit: 'Click to filter posts to this subreddit',
       };
       const parts = [];
-      // Flattened display-order array — crucial because the suggestion
-      // groups render in a fixed visual order (subreddit → cluster → ...)
-      // but _searchMatches returns hits sorted by score. Clicking a visual
-      // item needs to look up THAT item, not the score-sorted equivalent.
+      // Flattened display-order array — keyboard nav + click both index into
+      // this so visual order matches selection order.
       const displayOrdered = [];
       const hasScoped = parsed.includes.some(t => t.field) || parsed.excludes.length > 0;
+      const visibleKinds = new Set(['ngram', 'cluster', 'sub', 'subreddit']);
       if (parsed.kind === 'regex' || hasScoped) {
         const fmt = (t) => {
           const body = t.kind === 'regex' ? `/${this._escHtml(t.display)}/` : this._escHtml(t.display);
@@ -852,22 +749,38 @@ export class NavController extends EventTarget {
           ...parsed.includes.map(fmt),
           ...parsed.excludes.map(t => '−' + fmt(t)),
         ];
-        const subCount = hits.filter(h =>
-          h.kind === 'sub' || h.kind === 'cluster' || h.kind === 'position' || h.kind === 'gridcell').length;
+        const visible = hits.filter(h => visibleKinds.has(h.kind));
+        const subCount = visible.filter(h => h.kind === 'sub' || h.kind === 'cluster').length;
         const paintHint = subCount >= 2
           ? ` <span class="sugg-paint-hint"><kbd>⇧↵</kbd> paint ${subCount} on globe</span>`
           : '';
-        parts.push(`<div class="sugg-mode-hint">${bits.join(' · ')} · ${hits.length} match${hits.length===1?'':'es'}${paintHint}</div>`);
+        parts.push(`<div class="sugg-mode-hint">${bits.join(' · ')} · ${visible.length} match${visible.length===1?'':'es'}${paintHint}</div>`);
       }
-      // When we're in text-mode, the aggregated sub/cluster "where it lives"
-      // chips should lead, followed by the individual snippets. For a plain
-      // phrase query the user typically wants TOPICS (navigable handles)
-      // first — text snippets are discovery context that makes more sense
-      // below, after the cluster/sub/position matches.
-      const isTextMode = parsed.includes.some(t => t.field === 'text');
-      const order = isTextMode
-        ? ['sub', 'cluster', 'text', 'subreddit', 'position', 'gridcell', 'ngram']
-        : ['subreddit', 'cluster', 'sub', 'position', 'gridcell', 'ngram', 'text'];
+      // Always-on literal-search row — sits above any matched suggestions and
+      // runs the same per-post spotlight as Enter on a plain phrase.
+      {
+        const i = displayOrdered.length;
+        displayOrdered.push(literal);
+        parts.push(`
+          <div class="sugg-group">
+            <div class="sugg-item sugg-item-literal" data-idx="${i}">
+              <span class="sugg-literal-glyph" aria-hidden="true">🔍</span>
+              <span class="sugg-text">Search for <code class="sugg-literal-q">${this._escHtml(qTrim)}</code></span>
+              <span class="sugg-type-chip sugg-type-literal" title="Spotlight every post matching this exact text">search</span>
+            </div>
+          </div>`);
+      }
+      // Scope hint: when the user is drilled and metadata search returned no
+      // chips, show a single small note so the dropdown doesn't appear silent
+      // (Change 1). The literal row above still works — it'll spotlight
+      // points inside the active scope.
+      const nonLiteralHitCount = hits.length;
+      if (this._hasSearchScope() && nonLiteralHitCount === 0) {
+        const lbl = this._scopeLabel();
+        parts.push(`<div class="sugg-mode-hint" style="background:rgba(255,255,255,0.03); color:var(--fg-mute);">No suggestions match in <b>${this._escHtml(lbl)}</b> — press <kbd>↵</kbd> to search posts inside this scope, or <kbd>Esc</kbd> to clear.</div>`);
+      }
+      // Reordered: ngram → cluster → sub → subreddit.
+      const order = ['ngram', 'cluster', 'sub', 'subreddit'];
       for (const k of order) {
         if (groups[k].length === 0) continue;
         const titleClass = k === 'ngram' ? 'sugg-group-title sugg-group-title--paintable' : 'sugg-group-title';
@@ -879,18 +792,6 @@ export class NavController extends EventTarget {
           const chipText = kindChip[k] || k;
           const chipTitle = kindHint[k] || '';
           const typeChip = `<span class="sugg-type-chip sugg-type-${k}" title="${this._escHtml(chipTitle)}">${this._escHtml(chipText)}</span>`;
-          // Text snippets need more room (multi-line) + use a monospace-ish
-          // display so quoted posts read like posts, not labels.
-          if (k === 'text') {
-            const snippet = this._highlightSnippet(h.label, parsed);
-            const ctxBadge = `<span class="sugg-text-badge" style="background:${dotColor}20; color:${dotColor}; border:1px solid ${dotColor}60">${this._escHtml(h.context || h.clusterName || '')}</span>`;
-            parts.push(`
-              <div class="sugg-item sugg-item-text" data-idx="${i}">
-                <div class="sugg-text-snippet">${snippet}</div>
-                <div class="sugg-text-meta">${typeChip}${ctxBadge}</div>
-              </div>`);
-            continue;
-          }
           parts.push(`
             <div class="sugg-item" data-idx="${i}">
               <span class="sugg-dot" style="background:${dotColor}; color:${dotColor}"></span>
@@ -914,22 +815,11 @@ export class NavController extends EventTarget {
           this._runSpotlightSearch(input.value.trim());
         });
       }
-      // Overwrite currentMatches with visual order so keyboard nav + click
-      // use the same indexing scheme.
       currentMatches = displayOrdered;
-      // Highlight the HIGHEST-SCORED match by default, not the visually-first.
-      // Sections render subreddit → cluster → …, but for queries like "mbta"
-      // the cluster "MBTA Outrage" scores higher than the r/mbta subreddit
-      // match, and Enter should go to the best match not the top section.
-      // Users can arrow-key to other items or click directly.
-      if (displayOrdered.length > 0) {
-        let best = 0, bestScore = -Infinity;
-        for (let i = 0; i < displayOrdered.length; i++) {
-          const s = displayOrdered[i].score || 0;
-          if (s > bestScore) { bestScore = s; best = i; }
-        }
-        activeIdx = best;
-      }
+      // Default selection: the literal-search row (index 0). Pressing Enter
+      // without arrowing runs the literal spotlight, matching the user's
+      // intuition that "Enter searches for what I typed".
+      activeIdx = displayOrdered.length > 0 ? 0 : -1;
       suggestions.querySelectorAll('.sugg-item').forEach(el => {
         const idx = +el.dataset.idx;
         el.onclick = () => this._applySearchHit(currentMatches[idx], input);
@@ -939,12 +829,17 @@ export class NavController extends EventTarget {
     };
 
     input.addEventListener('input', () => render(input.value));
-    input.addEventListener('focus', () => {
+    const showDropdown = () => {
       if (input.value) { render(input.value); return; }
-      // Empty focus: show a browsable directory of all clusters/subtopics/
-      // positions so the search box doubles as a table of contents.
+      // Empty focus / click: show a browsable directory of all clusters/
+      // subtopics/positions so the search box doubles as a table of contents.
       renderAll();
-    });
+    };
+    input.addEventListener('focus', showDropdown);
+    // Clicking back into an already-focused input (e.g. after dismissing the
+    // dropdown via Esc) doesn't re-fire `focus`, so wire `click` too —
+    // ensures the suggestions reappear whenever the user clicks the box.
+    input.addEventListener('click', showDropdown);
     input.addEventListener('blur', () => {
       setTimeout(() => suggestions.classList.add('hidden'), 120);
       // writeHash is a no-op (URL not updated); kept so callers stay in sync.
@@ -983,9 +878,21 @@ export class NavController extends EventTarget {
         return;
       }
 
+      // Literal-search row (always present at index 0 when there is input):
+      // run the per-post spotlight on the raw query — same as the prior
+      // "plain phrase + user hasn't arrowed" path, but explicit.
+      if (sel && sel.kind === 'literal') {
+        pushHist(input.value);
+        suggestions.classList.add('hidden');
+        input.blur();
+        this._runSpotlightSearch(qTrim);
+        e.preventDefault();
+        return;
+      }
+
       const parsed = this._lastQuery;
       const hasMultiKinds = currentMatches.some(m =>
-        m.kind === 'sub' || m.kind === 'cluster' || m.kind === 'position' || m.kind === 'gridcell');
+        m.kind === 'sub' || m.kind === 'cluster');
 
       // Shift+Enter paints the union of sub/cluster hits on the globe.
       if (e.shiftKey && hasMultiKinds) {
@@ -995,9 +902,9 @@ export class NavController extends EventTarget {
         return;
       }
 
-      // Plain text + user hasn't arrowed → spotlight the literal input. This
-      // matches "press Enter to search for what I typed" instead of jumping
-      // to whichever metadata suggestion happened to score highest.
+      // Plain text + user hasn't arrowed → spotlight the literal input. The
+      // literal row at idx 0 already covers this, but keep the fallback so
+      // edge paths (regex with no match selected, etc.) still spotlight.
       const isPlainPhrase = parsed && parsed.kind === 'substr'
         && parsed.includes.length > 0
         && parsed.includes.every(t => !t.field);
@@ -1014,7 +921,7 @@ export class NavController extends EventTarget {
       // autoPaint when multi-kind, otherwise apply the active hit.
       const isTextMode = parsed && parsed.includes?.some(t => t.field === 'text');
       const autoPaint = parsed && parsed.kind === 'regex' && !isTextMode
-        && hasMultiKinds && currentMatches.filter(m => m.kind !== 'ngram').length > 1;
+        && hasMultiKinds && currentMatches.filter(m => m.kind !== 'ngram' && m.kind !== 'literal').length > 1;
       if (autoPaint) {
         this._paintRegexOnGlobe(currentMatches);
         pushHist(input.value);
@@ -1080,7 +987,13 @@ export class NavController extends EventTarget {
   _runSpotlightSearch(phrase) {
     const App = window.App;
     if (!App?.findPointsContaining || !App?.globe?.setSpotlight) return;
-    const p = String(phrase || '').trim();
+    // Change 2: strip surrounding double-quotes so `"mass ave"` and `mass ave`
+    // hit the corpus the same way (findPointsContaining is a literal
+    // substring scan and would never match if the quotes were left in).
+    let p = String(phrase || '').trim();
+    if (p.length >= 2 && p[0] === '"' && p[p.length - 1] === '"') {
+      p = p.slice(1, -1).trim();
+    }
     if (!p) return;
     this._spotlightToken = (this._spotlightToken || 0) + 1;
     const myToken = this._spotlightToken;
@@ -1090,10 +1003,27 @@ export class NavController extends EventTarget {
       this._showSpotlightChip(`Indexing posts… ${done}/${total}`, false);
     }).then(set => {
       if (myToken !== this._spotlightToken) return;
-      App.globe.setSpotlight(set);
-      const n = set.size;
-      if (n === 0) this._showSpotlightChip(`No posts contain "${p}"`, true);
-      else this._showSpotlightChip(`${n.toLocaleString()} post${n === 1 ? '' : 's'} mention "${p}"`, true);
+      // Change 1: when drilled, restrict the spotlight to in-scope points
+      // only. Final pass over the result Set keeps findPointsContaining
+      // global (no churn in search-find.js).
+      let scoped = set;
+      const scopeLabel = this._scopeLabel();
+      if (this._hasSearchScope()) {
+        scoped = new Set();
+        for (const i of set) if (this._pointIsInScope(i)) scoped.add(i);
+      }
+      App.globe.setSpotlight(scoped);
+      const n = scoped.size;
+      if (n === 0) {
+        const where = scopeLabel ? ` in ${scopeLabel}` : '';
+        this._showSpotlightChip(`No posts contain "${p}"${where}`, true);
+      } else {
+        const where = scopeLabel ? ` in ${scopeLabel}` : '';
+        this._showSpotlightChip(`${n.toLocaleString()} post${n === 1 ? '' : 's'} mention "${p}"${where}`, true);
+      }
+      // Frame the densest pocket of hits so a multi-thousand match set
+      // lands on its centroid instead of whichever index came first (#49).
+      if (n > 0) { try { App.rotateToHitsCentroid?.(scoped); } catch {} }
     }).catch(() => {
       if (myToken !== this._spotlightToken) return;
       this._showSpotlightChip(`Search failed`, true);
@@ -1150,6 +1080,148 @@ export class NavController extends EventTarget {
     window.App?.clearSubredditFilter?.();
     if (hadTopicFilter) this.focus({});
     return true;
+  }
+
+  // ── Search scope (Change 1) ────────────────────────────────────────────
+  // When the user has drilled into a cluster / sub / position, every search
+  // surface (suggestions dropdown + per-post spotlight) is restricted to
+  // that drill scope. The helpers below answer "is point i in scope?" and
+  // "is suggestion h in scope?" without rebuilding the search index — the
+  // index stays global, scope is applied as a final pass.
+  _hasSearchScope() {
+    return this.focusCl != null || this.focusGid != null || this.focusPosIdx != null;
+  }
+  // Short human-readable name of the active drill scope, for chip text.
+  _scopeLabel() {
+    if (!this._hasSearchScope()) return '';
+    if (this.focusGid != null) {
+      const g = this.subGidMap.byGid[this.focusGid];
+      if (g?.name) return g.name;
+    }
+    if (this.focusCl != null) {
+      return this.state.clusterMeta?.[String(this.focusCl)]?.name || `Topic ${this.focusCl}`;
+    }
+    return '';
+  }
+  // Per-point: is global point index `i` inside the active drill?
+  _pointIsInScope(i) {
+    if (!this._hasSearchScope()) return true;
+    const st = this.state;
+    if (this.focusCl != null && st.cluster && st.cluster[i] !== this.focusCl) return false;
+    if (this.focusGid != null) {
+      const g = this.subGidMap.byGid[this.focusGid];
+      if (!g) return false;
+      // sub matches when the point's local sub label inside its cluster
+      // matches the focused gid's sub. cluster check above already covers cl.
+      if (st.subLocal && st.subLocal[i] !== g.sub) return false;
+    }
+    if (this.focusPosIdx != null && st.positionAssignments) {
+      // 255 sentinel marks "unassigned" — exclude when scoped to a position.
+      if (st.positionAssignments[i] !== this.focusPosIdx) return false;
+    }
+    return true;
+  }
+  // Suggestion-row scope test for the dropdown. Topic chips outside the
+  // focused cluster (or subtopic outside the focused gid) are pure noise.
+  // Subreddits and ngrams use lazily-computed in-scope sets so we don't
+  // suggest "r/cambridgema" when the user is drilled into a cluster that
+  // has zero cambridgema posts.
+  _hitInScope(h) {
+    if (!h) return false;
+    if (!this._hasSearchScope()) return true;
+    if (h.kind === 'literal') return true;
+    if (h.kind === 'cluster') {
+      return this.focusCl == null || h.cl === this.focusCl;
+    }
+    if (h.kind === 'sub') {
+      if (this.focusCl != null && h.cl !== this.focusCl) return false;
+      if (this.focusGid != null && h.gid !== this.focusGid) return false;
+      return true;
+    }
+    if (h.kind === 'position') {
+      if (this.focusCl != null && h.cl !== this.focusCl) return false;
+      if (this.focusGid != null && h.gid !== this.focusGid) return false;
+      if (this.focusPosIdx != null && h.posIdx !== this.focusPosIdx) return false;
+      return true;
+    }
+    if (h.kind === 'gridcell') {
+      if (this.focusCl != null && h.cl !== this.focusCl) return false;
+      if (this.focusGid != null && h.gid != null && h.gid !== this.focusGid) return false;
+      return true;
+    }
+    if (h.kind === 'subreddit') {
+      const s = this._scopeIndex();
+      if (!s.inScopeSubreddits) return true;   // not yet computable
+      return s.inScopeSubreddits.has(h.srId);
+    }
+    if (h.kind === 'ngram') {
+      // N-gram scope check is best-effort against the small text-corpus
+      // sample (3,675 snippets). When the corpus isn't loaded yet we keep
+      // the suggestion (graceful degradation) rather than silently dropping
+      // it. Inline-anchored substring match keeps it cheap.
+      const s = this._scopeIndex();
+      if (!s.inScopeTexts) return true;
+      const needle = String(h.label || '').toLowerCase();
+      if (!needle) return true;
+      for (const t of s.inScopeTexts) if (t.includes(needle)) return true;
+      return false;
+    }
+    if (h.kind === 'text') {
+      // Text-snippet hit already carries its (cl, gid). Match the same rule
+      // as sub/cluster chips.
+      if (this.focusCl != null && h.cl !== this.focusCl) return false;
+      if (this.focusGid != null && h.gid != null && h.gid !== this.focusGid) return false;
+      return true;
+    }
+    return true;
+  }
+  // Lazily memoize per-scope index sets used by _hitInScope. Invalidated
+  // by _invalidateScopeIndex() inside focus().
+  _scopeIndex() {
+    if (this._scopeIndexCache) return this._scopeIndexCache;
+    const out = { inScopeSubreddits: null, inScopeTexts: null };
+    if (!this._hasSearchScope()) {
+      this._scopeIndexCache = out;
+      return out;
+    }
+    const st = this.state;
+    if (st.subredditAssignments) {
+      const sr = new Set();
+      const N = st.N | 0;
+      for (let i = 0; i < N; i++) {
+        if (this._pointIsInScope(i)) sr.add(st.subredditAssignments[i]);
+      }
+      out.inScopeSubreddits = sr;
+    }
+    if (this._textCorpus) {
+      const arr = [];
+      for (const e of this._textCorpus) {
+        if (this.focusCl != null && e.cl !== this.focusCl) continue;
+        if (this.focusGid != null && e.gid != null && e.gid !== this.focusGid) continue;
+        if (this.focusGid != null && e.gid == null) continue;   // unattributed sample → drop when subdrilled
+        arr.push(String(e.text || '').toLowerCase());
+      }
+      out.inScopeTexts = arr;
+    }
+    this._scopeIndexCache = out;
+    return out;
+  }
+  _invalidateScopeIndex() { this._scopeIndexCache = null; }
+  // Update the search input placeholder to show the currently-focused
+  // topic/subtopic name (Option A from the spec). Called from focus().
+  _updateSearchPlaceholder() {
+    const input = document.getElementById('search-input');
+    if (!input) return;
+    let label = null;
+    if (this.focusGid != null) {
+      const g = this.subGidMap.byGid[this.focusGid];
+      if (g) label = g.name;
+    } else if (this.focusCl != null) {
+      label = this.state.clusterMeta?.[String(this.focusCl)]?.name || `Topic ${this.focusCl}`;
+    }
+    const text = label ? `Search inside ${label}` : 'Search (use quotes for exact phrase)';
+    input.placeholder = text;
+    input.setAttribute('aria-label', text);
   }
 
   _showRegexChip(clusterCount, subCount) {
@@ -1269,6 +1341,41 @@ export class NavController extends EventTarget {
   _parseQuery(q) {
     const raw = q.trim();
     if (!raw) return { kind: 'empty', includes: [], excludes: [], display: '', test: () => false };
+
+    // Change 2: a plain multi-word query (no field prefixes, no regex syntax,
+    // no exclusions, no embedded quotes) is treated as a single exact-substring
+    // match — `mass ave` looks for that literal phrase, not for `mass` AND
+    // `ave` independently. Quoted phrases (`"mass ave"`) take the same path.
+    // Regex / field-scoped queries (`cl:rent /MBTA/`) keep the old per-token
+    // semantics so power-user syntax still composes.
+    const isPlainPhrase =
+      raw.indexOf(' ') >= 0 &&
+      !/["\\]/.test(raw) &&
+      !/^[-]/.test(raw) &&
+      !/(^|\s)-/.test(raw) &&
+      !/(^|\s)(sub|cl|pos|r|ng|text):/i.test(raw) &&
+      !/(^|\s)r\//i.test(raw) &&
+      !/[\\^$.*+?()[\]{}|/]/.test(raw);
+    if (isPlainPhrase) {
+      const m = this._makeMatcher(raw);
+      if (m.kind !== 'error') {
+        const includes = [{ field: null, test: m.test, display: m.display,
+                            kind: m.kind, re: m.re, low: m.low, exclude: false }];
+        const self = this;
+        return {
+          kind: 'substr',
+          display: raw,
+          primaryDisplay: m.display,
+          re: m.re || null,
+          low: m.low || null,
+          includes, excludes: [], hasRegex: false,
+          test(hay, entry) {
+            for (const t of includes) if (!self._matchTerm(t, entry, hay)) return false;
+            return true;
+          },
+        };
+      }
+    }
 
     const tokens = this._tokenizeQuery(raw);
     const includes = [], excludes = [];
@@ -1544,7 +1651,14 @@ export class NavController extends EventTarget {
         }
       }
     }
-    return capped.slice(0, 30);
+    // Final pass: when the user is drilled into a cluster/subtopic/position,
+    // drop suggestions that fall outside that scope so the dropdown only
+    // shows things actually reachable in the current view (Change 1).
+    let scoped = capped;
+    if (this._hasSearchScope()) {
+      scoped = capped.filter(h => this._hitInScope(h));
+    }
+    return scoped.slice(0, 30);
   }
 
   _escHtml(s) {
@@ -1602,6 +1716,16 @@ export class NavController extends EventTarget {
 
   _applySearchHit(hit, input) {
     if (!hit) return;
+    if (hit.kind === 'literal') {
+      // Always-on top row. Runs the same per-post spotlight search as Enter
+      // on a plain phrase: scans every chunk and lights up matching points.
+      const phrase = (hit.label || input?.value || '').trim();
+      if (!phrase) return;
+      document.getElementById('search-suggestions').classList.add('hidden');
+      input?.blur?.();
+      this._runSpotlightSearch(phrase);
+      return;
+    }
     if (hit.kind === 'text') {
       // Find the actual post in the chunk corpus and pin it (white glow + detail card).
       // Falls back to a synthetic snippet card if the post can't be resolved.
@@ -1633,9 +1757,8 @@ export class NavController extends EventTarget {
         setTimeout(() => window.App.globe.rotateTo(pos.lat, pos.lon, 1.5), 80);
       }
     } else if (hit.kind === 'subreddit') {
-      // Fire the same toggle path the focus-card "where it lives" labels use,
-      // so the chip + intersection logic run. Fall back to direct globe call
-      // if the hook isn't available.
+      // Fire the toggleSubredditFilter path so the chip + intersection logic
+      // run. Fall back to direct globe call if the hook isn't available.
       if (window.App?.toggleSubredditFilter) {
         window.App.toggleSubredditFilter(hit.srId, hit.label.replace(/^r\//, ''), this.focusCl, this.focusGid);
       } else if (window.App?.globe?.setSubredditHighlight) {
@@ -1662,79 +1785,49 @@ export class NavController extends EventTarget {
     input.blur();
   }
 
-  renderBreadcrumbs() {
-    const el = this.breadcrumbs;
-    el.innerHTML = '';
-    // Hide entirely when nothing is focused — at the wide-globe level
-    // there's no "current topic" to label, and an empty breadcrumb just
-    // wastes vertical space above the bars. Toggling .is-empty animates
-    // the height collapse via CSS so the layout doesn't snap.
-    const hasFocus = this.focusCl != null;
-    el.classList.toggle('is-empty', !hasFocus);
-    if (!hasFocus) return;
-
-    // Mutual-hover: crumb ↔ bar segment by key. "Key" mirrors what _renderStack writes to dataset.key.
-    const linkCrumb = (crumbEl, stackEl, key) => {
-      if (!stackEl || key == null) return;
-      crumbEl.addEventListener('mouseenter', () => {
-        const seg = stackEl.querySelector(`.bar-seg[data-key="${key}"]`);
-        if (seg) seg.classList.add('link-hover');
-      });
-      crumbEl.addEventListener('mouseleave', () => {
-        const seg = stackEl.querySelector(`.bar-seg[data-key="${key}"]`);
-        if (seg) seg.classList.remove('link-hover');
-      });
+  // Append the current selection per level next to the rotated section
+  // title (#30). Replaces the old breadcrumb pill stack — same back-nav
+  // affordance, no extra vertical real-estate.
+  _updateColumnTitles() {
+    const fillTitle = (el, defaultText, currentName, popFn) => {
+      if (!el) return;
+      el.innerHTML = '';
+      const def = document.createElement('span');
+      def.className = 'bct-default';
+      def.textContent = defaultText;
+      el.appendChild(def);
+      if (currentName) {
+        const sep = document.createElement('span');
+        sep.className = 'bct-sep';
+        sep.textContent = '▸';
+        el.appendChild(sep);
+        const cur = document.createElement('span');
+        cur.className = 'bct-current';
+        cur.textContent = currentName;
+        cur.title = currentName;
+        cur.setAttribute('role', 'button');
+        cur.setAttribute('tabindex', '0');
+        cur.addEventListener('click', (e) => { e.stopPropagation(); popFn(); });
+        cur.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); popFn(); }
+        });
+        el.appendChild(cur);
+      }
     };
-
-    // Leading "Exploring" label so it reads as a sentence in the header.
-    const lab = document.createElement('span');
-    lab.className = 'crumb-label';
-    lab.textContent = 'Exploring';
-    el.appendChild(lab);
-
-    // Root crumb — clicking jumps back to the whole globe.
-    const all = document.createElement('div');
-    all.className = 'crumb crumb-root';
-    all.textContent = 'All topics';
-    all.onclick = () => this.focus({});
-    el.appendChild(all);
-
-    if (this.focusCl != null) {
-      const sep1 = document.createElement('span'); sep1.className = 'sep'; sep1.textContent = '›';
-      el.appendChild(sep1);
-      const meta = this.state.clusterMeta[String(this.focusCl)];
-      const c = document.createElement('div');
-      c.className = 'crumb' + (this.focusGid == null ? ' active' : '');
-      c.style.color = clusterColor(this.focusCl);
-      c.style.borderLeftColor = clusterColor(this.focusCl);
-      c.textContent = meta ? meta.name : `Topic ${this.focusCl}`;
-      c.onclick = () => this.focus({ cl: this.focusCl });
-      el.appendChild(c);
-      linkCrumb(c, this.stackL1, String(this.focusCl));
-    }
-    if (this.focusGid != null) {
-      const sep2 = document.createElement('span'); sep2.className = 'sep'; sep2.textContent = '›';
-      el.appendChild(sep2);
-      const sub = this.subGidMap.byGid[this.focusGid];
-      const s = document.createElement('div');
-      s.className = 'crumb' + (this.focusPosIdx == null ? ' active' : '');
-      s.style.borderLeftColor = clusterColor(this.focusCl);
-      s.textContent = sub ? sub.name : `Sub ${this.focusGid}`;
-      s.onclick = () => this.focus({ cl: this.focusCl, gid: this.focusGid });
-      el.appendChild(s);
-      if (sub) linkCrumb(s, this.stackL2, `${sub.cl}_${sub.sub}`);
-    }
-    if (this.focusPosIdx != null) {
-      const sep3 = document.createElement('span'); sep3.className = 'sep'; sep3.textContent = '›';
-      el.appendChild(sep3);
-      const posDoc = this.positionsDoc?.[String(this.focusGid)];
-      const pos = posDoc?.positions?.[this.focusPosIdx];
-      const p = document.createElement('div');
-      p.className = 'crumb active';
-      p.style.borderLeftColor = clusterColor(this.focusCl);
-      p.textContent = pos?.name || `Position ${this.focusPosIdx}`;
-      el.appendChild(p);
-    }
+    const t1 = document.getElementById('title-l1');
+    const t2 = document.getElementById('title-l2');
+    const t3 = document.getElementById('title-l3');
+    const clName = this.focusCl != null
+      ? (this.state.clusterMeta?.[String(this.focusCl)]?.name || `Topic ${this.focusCl}`)
+      : null;
+    const sub = this.focusGid != null ? this.subGidMap.byGid[this.focusGid] : null;
+    const subName = sub ? sub.name : (this.focusGid != null ? `Sub ${this.focusGid}` : null);
+    fillTitle(t1, t1?.dataset.default || 'Topics', clName, () => this.focus({}));
+    fillTitle(t2, t2?.dataset.default || 'Subtopics', subName, () => this.focus({ cl: this.focusCl }));
+    // L3 ("Points of view") drops the breadcrumb tail — the active stance
+    // is already obvious from the highlighted bar segment, and "▸
+    // Miscellaneous" was reading as a confusing automatic selection.
+    fillTitle(t3, t3?.dataset.default || 'Points of view', null, () => this.focus({ cl: this.focusCl, gid: this.focusGid }));
   }
 
   // Trend label — relative to corpus growth. Without normalizing, this
@@ -1858,7 +1951,7 @@ export class NavController extends EventTarget {
     }, { keepRibbon: true });
   }
 
-  // ─── Nav-bar hover → globe point highlight ─────────────────────
+  // ─── Nav-bar hover → globe point highlight (three-tier #34) ─────
   _onSegHover(info) {
     const globe = window.App?.globe;
     if (!globe || !info?.hover) return;
@@ -1866,7 +1959,9 @@ export class NavController extends EventTarget {
     // adjacent segments doesn't thrash the globe shader.
     clearTimeout(this._hoverHighlightTimer);
     this._hoverHighlightTimer = setTimeout(() => {
-      globe.setHighlight(info.hover);
+      const h = info.hover;
+      const level = h.posIdx != null ? 'position' : (h.gid != null ? 'subtopic' : 'topic');
+      setVisibilityTiers({ level, scope: h });
     }, 30);
   }
   _onSegUnhover() {
@@ -1875,11 +1970,19 @@ export class NavController extends EventTarget {
     clearTimeout(this._hoverHighlightTimer);
     this._hoverHighlightTimer = setTimeout(() => {
       // Revert to the currently-focused selection (or clear if unfocused).
-      globe.setHighlight({
+      // Drop the dim layer first, then re-apply the focus highlight.
+      clearVisibilityTiers();
+      const h = {
         cl: this.focusCl,
         gid: this.focusGid,
         posIdx: this.focusPosIdx,
-      });
+      };
+      if (h.cl == null && h.gid == null && h.posIdx == null) {
+        globe.setHighlight(h);
+      } else {
+        const level = h.posIdx != null ? 'position' : (h.gid != null ? 'subtopic' : 'topic');
+        setVisibilityTiers({ level, scope: h });
+      }
     }, 80);
   }
 
@@ -1898,10 +2001,6 @@ export class NavController extends EventTarget {
     const h = rect.height;
     if (h === 0) return;
     const n = data.length;
-    const minTotal = n * MIN_SEG_PX + (n - 1) * GAP_PX;
-    const sumPct = data.reduce((s, d) => s + d.pct, 0) || 1;
-    const fits = minTotal <= h + 4;
-    const scale = fits ? (h - minTotal) : 0;
     let maxPct = 0;
     for (const d of data) if (d.pct > maxPct) maxPct = d.pct;
     // Display strings rounded so the visible percentages sum to 100%.
@@ -1922,10 +2021,17 @@ export class NavController extends EventTarget {
     const seenKeys = new Set();
     for (let i = 0; i < n; i++) {
       const d = data[i];
-      const span = fits
-        ? MIN_SEG_PX + (d.pct / sumPct) * scale
-        : MIN_SEG_PX + PROPORTIONAL_BONUS_PX *
-            (Math.log(1 + d.pct * 100) / Math.log(1 + maxPct * 100 || 2));
+      // Fixed-scale row heights: each row is sized by its share, not by
+      // the available column height. The column scrolls if total exceeds
+      // its visible area. This keeps row heights stable when the user
+      // drags the topics ↔ details viewer split.
+      // Linear-proportional: a 42% bar reads as ~3.8× a 11% bar, the way
+      // the percentages claim (the prior log scale compressed a 3.8× gap
+      // down to ~1.3×, which made the bars look near-equal). The MIN_SEG_PX
+      // floor keeps tiny percentages legible without flattening the rest.
+      const topSpan = MIN_SEG_PX + PROPORTIONAL_BONUS_PX;
+      const proportional = topSpan * (d.pct / (maxPct || 1));
+      const span = Math.max(MIN_SEG_PX, proportional);
       const info = mapper(d, i, data);
       const key = String(info.key);
       seenKeys.add(key);
@@ -2116,6 +2222,10 @@ export class NavController extends EventTarget {
     this.focusCl = cl;
     this.focusGid = gid;
     this.focusPosIdx = posIdx;
+    // Search scope changed — drop the cached in-scope subreddit/text sets
+    // and refresh the placeholder so the input mirrors the new drill.
+    this._invalidateScopeIndex?.();
+    this._updateSearchPlaceholder?.();
     // Mirror drill state into the cross-module store so non-owners can
     // read store.get().drill instead of reaching into the NavController.
     try { store.set({ drill: { cl, gid, posIdx } }); } catch {}
@@ -2143,19 +2253,8 @@ export class NavController extends EventTarget {
     if (this._hoverCloseTimer) { clearTimeout(this._hoverCloseTimer); this._hoverCloseTimer = null; }
     for (const c of document.querySelectorAll('.bar-column.narrow.open')) c.classList.remove('open');
     document.getElementById('nav')?.classList.remove('nav-narrow-open');
-    // Narrow-column titles stay as generic level labels ("Topics",
-    // "Subtopics", "Points of view"). The dynamic focused topic name —
-    // previously crammed sideways into the rotated label and hard to
-    // read — now lives in the horizontal breadcrumb above the bars
-    // (see renderBreadcrumbs).
-    const t1 = document.getElementById('title-l1');
-    const t2 = document.getElementById('title-l2');
-    const t3 = document.getElementById('title-l3');
-    if (t1) t1.textContent = t1.dataset.default || 'Topics';
-    if (t2) t2.textContent = t2.dataset.default || 'Subtopics';
-    if (t3) t3.textContent = t3.dataset.default || 'Points of view';
+    this._updateColumnTitles();
     this._applyFade();
-    this.renderBreadcrumbs();
     requestAnimationFrame(() => {
       this.drawRibbons();
       this._scrollActiveIntoView();

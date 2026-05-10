@@ -16,6 +16,10 @@ export const SUB_FRAMING = 1.55;       // landing on a subtopic
 export const STANCE_FRAMING = 1.5;     // landing on a pin / stance
 export const CLOSE_FRAMING = 1.35;     // tight crop on a position / search pocket
 export const ZOOM_TO_POINT_FRAMING = 1.8;
+// Framing for "land on the densest cluster of search hits" — slightly wider
+// than ZOOM_TO_POINT_FRAMING so the user sees the whole bright pocket
+// rather than zoomed onto its centroid (#49).
+export const SEARCH_HITS_FRAMING = 2.0;
 
 // ── Hero idle nudge (px-equivalent per frame) ────────────────────────────
 export const HERO_NUDGE_LON = 0.22;
@@ -60,25 +64,62 @@ export const BAR_SEG_GAP_PX = 1;
 // Max bonus added to the floor when distributing leftover column space —
 // applies in the overflow path (when even MIN total exceeds container, we
 // fall back to a log-scale rank instead of strict proportional).
-export const BAR_SEG_PROPORTIONAL_BONUS_PX = 34;
+export const BAR_SEG_PROPORTIONAL_BONUS_PX = 72;
 
 // ── Tour navigation pacing (Phase C1) ────────────────────────────────────
 // Promoted "Continue" button fades in this slow when a step task completes
 // so the user actually registers the affordance change.
 export const TOUR_NEXT_FADE_MS = 500;
-// Spotlight dot pulse cycle on beat 5 — slower than the tour-step pulse glow
-// so a stationary cluster of three numbered halos doesn't read as nervous
-// flicker.
-export const TOUR_GLOWING_PULSE_MS = 1400;
+// Spotlight dot pulse cycle on beat 5. The global pulse cadence is the slow
+// heartbeat in --t-pulse (CSS); this constant is reserved for any JS-driven
+// halo timer that wants to match the same beat.
+export const TOUR_GLOWING_PULSE_MS = 3500;
 // Long-distance camera moves during step beats. The global tour slerp/zoom
 // rate is intentionally slow (creates "deliberate camera moves") but for the
 // "compare three voices" beat the user reads the rotation as too sluggish —
 // snappier short-burst tween wins. Beats opt in by setting beat.cameraSnappy.
-export const TOUR_CAMERA_TWEEN_MS = 600;
+export const TOUR_CAMERA_TWEEN_MS = 1500;
 // Ease rates the globe applies when beat.cameraSnappy is true (per-frame).
-// 0.18/0.14 are the non-tour defaults — same feel as normal nav.
-export const TOUR_SNAPPY_SLERP_RATE = 0.18;
-export const TOUR_SNAPPY_ZOOM_RATE = 0.14;
+// Slower than the snappy historical defaults — calmer even on opt-in fast
+// beats, since the user complained the original snap read as too quick.
+export const TOUR_SNAPPY_SLERP_RATE = 0.048;
+export const TOUR_SNAPPY_ZOOM_RATE = 0.037;
+
+// ── Globe camera ease rates (per-frame slerp/zoom inside _tick) ──────────
+// APP path: click-to-focus, search, nav. TOUR path: tour-cam-snappy class on body (legible motion).
+// All rates are 3.75× slower than the historical values so camera moves
+// read as deliberate. Per-frame angular velocity is also clamped via
+// MAX_ROT_PER_FRAME below so initial swing into a target never reads as a
+// snap, only as a steady glide.
+export const SLERP_RATE_APP = 0.037;
+export const ZOOM_RATE_APP = 0.029;
+export const SLERP_RATE_TOUR = 0.024;
+export const ZOOM_RATE_TOUR = 0.019;
+
+// ── Camera motion ceilings (applied inside _tick after slerp scaling) ────
+// MAX_ROT_PER_FRAME caps angular delta per frame in radians. Long arcs
+// glide instead of snap; short corrections still settle quickly because
+// the slerp fraction takes over once the residual angle drops below the cap.
+export const MAX_ROT_PER_FRAME = 0.023;
+// MAX_ZOOM_PER_FRAME caps the absolute |distance| change per frame in scene
+// units. Tuned to match the slower rotation feel.
+export const MAX_ZOOM_PER_FRAME = 0.024;
+
+// ── Pull-out arc on long camera rotations ────────────────────────────────
+// During a rotateTo, the effective distance target is bumped by
+// `angleRemaining * ZOOM_LIFT_PER_RAD` so the camera pulls back during
+// the swing and zooms back in as it arrives. The lift is also capped so
+// the camera never falls outside the user's normal MAX_ZOOM range. Net
+// effect: short rotations stay flat (≈0 lift); 90° swing pulls back
+// ~0.94 units; 180° swing pulls back ~1.88 units.
+export const ZOOM_LIFT_PER_RAD = 0.60;
+export const ZOOM_LIFT_MAX = 2.0;
+
+// ── Per-point dim fade (applies when highlight filter changes) ───────────
+// Lerp rate per frame for animating point alpha (BRIGHT ↔ DIM ↔ HIDDEN)
+// toward its target value. 0.06 ≈ 350ms ease at 60fps — points lose color
+// gradually rather than snapping.
+export const VIS_FADE_RATE = 0.06;
 
 // ── Scattershot ("R" five-random) layout (#9) ───────────────────────────
 // Selection drops the outermost ring of on-screen candidates so sprouts
@@ -103,6 +144,29 @@ export const SPROUT_CARD_GAP_PX = 14;
 export const SPROUT_VIEWPORT_MARGIN_PX = 16;
 // Initial radial offset from the anchor when seeding card positions.
 export const SPROUT_INITIAL_OFFSET_PX = 84;
+// Disc-bounded sampling (#25): the candidate sub-disc is centered on the
+// camera focal screen position with diameter = viewport_h * SPROUT_DISC_FRAC,
+// i.e. radius = viewport_h * SPROUT_DISC_FRAC / 2. With the default 0.5 the
+// diameter equals half the viewport height (radius ≈ viewport_h / 4).
+// Cards radiate around a ring at disc_r + SPROUT_DISC_RING_OFFSET_PX so the
+// leader lines never cross (#12) — they sit in angular order around the disc,
+// always outside the disc boundary.
+export const SPROUT_DISC_FRAC = 0.5;
+export const SPROUT_DISC_RING_OFFSET_PX = 56;
+
+// ── Three-tier visibility (#5 #34) ───────────────────────────────────────
+// Per-point alpha tier values written through setVisibilityTiers().
+// BRIGHT = 1.0 matches the existing un-filtered point alpha.
+// HIDDEN = 0.12 matches the existing dimmed-out value already used in
+// globe.js _recomputeDim (the "filtered out" tier).
+// DIM    = 0.38 — new middle tier; sits clearly above the HIDDEN floor so
+// parent context (a hovered subtopic's parent topic, etc.) reads as
+// "secondary group, still here" rather than blending into background.
+export const VIS_TIER = {
+  BRIGHT: 1.0,
+  DIM: 0.38,
+  HIDDEN: 0.12,
+};
 
 // ── Subtopic luminance shading (#32 #40) ─────────────────────────────────
 // When drilled into a single cluster, sub-points are recolored by sub-id
