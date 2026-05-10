@@ -22,13 +22,11 @@ export const beat = {
   section: { topic: 'tenant rights & landlords', tool: 'top-down tools', cl: 8 },
   bodyHtml:
     '<p>Now we’ll explore <span class="topic-tag" data-cl="8">tenant rights ' +
-    'and landlords</span> the other way around — using <em>top-down</em> ' +
+    'and landlords</span> the other way around, using <em>top-down</em> ' +
     'tools. Instead of zooming into a region and listening, you’ll start ' +
     'from the named topic on the left, drill into a subtopic, and surface ' +
     'the stances people take inside it. <strong>Click “Tenant Rights &amp; ' +
-    'Landlords” on the left, then “MA Tenant Rights &amp; Law”</strong> — ' +
-    'so we can explore discourse about topics like eviction retaliation, ' +
-    'lead-paint rules, and masslegalhelp.org links.</p>',
+    'Landlords” on the left, then “MA Tenant Rights &amp; Law”</strong>.</p>',
   showChrome: ['nav'],
   pulse: 'tour-pulse-l1-8',
   manualContinue: true,

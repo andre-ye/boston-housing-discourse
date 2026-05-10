@@ -33,6 +33,7 @@ import { init as initTimeline } from './features/timeline.js';
 import { init as initSearchFind } from './features/search-find.js';
 import { init as initSurprise } from './features/surprise.js';
 import { init as initUrlState } from './features/url-state.js';
+import { initHelpOverlay } from './features/help-overlay.js';
 
 function sphereColor(c) {
   const i = ((c % SPHERE_PALETTE.length) + SPHERE_PALETTE.length) % SPHERE_PALETTE.length;
@@ -499,7 +500,9 @@ async function boot() {
   // "Begin tour" / "Explore" auto-opens on every cold load (no #hash); deep
   // links bypass it. The launcher pill is always available to re-open it.
   try {
-    const { createTour } = await import('./tour/index.js');
+    // Bump ?v= when any module under viz/js/tour/ changes — plain http.server
+    // caches imported .js aggressively; this forces a fresh tour subgraph.
+    const { createTour } = await import('./tour/index.js?v=20260519');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     const launcherEl = document.getElementById('tour-launcher');
@@ -757,7 +760,7 @@ async function boot() {
       const title = (d.title || '').trim();
       const body = (d.body || '').replace(/\n{3,}/g, '\n\n');
       row.innerHTML = `
-        <div class="dl-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month || '')}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
+        <div class="dl-meta">r/${escapeHtml(d.subreddit || 'unknown')} · ${escapeHtml(formatRedditKindLabel(d.type))} · ${escapeHtml(d.month || '')}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="dl-title">${escapeHtml(title)}</div>` : ''}
         ${body ? `<div class="dl-body">${escapeHtml(body)}</div>` : ''}
       `;
@@ -1017,7 +1020,7 @@ async function boot() {
     const _hvParsedQ = getActiveSearchParsed();
     pointTooltip.innerHTML = `
       <div class="hv-cluster" style="color:${clColor}">${catName}</div>
-      <div class="hv-meta">r/${escapeHtml(details.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
+      <div class="hv-meta">r/${escapeHtml(details.subreddit || 'unknown')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
       ${title ? `<div class="hv-title">${highlightSearchHits(title, _hvParsedQ)}</div>` : ''}
       <div class="hv-body">${highlightSearchHits(body, _hvParsedQ)}</div>
     `;
@@ -1414,7 +1417,7 @@ async function boot() {
       el.style.boxShadow =
         `0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px ${anchorColor}55, 0 0 12px ${anchorColor}44`;
       el.innerHTML = `
-        <div class="sp-meta">r/${escapeHtml(d.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(d.type))}${d.month ? ' · ' + escapeHtml(d.month) : ''}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
+        <div class="sp-meta">r/${escapeHtml(d.subreddit || 'unknown')} · ${escapeHtml(formatRedditKindLabel(d.type))}${d.month ? ' · ' + escapeHtml(d.month) : ''}${d.score != null ? ' · ' + redditScoreInlineHtml(d.score) : ''}</div>
         ${title ? `<div class="sp-title">${escapeHtml(title)}</div>` : ''}
         ${bodyShort ? `<div class="sp-body">${escapeHtml(bodyShort)}</div>` : ''}
       `;
@@ -1629,7 +1632,7 @@ async function boot() {
     const note = document.createElement('div');
     note.id = 'sprouts-empty-note';
     note.className = 'sprout-empty-note';
-    note.textContent = 'Few points here — try rotating';
+    note.textContent = 'Few points here. Try rotating.';
     sproutsEl.appendChild(note);
     requestAnimationFrame(() => note.classList.add('show'));
     setTimeout(() => {
@@ -1695,7 +1698,7 @@ async function boot() {
     keys: [' '],
     priority: 25,
     label: 'sprouts-toggle',
-    helpLabel: 'Hold Space — sprout snippets from posts on screen',
+    helpLabel: 'Hold Space to sprout snippets from posts on screen',
     helpGroup: 'navigate',
     helpKeys: ['Space'],
     when: () => !document.body.classList.contains('tour-active'),
@@ -1761,8 +1764,16 @@ async function boot() {
   // regex paint, text-search state, and any open overlays. A single
   // affordance that returns the viz to its fresh-load state.
   function resetAll() {
-    // Focus drill
+    // Focus drill + globe stance highlight (nav.focus alone does not clear setHighlight).
     nav.focus({});
+    try { globe.setHighlight?.({}); } catch {}
+    try {
+      currentFocusedPosition = null;
+      _lastFocusPosKey = null;
+    } catch {}
+    try {
+      document.querySelectorAll('.pin.selected').forEach((el) => el.classList.remove('selected'));
+    } catch {}
     _spaceDown = false;
     cancelSproutClearTimer();
     sproutClear({ immediate: true });
@@ -1774,10 +1785,12 @@ async function boot() {
       globe.setSubredditHighlight(null);
       _updateSubredditFilterChip();
     }
-    // Regex / text paint
+    // Regex / text paint + phrase spotlight (search chips)
     if (typeof nav._clearRegexPaint === 'function') nav._clearRegexPaint();
-    // Timeline range via scrubber API (exposed on App)
-    if (typeof App._timelineClear === 'function') App._timelineClear();
+    if (typeof nav._clearSpotlight === 'function') nav._clearSpotlight();
+    // Timeline: clear range and hide scrubber if it was open
+    if (typeof App._timelineResetAndClose === 'function') App._timelineResetAndClose();
+    else if (typeof App._timelineClear === 'function') App._timelineClear();
     // Search input
     const si = document.getElementById('search-input');
     if (si) { si.value = ''; si.blur(); }
@@ -1794,6 +1807,7 @@ async function boot() {
     // Clear hash last — after all state changes
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     globe?.resetCanonicalZoom?.();
+    try { _publishSproutsMode(); } catch {}
   }
   App.resetAll = resetAll;
   if (btnReset) btnReset.onclick = resetAll;
@@ -2342,13 +2356,13 @@ async function boot() {
   // a human carrying those concerns, without fabricating demographics.
   const INTERVIEW_SKETCHES = {
     P1: "High schoolers caught at Quincy Red Line, walking-and-bussing to school and the mall while their family scouts a Braintree house to rent the old one out.",
-    P2: "Legal assistant a week from retirement, lives on the water in Squantum and rides the ferry downtown — calls it half an hour of pure delight.",
+    P2: "Legal assistant a week from retirement, lives on the water in Squantum and rides the ferry downtown and calls it half an hour of pure delight.",
     P3: "Retired homemaker and kids' crossing guard, interviewed at a Bánh Mi shop; her one transit wish is a self-driving car so she never parallel-parks again.",
     P4: "MBTA Transit Ambassador out of Weymouth, drives to a different assigned station every shift because most of them have nowhere for staff to park.",
     P5: "Electrician on the Braintree Commuter Rail platform, two hours each way to a Chelsea jobsite, finishes the trip on an electric scooter to skip parking.",
     P6: "Construction worker at the Braintree bus station, lives in Weymouth where no transit runs Sunday, so the only way to the station that day is an Uber.",
     P7: "Pastry chef at UMass/JFK working Back Bay and Seaport kitchens, has lived in Braintree, Southie, Beacon Hill, and Dorchester chasing a shorter commute.",
-    P8: "South Shore high schoolers — Weymouth, Scituate — riding the commuter rail an hour-plus each way to a Boston exam school, making the case for free fares.",
+    P8: "South Shore high schoolers from Weymouth and Scituate, riding the commuter rail an hour-plus each way to a Boston exam school, making the case for free fares.",
     P9: "Practice assistant at Brigham and Women's, catches the 4:25am train out of Bedford because it was the only apartment that felt affordable after New York.",
     P10: "UMass Boston student commuting in from Brockton, juggling commuter rail and a bus-to-Red-Line backup once the morning trains stop running direct.",
     P11: "Delivers medical equipment for Boston Scientific from Dorchester to Quincy by commuter rail, glad to skip car payments, gas, and worrying about accidents.",
@@ -2623,36 +2637,22 @@ async function boot() {
     setTimeout(() => el.remove(), 1100);
   }
 
-  // Esc cascade (#28): scattershot dismissal owns the highest non-tour Esc
-  // slot. When sprouts are up, Esc dismisses just them and stops the
-  // cascade so pinned cards / search / camera-zoom stay put. When sprouts
-  // are absent it falls through to the priority-50 handlers below.
+  // Esc (outside tour): help overlay (250) → tour (200) → overlays (100) →
+  // full reset (priority 4 below). Intro toast dismiss runs at priority 5
+  // before reset.
+
   keys.bind({
     keys: ['Escape'],
-    priority: 75,
-    label: 'esc-clear-sprouts',
-    helpHidden: true,
+    priority: 4,
+    label: 'esc-reset-view',
+    helpLabel: 'Reset view (topics, filters, scattershot, timeline, detail cards, zoom)',
+    helpGroup: 'view',
+    allowInInput: true,
+    when: () => !document.body.classList.contains('tour-active'),
     handler: (e) => {
-      const sproutHang = sproutsEl?.querySelector?.('.sprout, .sprout-anchor');
-      const hasSprouts = _spaceDown || activeSprouts.length > 0 || !!sproutHang;
-      if (!hasSprouts) return false;
-      _spaceDown = false;
-      cancelSproutClearTimer();
-      window.App.clearSprouts({ immediate: true });
+      resetAll();
       e.preventDefault();
       return true;
-    },
-  });
-  keys.bind({
-    keys: ['Escape'],
-    priority: 50,
-    label: 'esc-clear-pinned-point',
-    helpHidden: true,
-    handler: (e) => {
-      if (pinnedPointIdx < 0) return false;
-      clearSelectedPoint();
-      e.preventDefault();
-      return false;
     },
   });
 
@@ -2876,7 +2876,7 @@ async function boot() {
     // on a sentinel <li>) rather than per-row clamps + "… more" buttons.
     const rawBody = ((det?.body || '').replace(/\s+\n/g, '\n').trim()) || (isPost ? '' : '(no text)');
     const meta = det
-      ? `r/${escapeHtml(det.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(det.type))}${det.month ? ' · ' + escapeHtml(det.month) : ''}${det.score != null ? ' · ' + redditScoreInlineHtml(det.score) : ''}`
+      ? `r/${escapeHtml(det.subreddit || 'unknown')} · ${escapeHtml(formatRedditKindLabel(det.type))}${det.month ? ' · ' + escapeHtml(det.month) : ''}${det.score != null ? ' · ' + redditScoreInlineHtml(det.score) : ''}`
       : 'unknown';
     const linkUrl = (det?.permalink || '').trim();
     const linkAttr = linkUrl
@@ -3250,7 +3250,7 @@ async function boot() {
     keys: ['r'],
     priority: 25,
     label: 'random-five',
-    helpLabel: 'Scattershot — sample 5 random posts (press again to dismiss)',
+    helpLabel: 'Scattershot: sample 5 random posts (press again to dismiss)',
     helpGroup: 'navigate',
     handler: (e) => {
       if (!_sproutRandomKeyAllowed(e)) return false;
@@ -3271,6 +3271,8 @@ async function boot() {
       body.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
     });
   }
+
+  initHelpOverlay();
 
   // Stage 1.5 — keys-coverage check. Walk every chip-rendered key annotation
   // in the DOM (kbd.sh-key plus aria-keyshortcuts attributes) and confirm

@@ -182,9 +182,9 @@ export class NavController extends EventTarget {
   }
 
   _maybeShowIntroToast() {
-    // Only show on the very first visit; suppressed if the help panel has
-    // ever been opened in this browser (strong signal they know it exists).
-    if (storage.get('intro-seen') === '1') return;
+    // Only show on the very first visit; suppressed after dismiss or once
+    // the shortcuts sheet (? ) has been opened.
+    if (storage.get('intro-seen') === '1' || storage.get('help-seen') === '1') return;
     const el = document.createElement('div');
     el.className = 'intro-toast';
     el.innerHTML = `
@@ -252,26 +252,15 @@ export class NavController extends EventTarget {
   }
 
   _initGlobalShortcuts() {
-    // Help overlay was removed — the command surface compressed enough that
-    // a dedicated panel was more friction than help. The few remaining
-    // shortcuts (R, T, Esc) are surfaced in their own button titles or are
-    // standard.
-
     // ─── Escape cascade ─────────────────────────────────────────────
     //
-    // The original implementation was one giant if-else cascade (tour →
-    // help → detail → interview → search → camera reset).
-    // Under the unified registry the cascade is split into ordered binds
-    // at three priorities so the same precedence falls out of the
-    // dispatcher's stable sort:
+    //   250 — shortcuts sheet (help-overlay.js).
+    //   200 — tour (tour/index.js + noop below while overlay visible).
+    //   100 — overlayManager.closeTop() (e.g. other modal overlays).
+    //     4 — full reset via App.resetAll() (main.js): topics, filters,
+    //         scattershot, timeline UI, cards, zoom — disabled during tour.
     //
-    //   200 — tour swallows Esc (no-op while active).
-    //   100 — overlay closers: help.
-    //    50 — card closers: detail, interview, search-state, camera-zoom-reset.
-    //
-    // Each bind is allowInInput: true so Esc still escapes the search box
-    // (the original used a single window listener that ran before the
-    // typing-bypass check — we preserve that behavior explicitly).
+    // Search box still clears on Esc from its own keydown handler.
 
     // Tour (priority 200). Esc is intentionally a no-op while the tour
     // overlay is up — Skip is the only way out.
@@ -289,78 +278,13 @@ export class NavController extends EventTarget {
       },
     });
     // Help overlay close (priority 100). Delegates to overlayManager.closeTop()
-    // which closes the most recently opened closeOnEsc overlay; today only
-    // help registers with closeOnEsc: true, so behavior is identical.
+    // which closes the most recently opened closeOnEsc overlay (shortcuts sheet).
     keys.bind({
       keys: ['Escape'], priority: 100, label: 'esc-overlay-closeTop',
       helpHidden: true,
       allowInInput: true,
       handler: (e) => {
         if (!overlayManager.closeTop()) return false;
-        e.preventDefault();
-        return true;
-      },
-    });
-    // Pinned view close (priority 50). Routes through the pane-header
-    // Clear button so the same teardown path runs (drops pin, empties
-    // back stack, restores empty state).
-    keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-pinned-view',
-      // Single help row covers the whole Esc cascade — other esc-*
-      // binds keep helpHidden so we don't list Esc N times.
-      helpLabel: 'Dismiss cards / clear filters / unzoom (one layer at a time)',
-      helpGroup: 'view',
-      allowInInput: true,
-      handler: (e) => {
-        const pv = document.getElementById('pinned-view');
-        if (!pv || pv.classList.contains('hidden')) return false;
-        const clearBtn = document.getElementById('pv-clear');
-        if (clearBtn && !clearBtn.disabled) clearBtn.click();
-        else pv.classList.add('hidden');
-        e.preventDefault();
-        return true;
-      },
-    });
-    // Interview card close (priority 50).
-    keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-interview-card',
-      helpHidden: true,
-      allowInInput: true,
-      handler: (e) => {
-        const ivCard = document.getElementById('interview-card');
-        if (!ivCard || ivCard.classList.contains('hidden')) return false;
-        const close = ivCard.querySelector('.ic-close');
-        if (close) {
-          close.click();
-          e.preventDefault();
-          return true;
-        }
-        ivCard.classList.add('hidden');
-        e.preventDefault();
-        return true;
-      },
-    });
-    // Search state clear (priority 50).
-    keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-search-state',
-      helpHidden: true,
-      allowInInput: true,
-      handler: (e) => {
-        if (!this._clearSearchState?.()) return false;
-        e.preventDefault();
-        return true;
-      },
-    });
-    // Camera zoom reset (priority 50, runs last in the cascade).
-    keys.bind({
-      keys: ['Escape'], priority: 50, label: 'esc-camera-reset',
-      helpHidden: true,
-      allowInInput: true,
-      handler: (e) => {
-        const gl = window.App?.globe;
-        if (!gl || typeof gl.isZoomedAwayFromCanonical !== 'function') return false;
-        if (!gl.isZoomedAwayFromCanonical()) return false;
-        gl.resetCanonicalZoom();
         e.preventDefault();
         return true;
       },
@@ -392,7 +316,7 @@ export class NavController extends EventTarget {
     });
     keys.bind({
       keys: ['s'], priority: 20, label: 'surprise-me',
-      helpLabel: 'Surprise me — jump to a random well-supported stance',
+      helpLabel: 'Surprise me: jump to a random well-supported stance',
       helpGroup: 'navigate',
       handler: (e) => {
         const btn = document.getElementById('btn-surprise');
@@ -438,7 +362,7 @@ export class NavController extends EventTarget {
     });
     keys.bind({
       keys: ['x'], priority: 20, label: 'global-reset',
-      helpLabel: 'Reset everything — drill, filters, search, zoom',
+      helpLabel: 'Reset everything: drill, filters, search, zoom',
       helpGroup: 'view',
       handler: (e) => {
         // Global reset shortcut — unwinds drill + all filters + search.

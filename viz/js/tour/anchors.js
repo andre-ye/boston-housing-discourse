@@ -130,7 +130,7 @@ export function assertBeatAnchors({ data, log = console } = {}) {
       if (!res.ok) {
         log.error('[tour] anchor drift', { key: 'search', expected: a.expect,
           found: res.found, reason: res.reason, idx: a.commentIdx });
-        showBanner('Tour anchor mismatch — see console');
+        showBanner('Tour anchor mismatch; see console');
       }
     });
     else if (!r.ok) failures.push({ key: 'search', expected: a.expect,
@@ -145,7 +145,7 @@ export function assertBeatAnchors({ data, log = console } = {}) {
 
   if (failures.length) {
     log.error('[tour] anchor drift', failures);
-    showBanner('Tour anchor mismatch — see console');
+    showBanner('Tour anchor mismatch; see console');
   }
 
   return { failures, deferred };

@@ -22,6 +22,8 @@ cd viz
 python3 -m http.server 8765
 ```
 
+Plain `http.server` does **not** send `Cache-Control` on `.js` files. Browsers often reuse cached ES modules, so tour copy edits under `viz/js/tour/` used to stick until a hard reload. The app now adds a shared **`?v=YYYYMMDD`** query on the tour import chain (`viz/index.html` → `main.js` → `tour/index.js` → each beat file). **Bump that same version string in all those places** when you change tour beats and a normal reload still looks stale.
+
 No build step. Three.js is loaded from a CDN via an import map in `index.html`.
 
 ## Repo layout

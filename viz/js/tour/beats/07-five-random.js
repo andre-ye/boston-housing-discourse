@@ -35,7 +35,7 @@ export const beat = {
     '<p>To help you quickly get acquainted with what people in this region ' +
     'are saying, pressing <kbd>R</kbd> will surface five random comments ' +
     'from your current view. Press <kbd>R</kbd> again to dismiss them. ' +
-    'Notice the five voices don’t all agree — even inside one cluster, ' +
+    'Notice the five voices don’t all agree, even inside one cluster, ' +
     'people argue.</p>',
   // #38 — when the user clicks one of the five sprouted captions, sprouts.js
   // calls App.showDetailCard which renders into #pinned-view. Without
@@ -77,18 +77,18 @@ export const beat = {
     };
 
     const chip = document.getElementById('random-hint');
-    // Once the curated five have sprouted, a second chip click would
-    // resample (with the curated indices still installed, the same five
-    // would respawn) and visually thrash the screen. Latch off after the
-    // first fire — registered in the capture phase with stopImmediate-
-    // Propagation so the global #random-hint click handler in main.js
-    // (which always calls sampleFiveRandom) doesn't fire either while
-    // the latch is held.
+    // Capture phase + stopImmediatePropagation so main.js’s bubble listener
+    // on #random-hint never runs (would double-fire). Match global R behavior:
+    // first activation spawns the curated five + marks the step done; later
+    // presses toggle scattershot off, same as App.toggleScattershot().
     const onChipClick = (e) => {
       try { e.stopImmediatePropagation?.(); e.preventDefault?.(); } catch {}
-      if (fired) return;
-      try { App?.sampleFiveRandom?.(); } catch {}
-      trigger();
+      if (!fired) {
+        try { App?.sampleFiveRandom?.(); } catch {}
+        trigger();
+      } else {
+        try { App?.toggleScattershot?.(); } catch {}
+      }
     };
     chip?.addEventListener('click', onChipClick, true);
 
@@ -97,11 +97,23 @@ export const beat = {
       priority: 200,
       label: 'tour-step:r-advance',
       helpHidden: true,
-      handler: () => { trigger(); return false; },
+      handler: (e) => {
+        if (!fired) {
+          e.preventDefault();
+          try { App?.sampleFiveRandom?.(); } catch {}
+          trigger();
+          return true;
+        }
+        return false;
+      },
     });
 
     return () => {
-      chip?.removeEventListener('click', onChipClick);
+      // Must pass capture:true — addEventListener used capture phase so the
+      // bubble-phase listener in main.js never double-fires. Omitting it
+      // leaves a zombie handler that runs first on revisit and blocks R-chip
+      // behavior + markStepDone().
+      chip?.removeEventListener('click', onChipClick, true);
       unbindKey();
       // Drop the curated-indices hook so the next R press outside this
       // beat goes back to the normal random sampling.

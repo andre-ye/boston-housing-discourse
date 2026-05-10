@@ -108,11 +108,36 @@
     text-anchor: middle;
     dominant-baseline: alphabetic;
   }
-  /* The ⏱ time toggle now lives inside #globe-controls-dock alongside
-     the R chip + ? help button; the dock's flexbox handles horizontal
-     placement so absolute positioning is no longer needed. The base
-     `.globe-controls-dock > button` rule resets position/left/right —
-     this rule just keeps the round 38×38 chip styling. */
+  /* Round icon toggles in #globe-controls-dock: ? (shortcuts) left, ⏱ (time)
+     right of the scattershot chip. The base `.globe-controls-dock > button`
+     rule resets position/padding — these overrides match the 38×38 circle. */
+  #btn-help {
+    width: 38px; height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    background: rgba(14,17,26,0.9);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    color: var(--fg-dim);
+    font: 600 var(--fs-xl)/1 'Inter', system-ui, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+  }
+  #btn-help > .help-dock-glyph {
+    display: block;
+    line-height: 1;
+    transform: translateY(-0.5px);
+  }
+  #btn-help:hover,
+  #btn-help:focus-visible {
+    color: var(--warm);
+    border-color: color-mix(in srgb, var(--warm) 45%, transparent);
+    background: color-mix(in srgb, var(--warm) 10%, transparent);
+  }
   #tl-toggle {
     width: 38px; height: 38px;
     /* Override the dock-button padding/flex defaults so the round chip
@@ -311,20 +336,6 @@
     font: 500 var(--fs-xs) 'Inter', system-ui, sans-serif;
     color: #fff;
     letter-spacing: 0.2px;
-  }
-  /* Help "?" chip: shares the dock-button base, but its single-glyph
-     content needs an explicit line-height so its line-box matches the
-     R chip (which is sized by the <kbd> pill). Without this, the "?"
-     rides high because its default line-height adds leading above the
-     glyph. Sized to roughly match the R chip's optical height. */
-  #btn-help {
-    padding: 7px 12px;
-  }
-  #btn-help .sh-text {
-    display: block;
-    font: 600 var(--fs-sm) 'Inter', system-ui, sans-serif;
-    color: #fff;
-    line-height: 1;
   }
 
   /* Ephemeral "sprout" captions toggled with SPACE. */

@@ -16,7 +16,7 @@ export const beat = {
     '<p>Time filtering lets you watch a topic move across years. ' +
     '<strong>Click the ⏱ button at the bottom, then drag the window across ' +
     'the timeline.</strong> Watch how bike-lane discourse changes over the ' +
-    'decade — what people are arguing about in 2016 versus 2024 may surprise ' +
+    'decade. What people are arguing about in 2016 versus 2024 may surprise ' +
     'you. Slide narrow windows across the years and see which posts brighten ' +
     'and which fade away.</p>',
   showChrome: ['time'],

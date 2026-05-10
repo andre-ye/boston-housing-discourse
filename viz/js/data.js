@@ -24,6 +24,16 @@ export function clusterColor(c) {
   return CLUSTER_PALETTE[i];
 }
 
+// Foreground for inline `.topic-tag` chips in tour copy (dark card / opener).
+// Globe palette greens can sit too dark next to cream body text; bump cl 5
+// (cycling & bike lanes) to a brighter mint for WCAG-friendly contrast.
+const TOUR_TOPIC_TAG_FG = { 5: '#6dffc8' };
+export function tourTopicTagColor(cl) {
+  return Object.prototype.hasOwnProperty.call(TOUR_TOPIC_TAG_FG, cl)
+    ? TOUR_TOPIC_TAG_FG[cl]
+    : clusterColor(cl);
+}
+
 export function hexToRgb(hex) {
   const h = hex.replace('#','');
   const v = parseInt(h, 16);
@@ -145,7 +155,7 @@ async function loadSphereCoords() {
       return { coords, source: t.label, N: manifest.n };
     } catch (e) { /* try next */ }
   }
-  App.loadingMsg('Sphere binaries not found — using Lambert projection of 2D…');
+  App.loadingMsg('Sphere binaries not found; using Lambert projection of 2D…');
   const out = await buildSphereFallback();
   return { ...out, N: out.coords.length / 2 };
 }

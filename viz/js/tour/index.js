@@ -4,11 +4,11 @@ import { keys } from '../core/keys.js';
 import { overlayManager } from '../core/overlays.js';
 import { dom } from '../core/dom.js';
 import { HERO_FRAMING, TOUR_NEXT_FADE_MS } from '../core/constants.js';
-import { BEATS } from './beats/index.js';
-import { createTourRunner } from './runner.js';
+import { BEATS } from './beats/index.js?v=20260519';
+import { createTourRunner } from './runner.js?v=20260519';
 import { escHtml } from './helpers.js';
 import { assertBeatAnchors } from './anchors.js';
-import { clusterColor } from '../data.js';
+import { tourTopicTagColor } from '../data.js';
 
 export function createTour({ globe, App, nav }) {
   const overlay = dom.el('tourOverlay') || document.getElementById('tour-overlay');
@@ -173,7 +173,7 @@ export function createTour({ globe, App, nav }) {
     // enter() loop required.
     cardEl.querySelectorAll('.topic-tag[data-cl]').forEach((el) => {
       const cl = parseInt(el.dataset.cl, 10);
-      if (Number.isInteger(cl)) el.style.color = clusterColor(cl);
+      if (Number.isInteger(cl)) el.style.color = tourTopicTagColor(cl);
     });
 
     cardEl.classList.remove('tour-in');

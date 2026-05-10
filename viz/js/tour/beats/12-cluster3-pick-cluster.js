@@ -18,7 +18,7 @@ export const beat = {
   section: { topic: 'cycling & bike lanes', tool: 'search & time', cl: 5 },
   bodyHtml:
     '<p>For our final section we’ll explore <span class="topic-tag" data-cl="5">' +
-    'cycling and bike lanes</span> with some more advanced tools — <em>search</em> ' +
+    'cycling and bike lanes</span> with some more advanced tools: <em>search</em> ' +
     'lets you ask the sphere a specific question, and <em>time filtering</em> ' +
     'lets you watch a conversation move month by month. <strong>Click ' +
     '“Cycling &amp; Bike Lanes” on the left</strong> to set the stage.</p>',

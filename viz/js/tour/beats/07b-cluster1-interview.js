@@ -19,8 +19,8 @@ export const beat = {
   kind: 'step',
   section: { topic: 'gentrification & rent control', tool: 'bottom-up tools', cl: 32 },
   bodyHtml:
-    '<p>Some of these voices are real people we sat down with — they appear ' +
-    'on the sphere as <strong>P-pins</strong>. <strong>Click ' + PIN_ID +
+    '<p>Some of these voices are people we spoke with via street interviews. ' +
+    'They appear on the sphere as <strong>P-pins</strong>. <strong>Click ' + PIN_ID +
     '</strong> to hear from someone weighing what subsidized and ' +
     'income-restricted options actually exist against what gets built ' +
     'market-rate. Their themes and quotes will appear in the left panel ' +

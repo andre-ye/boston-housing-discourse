@@ -6,7 +6,7 @@
 
 import { raf } from '../../core/raf.js';
 import { OPENER_NUDGE_LON, OPENER_NUDGE_LAT, HERO_FRAMING } from '../../core/constants.js';
-import { clusterColor } from '../../data.js';
+import { tourTopicTagColor } from '../../data.js';
 
 // Cluster IDs for the three case studies the tour walks through. These
 // match the beats that come after the opener — kept in one place here so
@@ -45,7 +45,7 @@ export const beat = {
       const root = document.querySelector('.tour-card .tour-prose');
       root?.querySelectorAll('.topic-tag[data-cl]').forEach((el) => {
         const cl = parseInt(el.dataset.cl, 10);
-        if (Number.isInteger(cl)) el.style.color = clusterColor(cl);
+        if (Number.isInteger(cl)) el.style.color = tourTopicTagColor(cl);
       });
     } catch {}
 

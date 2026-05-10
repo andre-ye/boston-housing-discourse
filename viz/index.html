@@ -9,11 +9,12 @@
 <link rel="stylesheet" href="./css/globe.css">
 <link rel="stylesheet" href="./css/cards.css">
 <link rel="stylesheet" href="./css/loading.css">
-<link rel="stylesheet" href="./css/tour.css">
+<link rel="stylesheet" href="./css/tour.css?v=20260519">
 <link rel="stylesheet" href="./css/inspector.css">
 <link rel="stylesheet" href="./css/cards-overrides.css">
 <link rel="stylesheet" href="./css/pinned.css">
 <link rel="stylesheet" href="./css/search.css">
+<link rel="stylesheet" href="./css/help-overlay.css">
 <style>
   :root {
     /* Single canonical page black (rgb components for rgba() overlays). */
@@ -158,8 +159,13 @@
       <svg id="sprout-lines" pointer-events="none"></svg>
       <div id="globe-controls-dock" class="globe-controls-dock" role="toolbar"
            aria-label="Globe quick actions">
+      <button type="button" id="btn-help" aria-keyshortcuts="?"
+              title="Keyboard shortcuts (?)"
+              aria-label="Keyboard shortcuts. Press ? to open or close the list.">
+        <span class="help-dock-glyph" aria-hidden="true">?</span>
+      </button>
       <button type="button" id="random-hint" aria-keyshortcuts="R"
-              title="Scattershot — sample 5 excerpts from dots you can currently see. Press R again to dismiss."
+              title="Scattershot: sample 5 excerpts from dots you can currently see. Press R again to dismiss."
               aria-label="Scattershot: sample 5 random posts or comments from visible dots. Press R again or Escape to dismiss.">
         <kbd class="sh-key">R</kbd>
         <span class="sh-text">scattershot</span>
@@ -234,6 +240,19 @@
 
   </div>
   <div id="point-tooltip" class="point-tooltip hidden"></div>
+
+  <div id="help-overlay" class="help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="help-overlay-title">
+    <div class="help-overlay-backdrop" tabindex="-1" aria-hidden="true"></div>
+    <div class="help-overlay-panel">
+      <h2 id="help-overlay-title" class="help-overlay-title">Keyboard shortcuts</h2>
+      <p class="help-overlay-lede">While the guided tour is open, <kbd class="help-kbd">Esc</kbd> and the arrow keys are reserved for the tour.</p>
+      <div class="help-overlay-body"></div>
+      <p class="help-overlay-foot">Press <kbd class="help-kbd">?</kbd> or <kbd class="help-kbd">Esc</kbd> to close this panel. With it closed, <kbd class="help-kbd">Esc</kbd> resets the view (not during the guided tour).</p>
+      <div class="help-overlay-actions">
+        <button type="button" class="help-overlay-close tour-btn tour-btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -258,6 +277,6 @@
     }
   })();
 </script>
-<script type="module" src="./js/main.js"></script>
+<script type="module" src="./js/main.js?v=20260519"></script>
 </body>
 </html>

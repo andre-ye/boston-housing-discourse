@@ -11,7 +11,7 @@ const TRIO_FRAMING = 1.85;
 
 const TRIO = [
   { idx: 418401, role: 'A', tag: '1' },
-  { idx: 418561, role: 'B', tag: '2' },
+  { idx: 113146, role: 'B', tag: '2' },
   { idx: 300597, role: 'C', tag: '3' },
 ];
 

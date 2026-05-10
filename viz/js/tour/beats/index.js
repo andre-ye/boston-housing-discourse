@@ -6,24 +6,27 @@
 //
 // Order matters: the runner walks this array forward (next) and backward
 // (prev). Reordering is a content edit, not a code change.
+//
+// Tour modules use ?v=… on imports (sync with main.js + tour/index.js +
+// index.html main script) so cached ES modules pick up beat copy edits.
 
-import { beat as hero }            from './01-hero.js';
-import { beat as openerData }      from './02-opener-data.js';
-import { beat as openerSphere }    from './03-opener-sphere.js';
-import { beat as openerPreview }   from './04-opener-preview.js';
-import { beat as cluster1HoverTrio } from './05-cluster1-hover-trio.js';
-import { beat as cluster1ClickPin }  from './06-cluster1-click-pin.js';
-import { beat as fiveRandom }      from './07-five-random.js';
-import { beat as cluster1Interview } from './07b-cluster1-interview.js';
-import { beat as cluster1Recap }    from './07c-cluster1-recap.js';
-import { beat as cluster2PickTopic }   from './08-cluster2-pick-topic.js';
-import { beat as cluster2Stance }      from './10-cluster2-stance.js';
-import { beat as cluster2Recap }       from './11-cluster2-recap.js';
-import { beat as cluster3PickCluster } from './12-cluster3-pick-cluster.js';
-import { beat as cluster3Search }  from './13-cluster3-search.js';
-import { beat as cluster3Time }    from './14-cluster3-time.js';
-import { beat as cluster3Recap }   from './14b-cluster3-recap.js';
-import { beat as outro }           from './15-outro.js';
+import { beat as hero }            from './01-hero.js?v=20260519';
+import { beat as openerData }      from './02-opener-data.js?v=20260519';
+import { beat as openerSphere }    from './03-opener-sphere.js?v=20260519';
+import { beat as openerPreview }   from './04-opener-preview.js?v=20260519';
+import { beat as cluster1HoverTrio } from './05-cluster1-hover-trio.js?v=20260519';
+import { beat as cluster1ClickPin }  from './06-cluster1-click-pin.js?v=20260519';
+import { beat as fiveRandom }      from './07-five-random.js?v=20260519';
+import { beat as cluster1Interview } from './07b-cluster1-interview.js?v=20260519';
+import { beat as cluster1Recap }    from './07c-cluster1-recap.js?v=20260519';
+import { beat as cluster2PickTopic }   from './08-cluster2-pick-topic.js?v=20260519';
+import { beat as cluster2Stance }      from './10-cluster2-stance.js?v=20260519';
+import { beat as cluster2Recap }       from './11-cluster2-recap.js?v=20260519';
+import { beat as cluster3PickCluster } from './12-cluster3-pick-cluster.js?v=20260519';
+import { beat as cluster3Search }  from './13-cluster3-search.js?v=20260519';
+import { beat as cluster3Time }    from './14-cluster3-time.js?v=20260519';
+import { beat as cluster3Recap }   from './14b-cluster3-recap.js?v=20260519';
+import { beat as outro }           from './15-outro.js?v=20260519';
 
 // Note: 04-opener-algorithm was removed in v2: the methods folded into
 // opener-data's body prose.

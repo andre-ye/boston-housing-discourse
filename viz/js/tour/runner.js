@@ -28,6 +28,7 @@ const PULSE_TARGETS = {
   'tour-pulse-search':     '#search-input',
   'tour-pulse-time':       '#tl-toggle',
   'tour-pulse-random':     '#random-hint',
+  'tour-pulse-pin-P1':     '.pin[data-id="P1"] .pin-id',
   'tour-pulse-pin-P2':     '.pin[data-id="P2"] .pin-id',
   'tour-pulse-pin-P18':    '.pin[data-id="P18"] .pin-id',
   // Spotlight is a transient — DOM markers aren't reliably present, so
@@ -410,6 +411,16 @@ export function createTourRunner({ BEATS, ctx, ui }) {
     stopArrow();
     document.body.classList.remove('tour-step-mode');
     document.body.classList.remove('tour-step-done');
+    document.body.classList.remove('tour-cam-snappy');
+    try {
+      document.querySelectorAll('.pin.selected').forEach((el) => el.classList.remove('selected'));
+    } catch {}
+    try {
+      for (const c of [...document.body.classList]) {
+        if (c.startsWith('tour-pulse-')) document.body.classList.remove(c);
+      }
+    } catch {}
+    _activePulseClass = null;
   }
 
   function applyBodyClasses(beat) {
@@ -515,7 +526,7 @@ export function createTourRunner({ BEATS, ctx, ui }) {
       cleanup = () => {};
     }
     if (typeof cleanup !== 'function') {
-      console.error('[tour] beat.enter must return cleanup() — got', typeof cleanup, 'for beat', beat.id);
+      console.error('[tour] beat.enter must return cleanup(); got', typeof cleanup, 'for beat', beat.id);
       cleanup = () => {};
     }
     _cleanup = cleanup;

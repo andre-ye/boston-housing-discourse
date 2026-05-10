@@ -5,7 +5,7 @@ import { HERO_FRAMING } from '../../core/constants.js';
 export const beat = {
   id: 'outro',
   kind: 'outro',
-  title: 'That\'s the tour, now it\'s your turn!',
+  title: 'That\'s the tour\nnow it\'s your turn!',
   prose:
     'You learned how to use bottom-up, top-down, and advanced features to ' +
     'navigate the Boston sphere of discourse.',

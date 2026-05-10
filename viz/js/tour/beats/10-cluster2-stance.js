@@ -5,22 +5,19 @@
 // The pulse selector is `tour-pulse-l3-32_3` (gid_posIdx).
 
 import { ANCHORS } from '../anchors.js';
-import { escHtml } from '../helpers.js';
 
 const POS_IDX = ANCHORS.position.posIdx;
-const POS_LABEL = ANCHORS.position.label;
-const POS_LABEL_HTML = escHtml(POS_LABEL);
 
 export const beat = {
   id: 'cluster2-stance',
   kind: 'step',
   section: { topic: 'tenant rights & landlords', tool: 'top-down tools', cl: 8 },
   bodyHtml:
-    `<p>One step deeper: the rightmost column lists the <em>stances</em> — ` +
-    `or points of view — people take inside this subtopic, ` +
+    `<p>One step deeper: the rightmost column lists the <em>stances</em> ` +
+    `(or points of view) people take inside this subtopic, ` +
     `i.e. what they\'re actually arguing for, ` +
     `not just what they\'re arguing about. <strong>Click ` +
-    `“${POS_LABEL_HTML}”</strong> — 42% of this subtopic — to spotlight ` +
+    `“Lease disputes ...”</strong> (42% of this subtopic) to spotlight ` +
     `every post arguing about lease language and security deposits. ` +
     `Use some of the bottom-up methods like hovering or pressing ` +
     `<kbd>R</kbd> to get an idea of what people are talking about.</p>`,

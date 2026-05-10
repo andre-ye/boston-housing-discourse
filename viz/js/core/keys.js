@@ -13,6 +13,26 @@ const _intents = [];
 let _wired = false;
 let _idSeq = 0;
 
+/** Readable token for the shortcuts sheet (not HTML). */
+function formatKeyToken(k) {
+  switch (k) {
+    case ' ': return 'Space';
+    case 'ArrowLeft': return '←';
+    case 'ArrowRight': return '→';
+    case 'ArrowUp': return '↑';
+    case 'ArrowDown': return '↓';
+    case 'Escape': return 'Esc';
+    case '[':
+    case ']':
+    case '{':
+    case '}':
+      return k;
+    default:
+      if (k.length === 1 && /[a-z]/i.test(k)) return k.toUpperCase();
+      return k;
+  }
+}
+
 function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
@@ -101,5 +121,27 @@ export const keys = {
       if (i.keys.some(k => String(k).toLowerCase() === lk)) return true;
     }
     return false;
+  },
+  /**
+   * Deduped rows for the ? shortcuts overlay: one line per helpLabel,
+   * stable order within priority-sorted intents (already sorted in _intents).
+   */
+  helpSheetRows() {
+    const seen = new Set();
+    const rows = [];
+    for (const i of _intents) {
+      if (i.priority < 0 || i.helpHidden || !i.helpLabel) continue;
+      if (seen.has(i.helpLabel)) continue;
+      seen.add(i.helpLabel);
+      const parts = i.helpKeys?.length
+        ? i.helpKeys.map(String)
+        : i.keys.map(formatKeyToken);
+      rows.push({
+        group: i.helpGroup || 'other',
+        keys: parts.join(' · '),
+        label: i.helpLabel,
+      });
+    }
+    return rows;
   },
 };

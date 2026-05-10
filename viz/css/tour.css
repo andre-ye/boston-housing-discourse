@@ -304,6 +304,10 @@
   body.tour-step-mode.tour-step-show-random #globe-controls-dock #reset-view-hint {
     display: flex;
   }
+  /* Keyboard-shortcuts dock chip (?): exploration-only — never during tour. */
+  body.tour-active #globe-controls-dock #btn-help {
+    display: none !important;
+  }
   body.tour-step-mode.tour-step-show-time #globe-controls-dock,
   body.tour-step-mode.tour-step-show-time #tl-toggle,
   body.tour-step-mode.tour-step-show-time #timeline-scrubber:not(.hidden) {
@@ -313,7 +317,7 @@
     transition: opacity var(--t-base) ease, visibility var(--t-fast) var(--t-fast);
   }
   /* Inside the dock during the time beat, only show the ⏱ button — the R
-     scattershot chip and the help "?" would distract from the single tool
+     scattershot chip and reset hint would distract from the single tool
      this step is teaching. Mirrors the random-beat reveal pattern. */
   body.tour-step-mode.tour-step-show-time #globe-controls-dock #tl-toggle {
     display: flex;
@@ -505,6 +509,7 @@
   /* Shared pulse rule — every per-step pulse target shares the same
      keyframe + 1.6s cadence so the visual vocabulary is consistent
      across drill bars, pin chips, search input, and toolbar chips. */
+  body.tour-pulse-pin-P1:not(.tour-step-done) .pin[data-id="P1"] .pin-id,
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id,
   body.tour-pulse-search:not(.tour-step-done) #search-input,
@@ -577,16 +582,29 @@
   /* Pin pulse — `.pin` is a 0×0 anchor; pulse the visible `.pin-id`
      chip (so outline/box-shadow render at chip dimensions) and pulse
      the `.pin-dot` next to it for visibility from a distance. */
+  body.tour-pulse-pin-P1:not(.tour-step-done) .pin[data-id="P1"] .pin-id,
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-id,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-id {
     outline-offset: 3px;
     position: absolute;
     z-index: 25;
   }
+  body.tour-pulse-pin-P1:not(.tour-step-done) .pin[data-id="P1"] .pin-dot,
   body.tour-pulse-pin-P2:not(.tour-step-done) .pin[data-id="P2"] .pin-dot,
   body.tour-pulse-pin-P18:not(.tour-step-done) .pin[data-id="P18"] .pin-dot {
     animation: tour-pulse var(--t-pulse) ease-in-out infinite;
     transform: scale(1.35);
+  }
+  /* P1 interview.demo — extra accent halo so the target dot reads from orbit */
+  body.tour-pulse-pin-P1:not(.tour-step-done) .pin[data-id="P1"] .pin-dot {
+    --pulse-transform-from: scale(1.35);
+    --pulse-transform-to: scale(1.48);
+    --pulse-filter-from: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+    --pulse-filter-to: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 95%, transparent));
+    --pulse-from: 0 0 0 1.5px rgba(8,10,16,0.92),
+      0 0 10px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+    --pulse-to: 0 0 0 2px rgba(255,255,255,0.35),
+      0 0 18px 5px color-mix(in srgb, var(--accent) 65%, transparent);
   }
   /* Toolbar chips need to stay above floating cards while pulsing so
      the user can actually find them. The base z-index of #random-hint
@@ -791,6 +809,7 @@
     color: #fff;
     margin: 0 0 22px;
     letter-spacing: -0.5px;
+    white-space: pre-line;
   }
   .tour-outro .tour-prose {
     font: 400 var(--fs-lg)/1.65 'Inter', system-ui, sans-serif;

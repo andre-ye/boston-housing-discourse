@@ -36,6 +36,7 @@ const KNOWN = {
   // ── chips / dock / hints ───────────────────────────────────────────
   globeControlsDock: 'globe-controls-dock',
   randomHint: 'random-hint',
+  btnHelp: 'btn-help',
   surpriseHint: 'surprise-hint',
 
   // ── HUD buttons ────────────────────────────────────────────────────

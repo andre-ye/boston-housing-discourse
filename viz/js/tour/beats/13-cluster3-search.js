@@ -20,10 +20,11 @@ export const beat = {
     'and press Enter.</strong> Posts that mention Mass Ave inside this ' +
     'cluster will light up; matches elsewhere on the sphere fade. Once it ' +
     'paints, hover around the bright points and use the bottom-up techniques ' +
-    'from earlier — sample a few, pin one or two — to get a feel ' +
-    'for what people are actually arguing about when bike lanes meet Mass ' +
-    'Ave.</p>',
-  showChrome: ['nav'],
+    'from earlier where you sample a few to get a feel for what people are ' +
+    'discussing.</p>',
+  // Include `cards` so globe clicks open the details viewer while sampling
+  // search highlights (main.js gates pointclick unless tour-step-show-cards).
+  showChrome: ['nav', 'cards'],
   pulse: 'tour-pulse-search',
   manualContinue: true,
   enter(ctx) {

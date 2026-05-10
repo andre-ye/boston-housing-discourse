@@ -10,13 +10,13 @@ export const beat = {
     'cluster looked thin compared with rent control or tenant rights, but ' +
     'more advanced tools revealed the conversation hiding inside it. ' +
     'Searching “Mass Ave” concentrated 336 of the 2,039 corpus matches into ' +
-    'the cycling cluster — the rest live elsewhere on the sphere because ' +
+    'the cycling cluster; the rest live elsewhere on the sphere because ' +
     'people argue about Mass Ave for many reasons. Sliding the time window ' +
     'across years revealed how the bike-lane conversation itself shifts: ' +
     'which posts brighten in 2016, which dominate by 2024, and how the ' +
     'cluster’s centre of gravity moves along with the city.</p>' +
     '<p><strong>The takeaway:</strong> bike lanes aren’t a debate in ' +
-    'the abstract — they’re a debate at a specific corner, in a ' +
+    'the abstract. They’re a debate at a specific corner, in a ' +
     'specific year, with a specific cast of voices. Search and time turn the ' +
     'sphere from a topic browser into a query interface that lets you ' +
     'triangulate exactly that.</p>',

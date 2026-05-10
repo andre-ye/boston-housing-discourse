@@ -101,6 +101,7 @@
     --z-nav-tour: 130;
     --z-popup: 800;
     --z-modal: 1000;
+    --z-help-overlay: 1020;
 
     /* Single divider colour for every visual seam in the chrome — the
        nav→globe edge, the globe→detail edge, and every pane-to-pane
