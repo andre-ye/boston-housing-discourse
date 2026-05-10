@@ -1,6 +1,6 @@
 // Wiring: loads data, constructs GlobeView + NavController, wires interactions.
 
-import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, CLUSTER_PALETTE, clusterAnchor, subAnchor, latLonToXYZ } from './data.js';
+import { loadData, App, buildSubGidMap, getPointDetails, clusterColor, SPHERE_PALETTE, CLUSTER_PALETTE, clusterAnchor, subAnchor, latLonToXYZ, prefetchAllChunks } from './data.js';
 import { NavController } from './nav.js';
 import { GlobeView } from './globe.js';
 import { dom } from './core/dom.js';
@@ -565,6 +565,13 @@ async function boot() {
   // `typeof writeHash === 'function'` so early calls are no-ops until then.
   let writeHash;
 
+  // ─── Idle-time chunk prefetch ───────────────────────────────────
+  // Globe is up; warm state.chunkCache in the background so the first
+  // hover/search post-load doesn't pay a 200–800ms round-trip on slow
+  // connections. One chunk per idle tick, no parallel burst. Skipped
+  // entirely if the user is on a Save-Data connection.
+  try { prefetchAllChunks(App.state); } catch (e) { /* non-fatal */ }
+
   // ─── Idle auto-rotate ───────────────────────────────────────────
   initIdleRotate({ globe, nav, keys, raf });
 
@@ -950,9 +957,14 @@ async function boot() {
     pointTooltip.style.left = `${Math.max(8, x)}px`;
     pointTooltip.style.top  = `${Math.max(8, y)}px`;
   };
+  // Tracks the last idx we actually painted into the tooltip so we can
+  // skip redundant DOM rebuilds on every mousemove that re-picks the same
+  // point. Reset when the tooltip is hidden so a re-show always rebuilds.
+  let _lastPaintedHoverIdx = -1;
   const hideTooltip = () => {
     pointTooltip.classList.remove('visible');
     pointTooltip.classList.add('hidden');
+    _lastPaintedHoverIdx = -1;
   };
   // ─── Cursor-over-card guard ──────────────────────────────────────
   // Hover tooltip + halo read messy when the cursor is over a floating
@@ -996,6 +1008,24 @@ async function boot() {
   };
   document.getElementById('nav')?.addEventListener('pointerenter', _forceHideHover);
   globe.canvas.addEventListener('pointerleave', _forceHideHover);
+  function _paintHoverTooltip(details, clientX, clientY) {
+    const title = (details.title || '').trim();
+    const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
+    const meta = App.state.clusterMeta[String(details.cluster)];
+    const catName = meta ? meta.name : `Topic ${details.cluster}`;
+    const clColor = sphereColor(details.cluster);
+    const _hvParsedQ = getActiveSearchParsed();
+    pointTooltip.innerHTML = `
+      <div class="hv-cluster" style="color:${clColor}">${catName}</div>
+      <div class="hv-meta">r/${escapeHtml(details.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
+      ${title ? `<div class="hv-title">${highlightSearchHits(title, _hvParsedQ)}</div>` : ''}
+      <div class="hv-body">${highlightSearchHits(body, _hvParsedQ)}</div>
+    `;
+    pointTooltip.classList.remove('hidden');
+    pointTooltip.classList.add('visible');
+    if (clientX != null) positionTooltip(clientX, clientY);
+    _lastPaintedHoverIdx = details.idx;
+  }
   globe.addEventListener('hover', async (ev) => {
     // Suppress the hover card entirely while SPACE is held — otherwise
     // moving the mouse around to read the sprouts keeps flashing
@@ -1010,33 +1040,31 @@ async function boot() {
       hideTooltip();
       return;
     }
+    // Fast path: the hovered point hasn't changed since we last painted, and
+    // chunk is warm. Skip the await + DOM rebuild entirely; reposition only.
+    if (idx === _lastPaintedHoverIdx && pointTooltip.classList.contains('visible')) {
+      if (clientX != null) positionTooltip(clientX, clientY);
+      return;
+    }
     try {
       const details = await getPointDetails(App.state, idx);
-      // The hover dispatch above is async (chunk fetch). If the cursor
-      // moved off the canvas onto a panel during the await, _cursorOverCard
-      // flipped true — bail before painting the tooltip so a stale popup
-      // doesn't pop up over the nav.
-      if (_cursorOverCard || _spaceDown || hoverPointIdx !== idx) {
-        hideTooltip();
+      // Bail conditions in priority order:
+      //   1. Cursor moved onto a panel during the await — show nothing.
+      //   2. Space is now down (sprouts mode) — show nothing.
+      //   3. Cursor moved off the globe entirely (hoverPointIdx < 0) — show nothing.
+      //   4. Cursor moved to a *different* point: drop this paint, but DO NOT
+      //      bail outright — the new point's own hover event will (or already
+      //      did) fire and resolve. Older code re-entered here and bailed for
+      //      every transient idx switch, which made fast cursor sweeps feel
+      //      sluggish (the user would see no tooltip until they stopped moving).
+      if (_cursorOverCard || _spaceDown) { hideTooltip(); return; }
+      if (hoverPointIdx < 0) { hideTooltip(); return; }
+      if (hoverPointIdx !== idx) {
+        // The current hover target moved on. Don't paint stale details, but
+        // also don't hide — the live hover event for the new idx will paint.
         return;
       }
-      const title = (details.title || '').trim();
-      const body = (details.body || '').replace(/\n{3,}/g, '\n\n');
-      const meta = App.state.clusterMeta[String(details.cluster)];
-      const catName = meta ? meta.name : `Topic ${details.cluster}`;
-      const clColor = sphereColor(details.cluster);
-      // Highlight the active search query inside the hover tooltip too,
-      // matching the pinned-post / thread-context behaviour (#4).
-      const _hvParsedQ = getActiveSearchParsed();
-      pointTooltip.innerHTML = `
-        <div class="hv-cluster" style="color:${clColor}">${catName}</div>
-        <div class="hv-meta">r/${escapeHtml(details.subreddit || '—')} · ${escapeHtml(formatRedditKindLabel(details.type))} · ${escapeHtml(details.month || '')}${details.score != null ? ' · ' + redditScoreInlineHtml(details.score) : ''}</div>
-        ${title ? `<div class="hv-title">${highlightSearchHits(title, _hvParsedQ)}</div>` : ''}
-        <div class="hv-body">${highlightSearchHits(body, _hvParsedQ)}</div>
-      `;
-      pointTooltip.classList.remove('hidden');
-      pointTooltip.classList.add('visible');
-      if (clientX != null) positionTooltip(clientX, clientY);
+      _paintHoverTooltip(details, clientX, clientY);
     } catch (e) {}
   });
   globe.addEventListener('hovermove', (ev) => {
@@ -2635,17 +2663,39 @@ async function boot() {
   async function siblingsForThread(postId) {
     if (siblingsCache.has(postId)) return siblingsCache.get(postId);
     const st = App.state;
-    const out = [];
-    for (let ci = 0; ci < st.manifest.files.length; ci++) {
+    // Coalesce all chunk fetches into a single Promise.all so a thread spanning
+    // multiple chunks doesn't pay sequential round-trips. Previously each
+    // unloaded chunk was awaited in series; on a cold cache that meant up to
+    // 51 sequential 20MB fetches before the thread could render. With the idle
+    // prefetcher most chunks are typically warm by the time a user pins a
+    // post, but the worst-case (early pin / slow link) used to take seconds.
+    const total = st.manifest.files.length;
+    const promises = new Array(total);
+    for (let ci = 0; ci < total; ci++) {
       let p = st.chunkCache.get(ci);
       if (!p) {
-        p = fetch('tsne_chunks/' + st.manifest.files[ci]).then(r => r.json());
-        st.chunkCache.set(ci, p);
+        const idx = ci;
+        p = fetch('tsne_chunks/' + st.manifest.files[idx]).then(r => {
+          if (!r.ok) throw new Error('chunk ' + idx + ' http ' + r.status);
+          return r.json();
+        });
+        // Mirror the eviction discipline from search-find.js (#48): a rejected
+        // promise stuck in the cache permanently poisons every later thread
+        // load for any chunk that happened to flake on first fetch.
+        p.catch(() => {
+          if (st.chunkCache.get(idx) === p) st.chunkCache.delete(idx);
+        });
+        st.chunkCache.set(idx, p);
       }
-      const c = await p;
+      promises[ci] = p;
+    }
+    const chunks = await Promise.all(promises);
+    const out = [];
+    for (const c of chunks) {
       const off = c.offset;
+      const links = c.permalink;
       for (let j = 0; j < c.n; j++) {
-        const m = (c.permalink[j] || '').match(/\/comments\/([a-z0-9]+)\//);
+        const m = (links[j] || '').match(/\/comments\/([a-z0-9]+)\//);
         if (m && m[1] === postId) out.push(off + j);
       }
     }
@@ -3007,6 +3057,11 @@ async function boot() {
       const sentinel = pvThreadEl.querySelector('.pv-thread-sentinel');
       if (sentinel && 'IntersectionObserver' in window) {
         const renderNextChunk = () => {
+          // Guard against re-entry: the IntersectionObserver can fire multiple
+          // queued entries for the same sentinel before the layout settles, so
+          // skip when we're already past the end (was a no-op before disconnect
+          // landed, but cheaper to bail early here than build an empty fragment).
+          if (cursor >= commentIdxs.length) return;
           const next = commentIdxs.slice(cursor, cursor + PV_CHUNK_SIZE);
           if (!next.length) return;
           // Build chunk HTML, then insert before the sentinel so the sentinel
@@ -3080,6 +3135,10 @@ async function boot() {
     if (token !== _detailContextToken) return;
     if (!siblings.includes(d.idx)) siblings = [d.idx, ...siblings];
 
+    // siblingsForThread guarantees every chunk is in chunkCache before it
+    // returns, so getPointDetails resolves synchronously off cached promises.
+    // Still wrap in Promise.all to preserve order and tolerate any race-cleared
+    // cache entry, but no extra network round-trips happen here.
     const allDetails = await Promise.all(
       siblings.map(i => i === d.idx ? Promise.resolve(d) : getPointDetails(App.state, i).catch(() => null))
     );

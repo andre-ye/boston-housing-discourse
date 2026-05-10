@@ -376,6 +376,102 @@ export async function loadChunk(state, chunkIdx) {
   return p;
 }
 
+// Idle-time prefetch of high-traffic chunks so first hover/search after a
+// cold load doesn't pay a 200–800ms network round-trip. Schedules one chunk
+// per idle tick (sequential — no concurrency burst). Skips entirely on
+// metered (Save-Data) connections. Safe to call multiple times;
+// already-loaded chunks short-circuit via loadChunk's own cache check.
+//
+// Memory budget: with 422k posts in ~100 chunks at ~3 MB JSON parsed each,
+// capping at 24 prefetched chunks ≈ 72 MB resident in chunkCache, which
+// is ≤ 5% of typical heap budget on a 4GB device. Low-RAM devices
+// (deviceMemory < 4) drop to 12; ≥ 8 GB devices raise to 32. Chunks land
+// in state.chunkCache alongside on-demand loads — the LRU eviction agent
+// owns bounding total cache size; a prefetched chunk that gets evicted is
+// fine, the next hover just re-fetches it. Selection strategy: bucket
+// points by cluster, walk clusters in descending post-count order, queue
+// each cluster's unique chunk indices — densest regions warm first.
+export function prefetchAllChunks(state) {
+  try {
+    if (navigator.connection && navigator.connection.saveData === true) return;
+  } catch {}
+  const total = state?.manifest?.files?.length || 0;
+  if (!total) return;
+
+  // Device-memory-aware cap. navigator.deviceMemory is GB, coarsely
+  // bucketed (Chrome/Edge/Android). Undefined on Safari/Firefox → default.
+  let cap = 24;
+  try {
+    const dm = navigator.deviceMemory;
+    if (typeof dm === 'number') {
+      if (dm < 4) cap = 12;
+      else if (dm >= 8) cap = 32;
+    }
+  } catch {}
+  cap = Math.min(cap, total);
+
+  // Build chunk visit order: cluster-priority. Group point indices by
+  // cluster, rank clusters by size desc, then for each cluster collect the
+  // unique chunk indices its points land in (ordered by first appearance).
+  // Falls back to plain index order if state.cluster is missing.
+  const cs = state?.manifest?.chunkSize || 0;
+  let order;
+  if (state.cluster && cs > 0) {
+    const counts = new Map();
+    for (let i = 0; i < state.cluster.length; i++) {
+      const cl = state.cluster[i];
+      counts.set(cl, (counts.get(cl) || 0) + 1);
+    }
+    const clusterOrder = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([cl]) => cl);
+    const seen = new Set();
+    order = [];
+    for (const cl of clusterOrder) {
+      for (let i = 0; i < state.cluster.length; i++) {
+        if (state.cluster[i] !== cl) continue;
+        const ci = Math.floor(i / cs);
+        if (ci >= total || seen.has(ci)) continue;
+        seen.add(ci);
+        order.push(ci);
+        if (seen.size >= total) break;
+      }
+      if (seen.size >= total) break;
+    }
+  } else {
+    order = Array.from({ length: total }, (_, i) => i);
+  }
+
+  const ric = window.requestIdleCallback
+    ? (cb) => window.requestIdleCallback(cb, { timeout: 1000 })
+    : (cb) => setTimeout(cb, 200);
+  let i = 0;
+  let prefetched = 0;
+  const step = () => {
+    if (prefetched >= cap) return;
+    // Skip chunks already cached (warmed by hover/search since we queued).
+    while (i < order.length && state.chunkCache.has(order[i])) i++;
+    if (i >= order.length) return;
+    // Optional Chrome-only heap-pressure brake. usedJSHeapSize and
+    // jsHeapSizeLimit are non-standard; absent on Safari/Firefox →
+    // we just rely on the count cap.
+    try {
+      const m = performance.memory;
+      if (m && m.jsHeapSizeLimit > 0 &&
+          m.usedJSHeapSize / m.jsHeapSizeLimit > 0.7) {
+        return;
+      }
+    } catch {}
+    const idx = order[i++];
+    prefetched++;
+    // Fire and forget — loadChunk writes the in-flight promise into
+    // chunkCache so subsequent getPointDetails() awaits the same fetch.
+    Promise.resolve(loadChunk(state, idx)).catch(() => {});
+    ric(step);
+  };
+  ric(step);
+}
+
 export async function getPointDetails(state, idx) {
   const cs = state.manifest.chunkSize;
   const ci = Math.floor(idx / cs);
