@@ -2349,7 +2349,7 @@ async function boot() {
     if (iv.quote) return [String(iv.quote).trim()].filter(Boolean);
     return [];
   }
-  // Per-id character sketches for the 18 interviews. interviews.json only
+  // Per-id character sketches for street interviews. interviews.json only
   // carries `id`, `themes`, `quotes` — no role/bio/lives — so a generic
   // theme-list template ("Cares about X, Y, Z.") reads like metadata
   // instead of a person. Hand-written sentences below paint each Px as
@@ -2373,6 +2373,10 @@ async function boot() {
     P16: "Medford homeowner Andrea, decade of working from home, wants to move into Cambridge to drop one car after her express bus was paused for COVID and never restored.",
     P17: "Philly resident from Fairmount visiting friends in Boston, drives 30 minutes to a New Jersey desk job in industrial pump rentals, frustrated PA transit lives or dies on state funding.",
     P18: "MIT postdoc, 31, lives in Somerville with three housemates because the salary won't cover a one-bedroom; bikes to lab year-round and calls Boston riding life-threatening.",
+    P19: "Student who works retail part-time — carpools with a roommate, gets dropped at the commuter rail for school; satisfied with the trip and rents off-campus to save money versus dorms.",
+    P20: "Freelance caterer crisscrossing Wilmington, Braintree, and farther by bus and train — wants schedules that match reality; longtime Dorchester resident naming neighborhood crime as a backdrop.",
+    P21: "Junior signals engineer at QLS who rides Red Line to Orange then walks from Dorchester; happy with the commute overall but wants more frequency, reliability, and equipment on the rails — remembers Brighton as especially walkable.",
+    P22: "Student chaining a regular bus into a campus shuttle — lives near South Bay for proximity to school, only vaguely tracking Red Line outage talk because it isn't usually their route.",
   };
   // Build a one-line human descriptor for an interview. Prefers a
   // hand-written sketch keyed by id; falls back to a themes paraphrase
@@ -2402,7 +2406,7 @@ async function boot() {
   // they exist before tour beat 2 can reference them. The voices-list and
   // pin click wiring below depends only on App.state, not on pin DOM.)
 
-  // Build voices list: 18 interviews grouped by cluster, each with a
+  // Build voices list: all interview pins grouped by cluster, each with a
   // quote excerpt so the user can scan for what interests them.
   const voicesInline = document.getElementById('voices-list-inline');
   (() => {

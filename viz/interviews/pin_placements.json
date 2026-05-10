@@ -780,6 +780,178 @@
           "subreddit": "boston"
         }
       ]
+    },
+    {
+      "id": "P19",
+      "idx": 27368,
+      "lat": -0.7181828618049622,
+      "lon": -0.172927126288414,
+      "cluster": 15,
+      "sub": 2,
+      "target_cluster": 15,
+      "target_sub": 2,
+      "score": 34.28,
+      "alternates": [
+        {
+          "idx": 27368,
+          "score": 34.28,
+          "title": "How do I go from quincy to north station this weekend?",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 132759,
+          "score": 32.92,
+          "title": "Commuter Rail",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 170199,
+          "score": 30.85,
+          "title": "Uber availability",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 31830,
+          "score": 30.32,
+          "title": "West Medford Commuter Rail Flag Stop?",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 175189,
+          "score": 29.84,
+          "title": "Question regarding Student pass and how effective it is for the Commuter rail?",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P20",
+      "idx": 299891,
+      "lat": 0.062243301421403885,
+      "lon": -0.18032430112361908,
+      "cluster": 3,
+      "sub": 2,
+      "target_cluster": 3,
+      "target_sub": 2,
+      "score": 22.35,
+      "alternates": [
+        {
+          "idx": 299891,
+          "score": 22.35,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 395553,
+          "score": 18.31,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 4031,
+          "score": 15.38,
+          "title": "Transit Police confirm fatality in Newton. Teenager struck by Commuter Rail trai",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 4563,
+          "score": 14.89,
+          "title": "Blood at TD Garden/North Station",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 358857,
+          "score": 14.88,
+          "title": "Somerville neighborhood safety",
+          "subreddit": "somerville"
+        }
+      ]
+    },
+    {
+      "id": "P21",
+      "idx": 37254,
+      "lat": -0.34375521540641785,
+      "lon": -0.5056021809577942,
+      "cluster": 22,
+      "sub": 3,
+      "target_cluster": 22,
+      "target_sub": 3,
+      "score": 62.99,
+      "alternates": [
+        {
+          "idx": 37254,
+          "score": 62.99,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 240068,
+          "score": 61.94,
+          "title": "Why doesn\u2019t anyone talk about really old rolling stock as much?",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 89796,
+          "score": 60.01,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 4972,
+          "score": 59.99,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 293444,
+          "score": 56.95,
+          "title": "",
+          "subreddit": "boston"
+        }
+      ]
+    },
+    {
+      "id": "P22",
+      "idx": 355587,
+      "lat": 0.4631732702255249,
+      "lon": -1.0109912157058716,
+      "cluster": 22,
+      "sub": 2,
+      "target_cluster": 22,
+      "target_sub": 2,
+      "score": 24.93,
+      "alternates": [
+        {
+          "idx": 355587,
+          "score": 24.93,
+          "title": "",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 143306,
+          "score": 22.88,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 174363,
+          "score": 22.86,
+          "title": "",
+          "subreddit": "boston"
+        },
+        {
+          "idx": 29024,
+          "score": 21.25,
+          "title": "I've had it with trains.",
+          "subreddit": "mbta"
+        },
+        {
+          "idx": 386906,
+          "score": 19.34,
+          "title": "",
+          "subreddit": "mbta"
+        }
+      ]
     }
   ]
 }

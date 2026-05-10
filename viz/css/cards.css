@@ -285,7 +285,7 @@
     opacity: 0.6;
     animation-duration: 1.0s;
   }
-  /* Tour beat: "We started by talking to 18 people" — globe is dimmed via
+  /* Tour beat: "We started by talking to … people" — globe is dimmed via
      setSpotlight; lift the P-pins so they read as the subjects of the moment.
      Disable the per-pin focus dimming (set in globe.js _updatePinScreenPositions
      when a cluster is highlighted) by overriding the .dimmed class too. */

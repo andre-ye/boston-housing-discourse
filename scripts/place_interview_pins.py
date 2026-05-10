@@ -8,11 +8,16 @@ Two-stage matching:
      against the same query — that's where the pin is placed.
 
 Output: viz/interviews/pin_placements.json
+
+Re-run options:
+  python scripts/place_interview_pins.py              # full regenerate (drops manual pin notes unless re-added)
+  python scripts/place_interview_pins.py --append     # add only ids present in interviews.json but missing from the JSON file; seeds diversity from existing placements
 """
 from __future__ import annotations
 import json
 import math
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -66,6 +71,10 @@ def build_query(iv: dict) -> dict:
     role_text = iv.get("role") or ""
     theme_text = " ".join(iv.get("themes") or [])
     quote = iv.get("quote") or ""
+    if not quote:
+        qa = iv.get("quotes") or []
+        if isinstance(qa, list):
+            quote = " ".join(str(q) for q in qa if q)
     change = iv.get("change") or ""
     lives = iv.get("lives") or ""
     would_live = iv.get("would_live") or ""
@@ -158,10 +167,189 @@ MANUAL_OVERRIDES = {
     "P14": (48, None),   # UMass Amherst student — commuter rail navigation
     "P15": None,         # non-Boston; keep algo choice
     "P17": None,         # non-Boston; keep algo choice
+    # With diversity seeded from existing pins, greedy stage-1 drifted here to
+    # rent-control discourse; commuter-rail + carpool reads closer to transcripts.
+    "P19": (15, 2),
 }
 
 
+def _placement_record(iv: dict, iv_targets: dict, best: dict, top_k_per_iv: dict, cluster_arr, sub_arr, coords):
+    iv_id = iv["id"]
+    b = best[iv_id]
+    cl, sub = iv_targets[iv_id]
+    if b["idx"] < 0:
+        import numpy as np
+        mask_idx = np.where(cluster_arr == int(cl))[0]
+        if len(mask_idx) == 0:
+            return None
+        b["idx"] = int(mask_idx[0])
+    idx = int(b["idx"])
+    lat, lon = float(coords[idx, 0]), float(coords[idx, 1])
+    rec = {
+        "id": iv_id,
+        "idx": idx,
+        "lat": lat,
+        "lon": lon,
+        "cluster": int(cluster_arr[idx]),
+        "sub": int(sub_arr[idx]),
+        "target_cluster": int(cl),
+        "target_sub": None if sub is None else int(sub),
+        "score": round(float(b["score"]), 2),
+        "alternates": [
+            {"idx": int(t["idx"]), "score": round(float(t["score"]), 2), "title": t["title"][:80], "subreddit": t["subreddit"]}
+            for t in top_k_per_iv[iv_id][:5]
+        ],
+    }
+    role = iv.get("role")
+    if role is not None:
+        rec["role"] = role
+    return rec
+
+
+def main_append():
+    """Add placements for interviews listed in interviews.json but missing from pin_placements.json."""
+    import numpy as np
+
+    out_path = INTERVIEWS / "pin_placements.json"
+    data = json.loads(out_path.read_text())
+    placements_existing = list(data.get("placements") or [])
+    ids_done = {p["id"] for p in placements_existing}
+
+    all_ivs = json.loads((INTERVIEWS / "interviews.json").read_text())["interviews"]
+    ivs = [iv for iv in all_ivs if iv["id"] not in ids_done]
+    if not ivs:
+        print("append: no new interview ids missing from pin_placements.json — nothing to do")
+        return
+
+    queries = {iv["id"]: build_query(iv) for iv in ivs}
+
+    manifest = json.loads((CHUNKS / "manifest.json").read_text())
+    chunk_files = manifest["files"]
+
+    coords = np.frombuffer((CHUNKS / "sphere_coords.bin").read_bytes(), dtype=np.float32).reshape(-1, 2)
+    labels_arr = np.frombuffer((CHUNKS / "point_labels.bin").read_bytes(), dtype=np.uint8).reshape(-1, 3)
+    lo, hi = labels_arr[:, 0].astype(np.int32), labels_arr[:, 1].astype(np.int32)
+    cluster_arr = (hi << 8) | lo
+    cluster_arr = np.where(cluster_arr >= 0x8000, cluster_arr - 0x10000, cluster_arr).astype(np.int16)
+    sub_arr = labels_arr[:, 2].astype(np.int32)
+
+    cluster_meta = json.loads((CHUNKS / "cluster_labels.json").read_text())
+    cluster_meta = cluster_meta.get("embedding", cluster_meta)
+    sub_meta = json.loads((CHUNKS / "subcluster_labels.json").read_text())
+
+    per_iv_scores: dict[str, list[tuple[float, int, int | None]]] = {}
+    for iv in ivs:
+        iv_id = iv["id"]
+        q = queries[iv_id]
+        ranked: list[tuple[float, int, int | None]] = []
+        for cl_str, cl_m in cluster_meta.items():
+            try:
+                cl = int(cl_str)
+            except ValueError:
+                continue
+            cluster_name = cl_m.get("name", "")
+            cluster_desc = cl_m.get("description", "") or cl_m.get("summary", "")
+            base = score_label(q, cluster_name + " " + cluster_desc)
+            for sm in sub_meta.get(cl_str, []):
+                sname = sm.get("name", "")
+                sdesc = sm.get("description", "") or ""
+                skw = " ".join(sm.get("keywords", []) or [])
+                s = base + score_label(q, sname + " " + sdesc + " " + skw) * 2.0
+                if s > 0:
+                    ranked.append((s, cl, sm.get("sub")))
+        ranked.sort(reverse=True)
+        per_iv_scores[iv_id] = ranked
+
+    sub_take_count: dict[tuple[int, int | None], int] = {}
+    for p in placements_existing:
+        cl = int(p["target_cluster"])
+        ts_raw = p.get("target_sub")
+        key = (cl, None if ts_raw is None else int(ts_raw))
+        sub_take_count[key] = sub_take_count.get(key, 0) + 1
+
+    iv_targets: dict[str, tuple[int, int | None]] = {}
+    iv_order = sorted(ivs, key=lambda iv: -(per_iv_scores[iv["id"]][0][0] if per_iv_scores[iv["id"]] else 0))
+    for iv in iv_order:
+        iv_id = iv["id"]
+        if iv_id in MANUAL_OVERRIDES and MANUAL_OVERRIDES[iv_id] is not None:
+            iv_targets[iv_id] = MANUAL_OVERRIDES[iv_id]
+            sub_take_count[MANUAL_OVERRIDES[iv_id]] = sub_take_count.get(MANUAL_OVERRIDES[iv_id], 0) + 1
+            continue
+        best = None
+        best_adj = -1e9
+        for s, cl, sub in per_iv_scores[iv_id][:30]:
+            used = sub_take_count.get((cl, sub), 0)
+            adj = s - 0.35 * s * used
+            if adj > best_adj:
+                best_adj = adj
+                best = (cl, sub)
+        if best is None:
+            best = (0, None)
+        iv_targets[iv_id] = best
+        sub_take_count[best] = sub_take_count.get(best, 0) + 1
+
+    print("append — Stage 1 (new ids only):")
+    for iv in ivs:
+        cl, sub = iv_targets[iv["id"]]
+        cname = cluster_meta.get(str(cl), {}).get("name", "?")
+        sname = "—"
+        for sm in sub_meta.get(str(cl), []):
+            if sm.get("sub") == sub:
+                sname = sm.get("name", "?")
+                break
+        print(f"  {iv['id']:>4} → cl {cl:>2} ({cname[:30]:30}) / sub {sub}  ({sname})")
+
+    best = {iv["id"]: {"score": -1e9, "idx": -1} for iv in ivs}
+    top_k_per_iv: dict[str, list[dict]] = {iv["id"]: [] for iv in ivs}
+
+    for fi, fname in enumerate(chunk_files):
+        ch = json.loads((CHUNKS / fname).read_text())
+        n = ch["n"]
+        off = ch["offset"]
+        title = ch["title"]
+        panel_body = ch.get("panel_body") or [""] * n
+        hover_body = ch.get("hover_body") or [""] * n
+        subreddit = ch["subreddit"]
+        bodies = [(panel_body[j] or hover_body[j] or "")[:800] for j in range(n)]
+        for iv in ivs:
+            iv_id = iv["id"]
+            tcl, tsub = iv_targets[iv_id]
+            q = queries[iv_id]
+            top = top_k_per_iv[iv_id]
+            for j in range(n):
+                gi = off + j
+                if int(cluster_arr[gi]) != int(tcl):
+                    continue
+                if tsub is not None and int(sub_arr[gi]) != int(tsub):
+                    continue
+                sc = score_point(q, title[j] or "", bodies[j], subreddit[j] or "")
+                if sc > best[iv_id]["score"]:
+                    best[iv_id] = {"score": sc, "idx": gi}
+                if len(top) < 5 or sc > top[-1]["score"]:
+                    top.append({"score": sc, "idx": gi, "title": title[j] or "", "subreddit": subreddit[j] or ""})
+                    top.sort(key=lambda r: r["score"], reverse=True)
+                    del top[5:]
+        print(f"  scored chunk {fi+1}/{len(chunk_files)}")
+
+    new_records = []
+    for iv in sorted(ivs, key=lambda x: x["id"]):
+        rec = _placement_record(iv, iv_targets, best, top_k_per_iv, cluster_arr, sub_arr, coords)
+        if rec:
+            new_records.append(rec)
+
+    data["placements"] = placements_existing + new_records
+    out_path.write_text(json.dumps(data, indent=2))
+    print(f"\nAppended {len(new_records)} pin(s) → {out_path}")
+    for p in new_records:
+        cname = cluster_meta.get(str(p["target_cluster"]), {}).get("name", "?")
+        alt0 = (p["alternates"][0]["title"][:50] if p.get("alternates") else "")
+        print(f"  {p['id']:>4}  cl {p['cluster']:>2}/{p['target_cluster']:>2} sub {p['sub']:>3}  ({cname[:32]:32})  alt: {alt0}")
+
+
 def main():
+    if "--append" in sys.argv:
+        return main_append()
+
     ivs = json.loads((INTERVIEWS / "interviews.json").read_text())["interviews"]
     queries = {iv["id"]: build_query(iv) for iv in ivs}
 

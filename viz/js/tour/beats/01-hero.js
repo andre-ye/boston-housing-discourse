@@ -8,10 +8,10 @@ export const beat = {
   kind: 'hero',
   headline: 'A Sphere of Boston\nHousing Discourse',
   lede:
-    '420k Reddit posts and comments and 18 street interviews about housing, ' +
+    '420k Reddit posts and comments and 22 street interviews about housing, ' +
     'transit, and city life in Boston.',
   ledeHtml:
-    '420k Reddit posts and comments and 18 street interviews' +
+    '420k Reddit posts and comments and 22 street interviews' +
     '<span class="tour-lede-br" aria-hidden="true"></span> about housing, ' +
     'transit, and city life in Boston.',
   metaHtml:

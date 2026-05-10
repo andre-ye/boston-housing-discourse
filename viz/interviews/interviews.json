@@ -156,6 +156,42 @@
         "I'm on a postdoc salary — about 70,000 — and I cannot live alone unless I lived beyond Alewife, or Newton, or Watertown. I have three housemates, and I don't like that. There's just no other way."
       ],
       "themes": ["cycling safety", "separated bike lanes", "postdoc housing"]
+    },
+    {
+      "id": "P19",
+      "quotes": [
+        "I carpool to work and get dropped off at the train for school.",
+        "I rely on my roommate to drive me.",
+        "I was saving more money getting an off-campus apartment, especially outside of Boston."
+      ],
+      "themes": ["commuter rail", "student housing", "carpool", "off-campus rent"]
+    },
+    {
+      "id": "P20",
+      "quotes": [
+        "I go everywhere — Wilmington, Braintree, the Cape. Freelance. Like all over.",
+        "The train should be running more frequently and they should be accurate on the times they say the train is going to be here.",
+        "I've been here 25 years. A lot of drug activity, gun violence."
+      ],
+      "themes": ["commuter rail reliability", "schedule accuracy", "neighborhood safety", "freelance work"]
+    },
+    {
+      "id": "P21",
+      "quotes": [
+        "I take the Red Line to the Orange Line and then walk over.",
+        "More frequency, more reliability, and more stock on the rails.",
+        "I liked living in Brighton because it's really walkable."
+      ],
+      "themes": ["Red Line", "Orange Line", "signals", "frequency", "staffing rolling stock"]
+    },
+    {
+      "id": "P22",
+      "quotes": [
+        "One bus, and then the shuttle bus.",
+        "Live off-campus in South Bay because it's close to school.",
+        "I heard the Red Line may be out of service, but I don't usually take it."
+      ],
+      "themes": ["shuttle bus", "South Bay", "student commute", "service outages"]
     }
   ]
 }
