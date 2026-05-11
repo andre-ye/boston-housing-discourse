@@ -85,6 +85,7 @@ function initNavResizeHandle() {
   // reading width so the post + replies have room to breathe.
   if (pinnedEl && saved == null) {
     const mo = new MutationObserver(() => {
+      if (document.body.classList.contains('tour-active')) return;
       if (!pinnedEl.classList.contains('hidden') && _readNavPref() == null) {
         _setNavWidth(NAV_W_PINNED_DEFAULT);
       }
@@ -502,7 +503,7 @@ async function boot() {
   try {
     // Bump ?v= when any module under viz/js/tour/ changes — plain http.server
     // caches imported .js aggressively; this forces a fresh tour subgraph.
-    const { createTour } = await import('./tour/index.js?v=20260519');
+    const { createTour } = await import('./tour/index.js?v=20260521');
     const tour = createTour({ globe, App, nav });
     window.App.tour = tour;
     const launcherEl = document.getElementById('tour-launcher');
@@ -1097,7 +1098,9 @@ async function boot() {
     // content replaces the skeleton before any paint happens.
     if (!wantsLink) {
       _setSelection({ pinnedIdx: idx });
-      globe.setPinnedPoint(pinnedPointIdx);
+      if (!document.body.classList.contains('tour-active') || !globe._tourTrioCluster1?.idxSet?.has(idx)) {
+        globe.setPinnedPoint(pinnedPointIdx);
+      }
       showDetailLoading(idx);
     }
     const details = await getPointDetails(App.state, idx);
