@@ -146,7 +146,12 @@ export function createTour({ globe, App, nav }) {
       }
     }
 
-    btnPrev?.classList.toggle('hidden', !meta.hasPrev);
+    // Back was disabled in #54: re-entering completed beats sometimes
+    // restored partial/inconsistent state and the snapshot restoration
+    // doesn't cover every interactive beat. Forced hidden until the
+    // back-path is fully audited; the runner.prev() machinery is kept
+    // intact so a future re-enable is a single-line UI flip.
+    btnPrev?.classList.add('hidden');
     if (btnNext) {
       btnNext.classList.remove('tour-btn-continue');
       btnNext.classList.remove('tour-btn-disabled');
@@ -260,6 +265,11 @@ export function createTour({ globe, App, nav }) {
       try { App?.clearSprouts?.({ immediate: true }); } catch {}
       try { App?.clearPinnedPoint?.(); } catch {}
       try { App?.clearPinnedBackStack?.(); } catch {}
+      // Safety net for the shared cluster-1 trio markers (#51 #52): if the
+      // user skipped out of the tour between beat 5 and beat 6, beat 6's
+      // cleanup never ran and the markers would otherwise leak.
+      try { globe._tourTrioCluster1?.markers?.teardown(); } catch {}
+      try { if (globe) globe._tourTrioCluster1 = null; } catch {}
       try { globe.setSpotlight?.(null); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
       ['pinned-view', 'interview-card']
@@ -360,15 +370,8 @@ export function createTour({ globe, App, nav }) {
       runner.next(); e.preventDefault(); return true;
     },
   });
-  keys.bind({
-    keys: ['ArrowLeft'],
-    priority: 200,
-    label: 'tour:prev',
-    helpHidden: true,
-    allowInInput: true,
-    when: () => runner.active,
-    handler: (e) => { runner.prev(); e.preventDefault(); return true; },
-  });
+  // ArrowLeft for tour:prev removed alongside the Back button (#54).
+  // Re-enable when the back-path is audited; see renderCard comment.
   keys.bind({
     keys: ['Enter'],
     priority: 200,

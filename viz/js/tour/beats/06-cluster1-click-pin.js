@@ -40,26 +40,36 @@ export const beat = {
     if (picks.length < 3) return () => {};
 
     const idxSet = new Set(picks.map(p => p.idx));
-    let spotlightOn = false;
-    try { globe.setSpotlight(idxSet); spotlightOn = true; } catch {}
-    try { setVisibilityTiers({ level: 'tourSpotlight', scope: { brightIds: idxSet } }); } catch {}
-    document.body.classList.add('tour-pin-spotlight');
-    document.body.classList.add('tour-cam-snappy');
 
-    let lat = 0, lon = 0;
-    for (const p of picks) {
-      lat += state.coords[2 * p.idx];
-      lon += state.coords[2 * p.idx + 1];
+    // Reuse beat 5's trio if it's still alive (normal forward flow); set up
+    // fresh otherwise (cold-entry edge case, e.g. if we ever re-enable Back
+    // and the user jumps directly here). See beat 5 for the rationale.
+    const existing = globe._tourTrioCluster1;
+    let markers;
+    if (existing && existing.idxSet && existing.idxSet.size === idxSet.size) {
+      markers = existing.markers;
+    } else {
+      try { globe.setSpotlight(idxSet); } catch {}
+      try { setVisibilityTiers({ level: 'tourSpotlight', scope: { brightIds: idxSet } }); } catch {}
+      document.body.classList.add('tour-pin-spotlight');
+      document.body.classList.add('tour-cam-snappy');
+
+      let lat = 0, lon = 0;
+      for (const p of picks) {
+        lat += state.coords[2 * p.idx];
+        lon += state.coords[2 * p.idx + 1];
+      }
+      lat /= picks.length; lon /= picks.length;
+      try { globe.rotateTo(lat, lon, TRIO_FRAMING); } catch {}
+
+      markers = attachSpotlight(globe, picks.map(p => ({
+        idx: p.idx,
+        lat: state.coords[2 * p.idx],
+        lon: state.coords[2 * p.idx + 1],
+        tag: p.tag,
+      })));
+      globe._tourTrioCluster1 = { markers, idxSet };
     }
-    lat /= picks.length; lon /= picks.length;
-    try { globe.rotateTo(lat, lon, TRIO_FRAMING); } catch {}
-
-    const markers = attachSpotlight(globe, picks.map(p => ({
-      idx: p.idx,
-      lat: state.coords[2 * p.idx],
-      lon: state.coords[2 * p.idx + 1],
-      tag: p.tag,
-    })));
 
     const valid = new Set(picks.map(p => p.idx));
     let advanced = false;
@@ -76,10 +86,11 @@ export const beat = {
 
     return () => {
       globe.removeEventListener('pointclick', onClick);
-      markers.teardown();
-      if (spotlightOn) {
-        try { globe.setSpotlight(null); } catch {}
-      }
+      // Beat 6 is the final consumer of the shared cluster-1 trio in the
+      // normal forward flow, so it owns the teardown.
+      try { globe._tourTrioCluster1?.markers?.teardown(); } catch {}
+      globe._tourTrioCluster1 = null;
+      try { globe.setSpotlight(null); } catch {}
       try { clearVisibilityTiers(); } catch {}
       document.body.classList.remove('tour-pin-spotlight');
       document.body.classList.remove('tour-cam-snappy');

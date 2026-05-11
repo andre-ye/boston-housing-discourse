@@ -114,6 +114,14 @@ export function attachSpotlight(globe, points) {
   };
   const dispose = () => { globe._onFrame = prevFrame; };
 
+  // Prime markers in the same JS task so they don't blink off for one
+  // frame between consecutive beats that both spotlight the same trio
+  // (#51 #52). Without this, beat-N cleanup removes the old markers and
+  // beat-N+1's freshly-created markers sit at opacity:0 until the next
+  // globe._onFrame fires — visible as a "trio disappears and reappears"
+  // flicker. tick() projects + opacity-toggles them synchronously.
+  try { tick(); } catch {}
+
   return {
     consume(idx) {
       const m = markers.find(mm => mm.idx === idx);

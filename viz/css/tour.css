@@ -543,7 +543,7 @@
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"],
   body.tour-pulse-l1-8:not(.tour-step-done) #stack-l1 .bar-seg[data-key="8"],
   body.tour-pulse-l2-8_2:not(.tour-step-done) #stack-l2 .bar-seg[data-key="8_2"],
-  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"],
+  body.tour-pulse-l3-32_3:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_3"],
   body.tour-pulse-l1-5:not(.tour-step-done) #stack-l1 .bar-seg[data-key="5"] {
     /* Wider, brighter inset rings + a stronger brightness lift so the
        pulse reads on the brightly-coloured chips (the previous 1px /
@@ -570,7 +570,7 @@
   body.tour-pulse-l3-131_2:not(.tour-step-done) #stack-l3 .bar-seg[data-key="131_2"] .label,
   body.tour-pulse-l1-8:not(.tour-step-done) #stack-l1 .bar-seg[data-key="8"] .label,
   body.tour-pulse-l2-8_2:not(.tour-step-done) #stack-l2 .bar-seg[data-key="8_2"] .label,
-  body.tour-pulse-l3-32_1:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_1"] .label,
+  body.tour-pulse-l3-32_3:not(.tour-step-done) #stack-l3 .bar-seg[data-key="32_3"] .label,
   body.tour-pulse-l1-5:not(.tour-step-done) #stack-l1 .bar-seg[data-key="5"] .label {
     --pulse-from: none;
     --pulse-to: none;
