@@ -1087,17 +1087,27 @@ async function boot() {
         && !document.body.classList.contains('tour-step-show-cards')) {
       return;
     }
-    const details = await getPointDetails(App.state, ev.detail.idx);
-    // Only jump to the Reddit thread if the user held cmd/ctrl. Plain
-    // clicks now open the side card instead — easier to skim, doesn't
-    // hijack the tab on every mis-click.
+    const idx = ev.detail.idx;
     const e = ev.detail?.origEvent || ev.detail?.event;
     const wantsLink = !!(e && (e.metaKey || e.ctrlKey));
+    // Show a "Loading post…" skeleton synchronously while the chunk
+    // resolves, so the user sees feedback on click even when the chunk
+    // hasn't been prefetched yet. If the chunk is already cached,
+    // getPointDetails resolves in the same microtask and the real
+    // content replaces the skeleton before any paint happens.
+    if (!wantsLink) {
+      _setSelection({ pinnedIdx: idx });
+      globe.setPinnedPoint(pinnedPointIdx);
+      showDetailLoading(idx);
+    }
+    const details = await getPointDetails(App.state, idx);
+    // Stale guard: if the user clicked another point while this fetch
+    // was in flight, the newer click already painted its own loading
+    // skeleton — don't overwrite it with stale details.
+    if (!wantsLink && pinnedPointIdx !== idx) return;
     if (wantsLink && details?.permalink) {
       window.open(details.permalink, '_blank', 'noopener,noreferrer');
     } else {
-      _setSelection({ pinnedIdx: ev.detail.idx });
-      globe.setPinnedPoint(pinnedPointIdx);
       showDetailCard(details);
     }
   });
@@ -2818,6 +2828,26 @@ async function boot() {
       return;
     }
     showDetailCard(d);
+  }
+  // Synchronous loading skeleton — painted the instant a point is clicked so
+  // the panel shows feedback while getPointDetails awaits an uncached chunk.
+  // If the chunk is already in chunkCache, getPointDetails resolves in the
+  // same microtask and showDetailCard overwrites this before any paint, so
+  // the skeleton is invisible in the warm path.
+  function showDetailLoading(idx) {
+    if (!pinnedView || !pvThreadEl) return;
+    if (ic) ic.classList.add('hidden');
+    if (voicesInline) voicesInline.classList.add('hidden');
+    const btnV = document.getElementById('btn-voices');
+    if (btnV) btnV.classList.remove('on');
+    hideInspectorEmpty();
+    _disposeThreadObserver();
+    _currentDetailPin = { idx };
+    _syncPvControls();
+    pinnedView.classList.remove('hidden');
+    pvThreadEl.innerHTML = `<li class="pv-thread-loading">Loading post…</li>`;
+    pvThreadEl.classList.remove('hidden');
+    scrollCardIntoView(pinnedView);
   }
   // Public-stable name (search-find.js, App.showSnippetCard, etc. call this).
   // Renders into the new pinned-view inside the nav.
